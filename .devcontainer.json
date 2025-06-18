@@ -36,6 +36,8 @@
         "python.terminal.activateEnvInCurrentTerminal": true,
         "python.testing.pytestArgs": ["--no-cov"],
         "pylint.importStrategy": "fromEnvironment",
+        "python.terminal.shellIntegration.enabled": true,
+        "python.analysis.supportAllPythonDocuments":true,
         "ruff.nativeServer": "on",
         "ruff.formatting": "on",
         "ruff.linting": "on",
@@ -43,6 +45,8 @@
         "editor.formatOnSave": true,
         "editor.formatOnType": true,
         "files.trimTrailingWhitespace": true,
+        "terminal.integrated.shellIntegration.enabled": true,
+        "terminal.integrated.suggest.enabled": true,
         "terminal.integrated.profiles.linux": {
           "bash": {
             "path": "/usr/bin/bash"

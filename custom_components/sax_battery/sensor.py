@@ -18,8 +18,8 @@ from homeassistant.const import (
 )
 
 from .const import (
-    DOMAIN,
     CONF_MASTER_BATTERY,
+    DOMAIN,
     SAX_AC_POWER_TOTAL,
     SAX_ACTIVE_POWER_L1,
     SAX_ACTIVE_POWER_L2,
@@ -106,7 +106,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 SAXBatterySmartmeterTotalPowerSensor(battery, battery_id),
             ]
         )
-       
+
         # Add cumulative energy sensors only for the master battery
         if battery_id == master_battery_id:
             entities.extend(
@@ -126,7 +126,9 @@ class SAXBatterySensor(SensorEntity):
         """Initialize the SAX Battery sensor."""
         self.battery = battery
         self._battery_id = battery_id
-        self._attr_unique_id = f"{DOMAIN}_{self._battery_id}_{self.__class__.__name__.lower()}"
+        self._attr_unique_id = (
+            f"{DOMAIN}_{self._battery_id}_{self.__class__.__name__.lower()}"
+        )
 
         # Add device info
         self._attr_device_info = {
@@ -295,6 +297,7 @@ class SAXBatteryEnergyConsumedSensor(SAXBatterySensor):
         """Return the native value of the sensor."""
         return self.battery.data.get(SAX_ENERGY_CONSUMED)
 
+
 class SAXBatteryCumulativeEnergyProducedSensor(SAXBatterySensor):
     """SAX Battery Cumulative Energy Produced sensor from master battery."""
 
@@ -304,7 +307,7 @@ class SAXBatteryCumulativeEnergyProducedSensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
-        self._attr_name = f"Sax Battery Cumulative Energy going into the battery"
+        self._attr_name = "Sax Battery Cumulative Energy going into the battery"
         self._attr_unique_id = f"{DOMAIN}_cumulative_energy_produced"
         self._last_update_time = None
         self._cumulative_value = 0
@@ -317,21 +320,22 @@ class SAXBatteryCumulativeEnergyProducedSensor(SAXBatterySensor):
     async def async_update(self):
         """Update the sensor."""
         await super().async_update()
-        
+
         # Get current time
         current_time = datetime.now()
-        
+
         # Only update the cumulative value once per hour
-        if self._last_update_time is None or (
-            current_time - self._last_update_time
-        ).total_seconds() >= 3600:  # 3600 seconds = 1 hour
+        if (
+            self._last_update_time is None
+            or (current_time - self._last_update_time).total_seconds() >= 3600
+        ):  # 3600 seconds = 1 hour
             # Get the current energy produced value
             current_value = self.battery.data.get(SAX_ENERGY_PRODUCED, 0)
-            
+
             if current_value is not None:
                 # Update the cumulative value
                 self._cumulative_value += current_value
-                
+
                 # Update the last update time
                 self._last_update_time = current_time
 
@@ -345,7 +349,7 @@ class SAXBatteryCumulativeEnergyConsumedSensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
-        self._attr_name = f"Sax Battery Cumulative Energy coming out of the battery"
+        self._attr_name = "Sax Battery Cumulative Energy coming out of the battery"
         self._attr_unique_id = f"{DOMAIN}_cumulative_energy_consumed"
         self._last_update_time = None
         self._cumulative_value = 0
@@ -358,23 +362,25 @@ class SAXBatteryCumulativeEnergyConsumedSensor(SAXBatterySensor):
     async def async_update(self):
         """Update the sensor."""
         await super().async_update()
-        
+
         # Get current time
         current_time = datetime.now()
-        
+
         # Only update the cumulative value once per hour
-        if self._last_update_time is None or (
-            current_time - self._last_update_time
-        ).total_seconds() >= 3600:  # 3600 seconds = 1 hour
+        if (
+            self._last_update_time is None
+            or (current_time - self._last_update_time).total_seconds() >= 3600
+        ):  # 3600 seconds = 1 hour
             # Get the current energy consumed value
             current_value = self.battery.data.get(SAX_ENERGY_CONSUMED, 0)
-            
+
             if current_value is not None:
                 # Update the cumulative value
                 self._cumulative_value += current_value
-                
+
                 # Update the last update time
                 self._last_update_time = current_time
+
 
 class SAXBatteryCombinedPowerSensor(SensorEntity):
     """Combined power sensor for all SAX Batteries."""
@@ -417,6 +423,7 @@ class SAXBatteryCombinedPowerSensor(SensorEntity):
 
         self._attr_native_value = total_power
 
+
 class SAXBatteryCombinedSOCSensor(SensorEntity):
     """Combined State of Charge (SOC) sensor for all SAX Batteries."""
 
@@ -452,26 +459,27 @@ class SAXBatteryCombinedSOCSensor(SensorEntity):
         # Calculate average SOC
         total_soc = 0
         valid_batteries = 0
-        
+
         for battery in self._data_manager.batteries.values():
             soc = battery.data.get(SAX_SOC)
             if soc is not None:
                 total_soc += soc
                 valid_batteries += 1
-        
+
         # Only update if we have valid SOC data
         if valid_batteries > 0:
             combined_soc = round(total_soc / valid_batteries, 1)
             self._attr_native_value = combined_soc
-            
+
             # Store the combined SOC in the data manager
-            if not hasattr(self._data_manager, 'combined_data'):
+            if not hasattr(self._data_manager, "combined_data"):
                 self._data_manager.combined_data = {}
             self._data_manager.combined_data[SAX_COMBINED_SOC] = combined_soc
         else:
             self._attr_native_value = None
-            if hasattr(self._data_manager, 'combined_data'):
+            if hasattr(self._data_manager, "combined_data"):
                 self._data_manager.combined_data[SAX_COMBINED_SOC] = None
+
 
 class SAXBatteryPhaseCurrentsSumSensor(SAXBatterySensor):
     """SAX Battery Sum of Phase Currents sensor."""
@@ -482,7 +490,9 @@ class SAXBatteryPhaseCurrentsSumSensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.CURRENT
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Phase Currents Sum"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Phase Currents Sum"
+        )
 
     #        self._attr_entity_registry_enabled_default = False  # Disabled by default
 
@@ -732,7 +742,9 @@ class SAXBatterySmartmeterCurrentL1Sensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.CURRENT
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L1"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L1"
+        )
 
     #        self._attr_entity_registry_enabled_default = False  # Disabled by default
 
@@ -751,7 +763,9 @@ class SAXBatterySmartmeterCurrentL2Sensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.CURRENT
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L2"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L2"
+        )
 
     #        self._attr_entity_registry_enabled_default = False  # Disabled by default
 
@@ -770,7 +784,9 @@ class SAXBatterySmartmeterCurrentL3Sensor(SAXBatterySensor):
         self._attr_device_class = SensorDeviceClass.CURRENT
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L3"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Current L3"
+        )
 
     #        self._attr_entity_registry_enabled_default = False  # Disabled by default
 
@@ -843,7 +859,9 @@ class SAXBatterySmartmeterVoltageL1Sensor(SAXBatterySensor):
     def __init__(self, battery, battery_id) -> None:
         """Initialize the sensor."""
         super().__init__(battery, battery_id)
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L1"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L1"
+        )
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
@@ -861,7 +879,9 @@ class SAXBatterySmartmeterVoltageL2Sensor(SAXBatterySensor):
     def __init__(self, battery, battery_id) -> None:
         """Initialize the sensor."""
         super().__init__(battery, battery_id)
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L2"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L2"
+        )
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
@@ -879,7 +899,9 @@ class SAXBatterySmartmeterVoltageL3Sensor(SAXBatterySensor):
     def __init__(self, battery, battery_id) -> None:
         """Initialize the sensor."""
         super().__init__(battery, battery_id)
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L3"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Voltage L3"
+        )
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
@@ -897,7 +919,9 @@ class SAXBatterySmartmeterTotalPowerSensor(SAXBatterySensor):
     def __init__(self, battery, battery_id) -> None:
         """Initialize the sensor."""
         super().__init__(battery, battery_id)
-        self._attr_name = f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Total Power"
+        self._attr_name = (
+            f"Sax {battery_id.replace('_', ' ').title()} Smartmeter Total Power"
+        )
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT

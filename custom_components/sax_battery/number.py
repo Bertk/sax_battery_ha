@@ -138,7 +138,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 )
             )
 
-            _LOGGER.debug("Waiting for device to process the command...")  # pylint: disable=hass-logger-period
+            _LOGGER.debug("Waiting for device to process the command...")
             # Add a longer delay for the device to process the command
             await asyncio.sleep(10)
             _LOGGER.debug("Resuming after wait period")
@@ -231,7 +231,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 )
             )
 
-            _LOGGER.debug("Waiting for device to process the command...")  # pylint: disable=hass-logger-period
+            _LOGGER.debug("Waiting for device to process the command...")
             # Add a longer delay for the device to process the command
             await asyncio.sleep(10)
             _LOGGER.debug("Resuming after wait period")

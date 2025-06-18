@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from pymodbus.client import ModbusTcpClient
+from pymodbus.exceptions import ModbusException
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -136,8 +137,15 @@ class SAXBatteryData:
             try:
                 # Initialize Modbus TCP client
                 client = ModbusTcpClient(host=host, port=port, timeout=10)
+
+                # Add trace packet handling
+                def trace_callback(trace):
+                    _LOGGER.debug("Modbus Trace: %s", trace)
+
+                client.trace_func = trace_callback
+
                 if not client.connect():
-                    raise ConnectionError(f"Could not connect to {host}:{port}")
+                    raise ConnectionError(f"Could not connect to {host}:{port}")  # noqa: TRY301
 
                 self.modbus_clients[battery_id] = client
                 _LOGGER.info("Successfully connected to battery at %s:%s", host, port)
@@ -473,19 +481,28 @@ class SAXBattery:
                 )
             )
 
-            if hasattr(result, "registers"):
-                return (
-                    result.registers[0] + register_info.get("offset", 0)
-                ) * register_info.get("scale", 1)
+            if result.isError():
+                _LOGGER.error(
+                    "Modbus error reading address %s: %s",
+                    register_info["address"],
+                    result,
+                )
+                return None
+
+            return (
+                result.registers[0] + register_info.get("offset", 0)
+            ) * register_info.get("scale", 1)
+
+        except ModbusException as err:
             _LOGGER.error(
-                "Modbus error reading address %s: %s",
+                "Modbus exception reading register %s: %s",
                 register_info["address"],
-                result,
+                err,
             )
-            return None  # noqa: TRY300
-        except (ConnectionError, TimeoutError, ValueError) as err:
+            return None
+        except Exception as err:  # noqa: BLE001
             _LOGGER.error(
-                "Failed to read register %s: %s", register_info["address"], err
+                "General error reading register %s: %s", register_info["address"], err
             )
         return None
 
@@ -510,19 +527,21 @@ class SAXBattery:
                             self.data[register_name] = result
                             self._last_updates[register_name] = current_time
                     except (ConnectionError, TimeoutError) as err:
-                        _LOGGER.error("Error updating register %s: %s", register_name, err)
+                        _LOGGER.error(
+                            "Error updating register %s: %s", register_name, err
+                        )
 
             # Filter registers for slave ID 40 and find the range
             slave_id = 40
             slave_registers = {
-                reg_name: reg_info 
-                for reg_name, reg_info in registers.items() 
+                reg_name: reg_info
+                for reg_name, reg_info in registers.items()
                 if reg_info["slave"] == slave_id
             }
-            
+
             if not slave_registers:
                 return True  # Nothing to update for this slave
-                
+
             # Check if any slave 40 registers need updating based on scan_interval
             needs_update = False
             for reg_name, reg_info in slave_registers.items():
@@ -530,23 +549,28 @@ class SAXBattery:
                 if time_since_update >= reg_info["scan_interval"]:
                     needs_update = True
                     break
-                    
+
             if not needs_update:
                 return True  # No slave 40 registers need updating yet
-                
+
             # Calculate the range of addresses to read
-            start_address = min(reg_info["address"] for reg_info in slave_registers.values())
+            start_address = min(
+                reg_info["address"] for reg_info in slave_registers.values()
+            )
             end_address = max(
-                reg_info["address"] + reg_info.get("count", 1) - 1 
+                reg_info["address"] + reg_info.get("count", 1) - 1
                 for reg_info in slave_registers.values()
             )
             register_count = end_address - start_address + 1
-            
+
             _LOGGER.debug(
                 "Batch reading registers %s to %s (slave %s, count: %s)",
-                start_address, end_address, slave_id, register_count
+                start_address,
+                end_address,
+                slave_id,
+                register_count,
             )
-            
+
             # Perform a bulk read
             try:
                 result = await self.hass.async_add_executor_job(
@@ -556,36 +580,44 @@ class SAXBattery:
                         slave=slave_id,
                     )
                 )
-                
+
                 if not hasattr(result, "registers"):
                     _LOGGER.error(
-                        "Modbus error reading range %s-%s: %s", 
-                        start_address, end_address, result
+                        "Modbus error reading range %s-%s: %s",
+                        start_address,
+                        end_address,
+                        result,
                     )
                     return False
-                    
+
                 # Parse the bulk response
                 for reg_name, reg_info in slave_registers.items():
                     reg_offset = reg_info["address"] - start_address
                     if 0 <= reg_offset < len(result.registers):  # Ensure index is valid
                         raw_value = result.registers[reg_offset]
-                        value = (raw_value + reg_info.get("offset", 0)) * reg_info.get("scale", 1)
+                        value = (raw_value + reg_info.get("offset", 0)) * reg_info.get(
+                            "scale", 1
+                        )
                         self.data[reg_name] = value
                         # Update the timestamp for this register
                         self._last_updates[reg_name] = current_time
                     else:
                         _LOGGER.warning(
                             "Register %s (address %s) offset %s is out of range for result length %s",
-                            reg_name, reg_info["address"], reg_offset, len(result.registers)
+                            reg_name,
+                            reg_info["address"],
+                            reg_offset,
+                            len(result.registers),
                         )
-                        
+
             except (ConnectionError, TimeoutError, ValueError) as err:
-                _LOGGER.error("Failed to read bulk registers for slave %s: %s", slave_id, err)
+                _LOGGER.error(
+                    "Failed to read bulk registers for slave %s: %s", slave_id, err
+                )
                 return False
-                
+
         except TimeoutError as err:
             _LOGGER.error("Error updating battery %s: %s", self.battery_id, err)
             return False
-            
-        return True
 
+        return True

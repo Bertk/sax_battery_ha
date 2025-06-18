@@ -41,8 +41,12 @@ async def async_setup_entry(
 
         entities.extend([solar_charging_switch, manual_control_switch])
 
-    for battery in sax_battery_data.batteries.values():
-        entities.append(SAXBatteryOnOffSwitch(battery))
+    entities.extend(
+        [
+            SAXBatteryOnOffSwitch(battery)
+            for battery in sax_battery_data.batteries.values()
+        ]
+    )
 
     async_add_entities(entities)
 
@@ -55,7 +59,7 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
         self.battery = battery
         self._attr_unique_id = f"{DOMAIN}_{battery.battery_id}_switch"
         self._attr_name = f"Sax {battery.battery_id.replace('_', ' ').title()} On/Off"
-#        self._attr_has_entity_name = True
+        #        self._attr_has_entity_name = True
         self._registers = self.battery._data_manager.modbus_registers[  # noqa: SLF001
             battery.battery_id
         ][SAX_STATUS]

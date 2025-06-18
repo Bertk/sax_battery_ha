@@ -23,7 +23,7 @@ from .const import (
     DEFAULT_MIN_SOC,
     DOMAIN,
     SAX_COMBINED_POWER,
-    SAX_COMBINED_SOC
+    SAX_COMBINED_SOC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -255,7 +255,9 @@ class SAXBatteryPilot:
                         )
 
             # Get current battery power
-            battery_power_state = self.hass.states.get("sensor.sax_battery_combined_power")
+            battery_power_state = self.hass.states.get(
+                "sensor.sax_battery_combined_power"
+            )
             battery_power = 0
             if battery_power_state is not None:
                 try:
@@ -276,9 +278,11 @@ class SAXBatteryPilot:
                         err,
                     )
             # Check if the combined_data attribute exists
-            if hasattr(self.master_battery._data_manager, 'combined_data'):
+            if hasattr(self.master_battery._data_manager, "combined_data"):
                 # Get the SOC from the combined_data dictionary
-                master_soc = self.master_battery._data_manager.combined_data.get(SAX_COMBINED_SOC, 0)
+                master_soc = self.master_battery._data_manager.combined_data.get(
+                    SAX_COMBINED_SOC, 0
+                )
             else:
                 master_soc = 0
 
@@ -363,9 +367,11 @@ class SAXBatteryPilot:
         """Apply SOC constraints to a power value."""
         # Get current battery SOC
         # Check if the combined_data attribute exists
-        if hasattr(self.master_battery._data_manager, 'combined_data'):
+        if hasattr(self.master_battery._data_manager, "combined_data"):
             # Get the SOC from the combined_data dictionary
-            master_soc = self.master_battery._data_manager.combined_data.get(SAX_COMBINED_SOC, 0)
+            master_soc = self.master_battery._data_manager.combined_data.get(
+                SAX_COMBINED_SOC, 0
+            )
         else:
             master_soc = 0
 
@@ -438,9 +444,11 @@ class SAXBatteryPilot:
 
         # Apply SOC constraints
         # Check if the combined_data attribute exists
-        if hasattr(self.master_battery._data_manager, 'combined_data'):
+        if hasattr(self.master_battery._data_manager, "combined_data"):
             # Get the SOC from the combined_data dictionary
-            master_soc = self.master_battery._data_manager.combined_data.get(SAX_COMBINED_SOC, 0)
+            master_soc = self.master_battery._data_manager.combined_data.get(
+                SAX_COMBINED_SOC, 0
+            )
         else:
             master_soc = 0
 
