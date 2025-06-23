@@ -1,19 +1,10 @@
 """Integration for SAX Battery."""
 
-import asyncio
 import logging
 
-from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ModbusException
-
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-
-from .const import (
+from const import (
     CONF_DEVICE_ID,
-    CONF_MANUAL_CONTROL,
+    # CONF_MANUAL_CONTROL,
     CONF_PILOT_FROM_HA,
     DOMAIN,
     SAX_AC_POWER_TOTAL,
@@ -49,6 +40,15 @@ from .const import (
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
 )
+from pymodbus.client import ModbusTcpClient
+from pymodbus.exceptions import ModbusException
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+
+from .pilot import async_setup_pilot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,8 +77,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     # Set up pilot service if enabled
     if entry.data.get(CONF_PILOT_FROM_HA, False):
-        from .pilot import async_setup_pilot
-
         await async_setup_pilot(hass, entry.entry_id)
 
     return True

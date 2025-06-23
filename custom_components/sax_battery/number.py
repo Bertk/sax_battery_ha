@@ -1,13 +1,10 @@
 """Number platform for SAX Battery integration."""
 
+import asyncio
 from datetime import timedelta
 import logging
 
-from homeassistant.components.number import NumberEntity
-from homeassistant.const import PERCENTAGE, UnitOfPower
-from homeassistant.helpers.event import async_track_time_interval
-
-from .const import (
+from const import (
     CONF_AUTO_PILOT_INTERVAL,
     CONF_LIMIT_POWER,
     CONF_MANUAL_CONTROL,
@@ -17,6 +14,10 @@ from .const import (
     DEFAULT_MIN_SOC,
     DOMAIN,
 )
+
+from homeassistant.components.number import NumberEntity
+from homeassistant.const import PERCENTAGE, UnitOfPower
+from homeassistant.helpers.event import async_track_time_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,15 +123,13 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
             # Calculate the per-battery value
             per_battery_value = int(value / battery_count)
 
-            import asyncio
-
             # Add a small delay before writing
             await asyncio.sleep(0.1)
 
             _LOGGER.debug("Setting maximum charge power to %sW", int(value))
 
             # Use write_registers with the slave parameter as a keyword argument
-            result = await self._data_manager.hass.async_add_executor_job(
+            await self._data_manager.hass.async_add_executor_job(
                 lambda: client.write_registers(
                     44,  # Register for max charge
                     [per_battery_value],  # Pass value as a list
@@ -164,6 +163,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_native_value = max_value
         self._last_written_value = None  # Track the last written value
+        self._remove_interval = None
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._data_manager.device_id)},
@@ -215,15 +215,13 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
             # Calculate the per-battery value
             per_battery_value = int(value / battery_count)
 
-            import asyncio  # pylint: disable=import-outside-toplevel
-
             # Add a small delay before writing
             await asyncio.sleep(0.1)
 
             _LOGGER.debug("Setting maximum charge power to %sW", int(value))
 
             # Use write_registers with the slave parameter as a keyword argument
-            result = await self._data_manager.hass.async_add_executor_job(
+            await self._data_manager.hass.async_add_executor_job(
                 lambda: client.write_registers(
                     43,  # Register for max discharge
                     [per_battery_value],  # Pass value as a list

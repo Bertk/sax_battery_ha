@@ -2,22 +2,7 @@
 
 from datetime import datetime
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
-from homeassistant.const import (
-    PERCENTAGE,
-    UnitOfElectricCurrent,
-    UnitOfElectricPotential,
-    UnitOfEnergy,
-    UnitOfFrequency,
-    UnitOfPower,
-    UnitOfTemperature,
-)
-
-from .const import (
+from const import (
     CONF_MASTER_BATTERY,
     DOMAIN,
     SAX_AC_POWER_TOTAL,
@@ -26,7 +11,7 @@ from .const import (
     SAX_ACTIVE_POWER_L3,
     SAX_APPARENT_POWER,
     SAX_CAPACITY,
-    SAX_COMBINED_POWER,
+    #   SAX_COMBINED_POWER,
     SAX_COMBINED_SOC,
     SAX_CURRENT_L1,
     SAX_CURRENT_L2,
@@ -54,6 +39,21 @@ from .const import (
     SAX_VOLTAGE_L1,
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
+)
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfFrequency,
+    UnitOfPower,
+    UnitOfTemperature,
 )
 
 

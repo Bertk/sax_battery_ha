@@ -1,19 +1,20 @@
 """Switch platform for SAX Battery integration."""
 
+import asyncio
 import logging
 
-from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-
-from .const import (
+from const import (
     CONF_ENABLE_SOLAR_CHARGING,
     CONF_MANUAL_CONTROL,
     CONF_PILOT_FROM_HA,
     DOMAIN,
     SAX_STATUS,
 )
+
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,8 +86,6 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
             client = self.battery._data_manager.modbus_clients[self.battery.battery_id]  # noqa: SLF001
             slave_id = self._registers.get("slave", 64)
 
-            import asyncio
-
             await asyncio.sleep(0.1)
 
             _LOGGER.debug(
@@ -97,7 +96,7 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
             )
 
             # Use write_registers (plural) instead of write_register
-            result = await self.battery.hass.async_add_executor_job(
+            await self.battery.hass.async_add_executor_job(
                 lambda: client.write_registers(
                     self._registers["address"],
                     [self._registers["command_on"]],  # Note the list format
@@ -119,8 +118,6 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
             client = self.battery._data_manager.modbus_clients[self.battery.battery_id]  # noqa: SLF001
             slave_id = self._registers.get("slave", 64)
 
-            import asyncio
-
             await asyncio.sleep(0.1)
 
             _LOGGER.debug(
@@ -131,7 +128,7 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
             )
 
             # Use write_registers (plural) instead of write_register
-            result = await self.battery.hass.async_add_executor_job(
+            await self.battery.hass.async_add_executor_job(
                 lambda: client.write_registers(
                     self._registers["address"],
                     [self._registers["command_off"]],  # Note the list format
