@@ -75,7 +75,7 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
         }
 
     @property
-    def is_on(self):
+    def is_on(self):  # type: ignore  # noqa: PGH003
         """Return true if switch is on."""
         status = self.battery.data.get(SAX_STATUS)
         return status == self._registers["state_on"]
@@ -145,12 +145,12 @@ class SAXBatteryOnOffSwitch(SwitchEntity):
             )
 
     @property
-    def available(self):
+    def available(self):  # type: ignore  # noqa: PGH003
         """Return True if entity is available."""
         return SAX_STATUS in self.battery.data
 
     @property
-    def should_poll(self):
+    def should_poll(self):  # type: ignore  # noqa: PGH003
         """Return True if entity has to be polled for state."""
         return True
 

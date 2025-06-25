@@ -1,6 +1,8 @@
 """Integration for SAX Battery."""
 
+from datetime import datetime
 import logging
+from typing import Any
 
 from const import (
     CONF_DEVICE_ID,
@@ -43,6 +45,7 @@ from const import (
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusException
 
+from custom_components.sax_battery.data_manager import BatteryData
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -55,12 +58,12 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
 
 
-async def async_setup(hass: HomeAssistant, config):
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the SAX Battery integration."""
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SAX Battery from a config entry."""
     try:
         # Create SAX Battery data instance
@@ -82,7 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
@@ -109,14 +112,16 @@ class SAXBatteryData:
         self.entry = entry
         self.device_id = entry.data.get(CONF_DEVICE_ID)
         self.master_battery = None
-        self.batteries = {}
-        self.modbus_clients = {}
+        self.batteries: dict[str, BatteryData] = {}
+        self.modbus_clients: dict[str, ModbusTcpClient] = {}
         self.power_sensor_entity_id = entry.data.get("power_sensor_entity_id")
         self.pf_sensor_entity_id = entry.data.get("pf_sensor_entity_id")
-        self.modbus_registers = {}
-        self.last_updates = {}  # Initialize empty dictionary for last updates
+        self.modbus_registers: dict[str, dict[str, Any]] = {}
+        self.last_updates: dict[
+            str, datetime
+        ] = {}  # Initialize empty dictionary for last updates
 
-    async def async_init(self):
+    async def async_init(self) -> None:
         """Initialize Modbus connections and battery data."""
         battery_count = self.entry.data.get("battery_count")
         master_battery_id = self.entry.data.get("master_battery")
@@ -125,7 +130,7 @@ class SAXBatteryData:
             "Initializing %s batteries. Master: %s", battery_count, master_battery_id
         )
 
-        for i in range(1, battery_count + 1):
+        for i in range(1, battery_count + 1):  # type: ignore  # noqa: PGH003
             battery_id = f"battery_{chr(96 + i)}"
             host = self.entry.data.get(f"{battery_id}_host")
             port = self.entry.data.get(f"{battery_id}_port")
@@ -134,13 +139,7 @@ class SAXBatteryData:
 
             try:
                 # Initialize Modbus TCP client
-                client = ModbusTcpClient(host=host, port=port, timeout=10)
-
-                # Add trace packet handling
-                def trace_callback(trace):
-                    _LOGGER.debug("Modbus Trace: %s", trace)
-
-                client.trace_func = trace_callback
+                client = ModbusTcpClient(host=str(host), port=port, timeout=10)  # type: ignore  # noqa: PGH003
 
                 if not client.connect():
                     raise ConnectionError(f"Could not connect to {host}:{port}")  # noqa: TRY301

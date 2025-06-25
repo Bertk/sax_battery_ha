@@ -3,14 +3,14 @@
 from datetime import timedelta
 import logging
 
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.event import async_track_time_interval
 
-from const import (
+from .const import (
     CONF_AUTO_PILOT_INTERVAL,
     CONF_ENABLE_SOLAR_CHARGING,
     CONF_MANUAL_CONTROL,
@@ -29,7 +29,7 @@ from const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_pilot(hass: HomeAssistant, entry_id: str):
+async def async_setup_pilot(hass: HomeAssistant, entry_id: str) -> bool:
     """Set up the SAX Battery pilot service."""
     sax_data = hass.data[DOMAIN][entry_id]
 
@@ -278,18 +278,11 @@ class SAXBatteryPilot:
                         err,
                     )
             # Check if the combined_data attribute exists
-<<<<<<< Updated upstream
             if hasattr(self.master_battery._data_manager, "combined_data"):
                 # Get the SOC from the combined_data dictionary
                 master_soc = self.master_battery._data_manager.combined_data.get(
                     SAX_COMBINED_SOC, 0
                 )
-=======
-            data_manager = self.master_battery.get_data_manager()
-            # Get the SOC from the combined_data dictionary
-            if data_manager:
-                master_soc = data_manager.get_combined_data().get(SAX_COMBINED_SOC, 0)
->>>>>>> Stashed changes
             else:
                 master_soc = 0
 
@@ -313,11 +306,10 @@ class SAXBatteryPilot:
             #                net_power = total_power - battery_power
             #                _LOGGER.debug(f"Calculated net_power = {total_power} - {battery_power} = {net_power}")
             _LOGGER.debug(
-                "Starting calculation with total_power=%s, priority_power=%s, battery_power=%s Current SOC: %s%%",
+                "Starting calculation with total_power=%s, priority_power=%s, battery_power=%s",
                 total_power,
                 priority_power,
                 battery_power,
-                master_soc,
             )
 
             if priority_power > 50:
@@ -374,19 +366,12 @@ class SAXBatteryPilot:
     async def _apply_soc_constraints(self, power_value):
         """Apply SOC constraints to a power value."""
         # Get current battery SOC
-<<<<<<< Updated upstream
         # Check if the combined_data attribute exists
         if hasattr(self.master_battery._data_manager, "combined_data"):
             # Get the SOC from the combined_data dictionary
             master_soc = self.master_battery._data_manager.combined_data.get(
                 SAX_COMBINED_SOC, 0
             )
-=======
-        data_manager = self.master_battery.get_data_manager()
-        # Get the SOC from the combined_data dictionary
-        if data_manager:
-            master_soc = data_manager.get_combined_data().get(SAX_COMBINED_SOC, 0)
->>>>>>> Stashed changes
         else:
             master_soc = 0
 
@@ -459,18 +444,11 @@ class SAXBatteryPilot:
 
         # Apply SOC constraints
         # Check if the combined_data attribute exists
-<<<<<<< Updated upstream
         if hasattr(self.master_battery._data_manager, "combined_data"):
             # Get the SOC from the combined_data dictionary
             master_soc = self.master_battery._data_manager.combined_data.get(
                 SAX_COMBINED_SOC, 0
             )
-=======
-        data_manager = self.master_battery.get_data_manager()
-        # Get the SOC from the combined_data dictionary
-        if data_manager:
-            master_soc = data_manager.get_combined_data().get(SAX_COMBINED_SOC, 0)
->>>>>>> Stashed changes
         else:
             master_soc = 0
 
@@ -571,7 +549,7 @@ class SAXBatteryPilotPowerEntity(NumberEntity):
         self._attr_native_step = 100
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_should_poll = True
-        self._attr_mode = "box"
+        self._attr_mode = NumberMode.BOX
 
         # Add device info
         self._attr_device_info = {
@@ -583,12 +561,15 @@ class SAXBatteryPilotPowerEntity(NumberEntity):
         }
 
     @property
-    def native_value(self):
+    def native_value(self):  # type: ignore[override]
         """Return the current calculated power."""
-        return self._pilot.calculated_power
+        value = self._pilot.calculated_power
+        if value is None:
+            return 0
+        return value
 
     @property
-    def icon(self):
+    def icon(self):  # type: ignore[override]
         """Return the icon to use for the entity."""
         if self._pilot.calculated_power > 0:
             return "mdi:battery-charging"
@@ -623,12 +604,12 @@ class SAXBatterySolarChargingSwitch(SwitchEntity):
         }
 
     @property
-    def is_on(self):
+    def is_on(self):  # type: ignore[override]
         """Return true if solar charging is enabled."""
         return self._pilot.solar_charging_enabled
 
     @property
-    def icon(self):
+    def icon(self):  # type: ignore[override]
         """Return the icon to use for the switch."""
         return "mdi:solar-power" if self.is_on else "mdi:solar-power-off"
 
@@ -639,11 +620,3 @@ class SAXBatterySolarChargingSwitch(SwitchEntity):
     async def async_turn_off(self, **kwargs):
         """Turn off solar charging."""
         await self._pilot.set_solar_charging(False)
-
-
-class DataManager:
-    """Manages and provides access to combined battery data."""
-
-    def get_combined_data(self):
-        """Return the combined data dictionary."""
-        return self.combined_data

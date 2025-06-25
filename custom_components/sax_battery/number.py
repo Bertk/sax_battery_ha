@@ -15,7 +15,7 @@ from const import (
     DOMAIN,
 )
 
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -90,7 +90,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
     async def async_will_remove_from_hass(self):
         """Clean up on removal."""
         if hasattr(self, "_remove_interval"):
-            self._remove_interval()
+            self._remove_interval()  # type: ignore  # noqa: PGH003
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""
@@ -182,7 +182,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
     async def async_will_remove_from_hass(self):
         """Clean up on removal."""
         if hasattr(self, "_remove_interval"):
-            self._remove_interval()
+            self._remove_interval()  # type: ignore  # noqa: PGH003
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""
@@ -332,7 +332,7 @@ class SAXBatteryManualPowerEntity(NumberEntity):
         self._attr_native_step = 100
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_native_value = 0  # Use _attr_native_value instead of _value
-        self._attr_mode = "slider"
+        self._attr_mode = NumberMode.SLIDER
 
         # Add device info
         self._attr_device_info = {
@@ -344,16 +344,16 @@ class SAXBatteryManualPowerEntity(NumberEntity):
         }
 
     @property
-    def icon(self):
+    def icon(self):  # type: ignore  # noqa: PGH003
         """Return the icon to use for the entity."""
-        if self._attr_native_value > 0:
+        if self._attr_native_value is not None and self._attr_native_value > 0:
             return "mdi:battery-charging"
-        if self._attr_native_value < 0:
+        if self._attr_native_value is not None and self._attr_native_value < 0:
             return "mdi:battery-minus"
         return "mdi:battery"
 
     @property
-    def available(self):
+    def available(self):  # type: ignore  # noqa: PGH003
         """Return true if the entity is available."""
         return self._data_manager.entry.data.get(CONF_MANUAL_CONTROL, False)
 
