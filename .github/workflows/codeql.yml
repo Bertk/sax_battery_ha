@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - main
-      - update-types
+      - pymodbus-experiment
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
