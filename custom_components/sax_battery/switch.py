@@ -74,19 +74,19 @@ class SAXBatterySwitch(SwitchEntity):
         unique_id_prefix: str,
     ) -> None:
         """Initialize the switch."""
-        self.entity_description = description  # type: ignore[override]
+        self.entity_description = description
         self._attr_device_info = device_info
         self._attr_unique_id = f"{unique_id_prefix}_{description.key}"
         self._attr_name = f"Sax Battery {description.name}"
         self._device: Any = None
 
     @property
-    def is_on(self) -> bool:  # type: ignore[override]
+    def is_on(self) -> bool:
         """Return true if switch is on."""
         return self.entity_description.is_on_fn(self._device)
 
     @property
-    def available(self) -> bool:  # type: ignore[override]
+    def available(self) -> bool:
         """Return True if entity is available."""
         return self.entity_description.available_fn(self._device)
 

@@ -224,7 +224,7 @@ class SAXBatterySensor(SensorEntity):
         description: SAXBatterySensorEntityDescription[SensorValueType],
     ) -> None:
         """Initialize the sensor."""
-        self.entity_description = description  # type: ignore[override]
+        self.entity_description = description
         self.battery = battery
         self._battery_id = battery_id
 
@@ -244,7 +244,7 @@ class SAXBatterySensor(SensorEntity):
         }
 
     @property
-    def native_value(self) -> SensorValueType:  # type: ignore[override]
+    def native_value(self) -> SensorValueType:
         """Return the native value of the sensor."""
         value = self.battery.data.get(self.entity_description.key)
         return self.entity_description.value_fn(value)

@@ -110,7 +110,7 @@ class SAXBatteryNumber(NumberEntity):
     ) -> None:
         """Initialize the number entity."""
         self._data_manager = data_manager
-        self.entity_description = description  # type: ignore[override]
+        self.entity_description = description
         self._attr_unique_id = f"{data_manager.device_id}_{description.key}"
         self._attr_native_max_value = native_max_value
         self._attr_native_value = native_value or native_max_value
@@ -124,14 +124,14 @@ class SAXBatteryNumber(NumberEntity):
         }
 
     @property
-    def icon(self) -> str | None:  # type: ignore[override]
+    def icon(self) -> str | None:
         """Return the icon."""
         if self.entity_description.icon_fn is not None:
             return self.entity_description.icon_fn(self)
         return super().icon
 
     @property
-    def available(self) -> bool:  # type: ignore[override]
+    def available(self) -> bool:
         """Return availability."""
         return self.entity_description.availability_fn(self)
 

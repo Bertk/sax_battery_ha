@@ -195,7 +195,7 @@ class SAXBatterySolarChargingSwitch(Entity):
         return self._pilot.solar_charging_enabled
 
     @property
-    def icon(self) -> str:  # type: ignore[override]
+    def icon(self) -> str:
         """Return the icon to use for the switch."""
         return "mdi:solar-power" if self.is_on else "mdi:solar-power-off"
 

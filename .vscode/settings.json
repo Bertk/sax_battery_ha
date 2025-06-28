@@ -12,4 +12,7 @@
         "codeowners",
         "pymodbus"
     ],
+    "python.analysis.diagnosticSeverityOverrides": {
+          "reportIncompatibleMethodOverride": false
+    },
 }
