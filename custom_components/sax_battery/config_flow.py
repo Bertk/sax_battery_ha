@@ -45,7 +45,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             # Store battery count and move to battery configuration
@@ -71,7 +71,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle control options step."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             self._pilot_from_ha = user_input[CONF_PILOT_FROM_HA]
@@ -144,7 +144,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure power and PF sensors."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             self._data.update(user_input)
@@ -178,7 +178,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure priority devices."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             self._data.update(user_input)
@@ -203,7 +203,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure individual batteries."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             self._data.update(user_input)
@@ -215,7 +215,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Generate schema for all batteries
-        schema = {}
+        schema_dict: dict[vol.Required | vol.Optional, Any] = {}
         battery_choices = []
 
         battery_count = self._battery_count or 0  # Default to 0 if None
@@ -224,16 +224,16 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             battery_id = f"battery_{chr(96 + i)}"
             battery_choices.append(battery_id)
 
-            schema[vol.Required(f"{battery_id}_host")] = str
-            schema[vol.Required(f"{battery_id}_port", default=DEFAULT_PORT)] = vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=65535)
+            schema_dict[vol.Required(f"{battery_id}_host")] = str
+            schema_dict[vol.Required(f"{battery_id}_port", default=DEFAULT_PORT)] = (
+                vol.All(vol.Coerce(int), vol.Range(min=1, max=65535))
             )
 
         # Add master battery selection
-        schema[vol.Required(CONF_MASTER_BATTERY)] = vol.In(battery_choices)
+        schema_dict[vol.Required(CONF_MASTER_BATTERY)] = vol.In(battery_choices)
 
         return self.async_show_form(
             step_id="battery_config",
-            data_schema=vol.Schema(schema),
+            data_schema=vol.Schema(schema_dict),
             errors=errors,
         )

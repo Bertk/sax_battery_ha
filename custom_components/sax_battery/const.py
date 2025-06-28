@@ -1,6 +1,8 @@
 """Constants for the SAX Battery integration."""
 
-DOMAIN = "sax_battery"
+from typing import Final
+
+DOMAIN: Final = "sax_battery"
 
 CONF_BATTERY_COUNT = "battery_count"
 CONF_POWER_SENSOR = "power_sensor_entity_id"

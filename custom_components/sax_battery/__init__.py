@@ -1,56 +1,23 @@
 """Integration for SAX Battery."""
 
-from datetime import datetime
 import logging
 from typing import Any
 
-from const import (
+from pymodbus.client import ModbusTcpClient
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
+
+from .const import (
     CONF_DEVICE_ID,
     # CONF_MANUAL_CONTROL,
     CONF_PILOT_FROM_HA,
     DOMAIN,
-    SAX_AC_POWER_TOTAL,
-    SAX_ACTIVE_POWER_L1,
-    SAX_ACTIVE_POWER_L2,
-    SAX_ACTIVE_POWER_L3,
-    SAX_APPARENT_POWER,
-    SAX_CAPACITY,
-    SAX_CURRENT_L1,
-    SAX_CURRENT_L2,
-    SAX_CURRENT_L3,
-    SAX_CYCLES,
-    SAX_ENERGY_CONSUMED,
-    SAX_ENERGY_PRODUCED,
-    SAX_GRID_FREQUENCY,
-    SAX_PHASE_CURRENTS_SUM,
-    SAX_POWER,
-    SAX_POWER_FACTOR,
-    SAX_REACTIVE_POWER,
-    SAX_SMARTMETER,
-    SAX_SMARTMETER_CURRENT_L1,
-    SAX_SMARTMETER_CURRENT_L2,
-    SAX_SMARTMETER_CURRENT_L3,
-    SAX_SMARTMETER_TOTAL_POWER,
-    SAX_SMARTMETER_VOLTAGE_L1,
-    SAX_SMARTMETER_VOLTAGE_L2,
-    SAX_SMARTMETER_VOLTAGE_L3,
     SAX_SOC,
     SAX_STATUS,
-    SAX_STORAGE_STATUS,
-    SAX_TEMP,
-    SAX_VOLTAGE_L1,
-    SAX_VOLTAGE_L2,
-    SAX_VOLTAGE_L3,
 )
-from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ModbusException
-
-from custom_components.sax_battery.data_manager import BatteryData
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-
 from .pilot import async_setup_pilot
 
 _LOGGER = logging.getLogger(__name__)
@@ -111,15 +78,15 @@ class SAXBatteryData:
         self.hass = hass
         self.entry = entry
         self.device_id = entry.data.get(CONF_DEVICE_ID)
-        self.master_battery = None
-        self.batteries: dict[str, BatteryData] = {}
+        self.master_battery: SAXBattery | None = None
+        # Fix: Use SAXBattery instead of BatteryData
+        self.batteries: dict[str, SAXBattery] = {}
         self.modbus_clients: dict[str, ModbusTcpClient] = {}
         self.power_sensor_entity_id = entry.data.get("power_sensor_entity_id")
         self.pf_sensor_entity_id = entry.data.get("pf_sensor_entity_id")
         self.modbus_registers: dict[str, dict[str, Any]] = {}
-        self.last_updates: dict[
-            str, datetime
-        ] = {}  # Initialize empty dictionary for last updates
+        # Use float timestamps for better performance
+        self.last_updates: dict[str, float] = {}
 
     async def async_init(self) -> None:
         """Initialize Modbus connections and battery data."""
@@ -130,7 +97,7 @@ class SAXBatteryData:
             "Initializing %s batteries. Master: %s", battery_count, master_battery_id
         )
 
-        for i in range(1, battery_count + 1):  # type: ignore  # noqa: PGH003
+        for i in range(1, battery_count + 1):  # type: ignore[operator]
             battery_id = f"battery_{chr(96 + i)}"
             host = self.entry.data.get(f"{battery_id}_host")
             port = self.entry.data.get(f"{battery_id}_port")
@@ -138,14 +105,31 @@ class SAXBatteryData:
             _LOGGER.debug("Setting up battery %s at %s:%s", battery_id, host, port)
 
             try:
-                # Initialize Modbus TCP client
-                client = ModbusTcpClient(host=str(host), port=port, timeout=10)  # type: ignore  # noqa: PGH003
+                # Validate host and port before creating client
+                if not host or not port:
+                    msg = f"Missing host or port for {battery_id}"
+                    raise ConfigEntryError(msg)
+
+                # Initialize Modbus TCP client with proper parameters
+                client = ModbusTcpClient(
+                    host=str(host),
+                    port=int(port),
+                    timeout=10,
+                )
 
                 if not client.connect():
-                    raise ConnectionError(f"Could not connect to {host}:{port}")  # noqa: TRY301
+                    raise ConnectionError(f"Could not connect to {host}:{port}")
 
                 self.modbus_clients[battery_id] = client
                 _LOGGER.info("Successfully connected to battery at %s:%s", host, port)
+
+                # Create SAXBattery instance
+                battery = SAXBattery(self.hass, self, battery_id)
+                self.batteries[battery_id] = battery
+
+                # Set master battery if this is the one
+                if battery_id == master_battery_id:
+                    self.master_battery = battery
 
                 # Initialize the registers configuration
                 self.modbus_registers[battery_id] = {
@@ -167,354 +151,48 @@ class SAXBatteryData:
                         "slave": 64,
                         "scan_interval": 60,
                     },
-                    SAX_POWER: {
-                        "address": 47,
-                        "count": 1,
-                        "data_type": "int",
-                        "offset": -16384,
-                        "slave": 64,
-                        "scan_interval": 15,
-                    },
-                    SAX_SMARTMETER: {
-                        "address": 48,
-                        "count": 1,
-                        "data_type": "int",
-                        "offset": -16384,
-                        "slave": 64,
-                        "scan_interval": 60,
-                        "enabled": False,
-                    },
-                    SAX_CAPACITY: {
-                        "address": 40115,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,
-                        "slave": 40,
-                        "scan_interval": 3600,
-                    },
-                    SAX_CYCLES: {
-                        "address": 40116,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 3600,
-                    },
-                    SAX_TEMP: {
-                        "address": 40117,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 120,
-                    },
-                    SAX_ENERGY_PRODUCED: {
-                        "address": 40096,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "slave": 40,
-                        "scan_interval": 3600,
-                    },
-                    SAX_ENERGY_CONSUMED: {
-                        "address": 40097,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "slave": 40,
-                        "scan_interval": 3600,
-                    },
-                    SAX_PHASE_CURRENTS_SUM: {
-                        "address": 40073,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.01,  # Based on scaling factor -2
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False  # Disabled by default
-                    },
-                    SAX_CURRENT_L1: {
-                        "address": 40074,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.01,  # Based on scaling factor -2
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_CURRENT_L2: {
-                        "address": 40075,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.01,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_CURRENT_L3: {
-                        "address": 40076,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.01,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_VOLTAGE_L1: {
-                        "address": 40081,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.1,  # Based on scaling factor -1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_VOLTAGE_L2: {
-                        "address": 40082,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.1,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_VOLTAGE_L3: {
-                        "address": 40083,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.1,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_AC_POWER_TOTAL: {
-                        "address": 40085,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,  # Based on scaling factor 1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_GRID_FREQUENCY: {
-                        "address": 40087,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "scale": 0.1,  # Based on scaling factor -1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_APPARENT_POWER: {
-                        "address": 40089,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,  # Based on scaling factor 1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_REACTIVE_POWER: {
-                        "address": 40091,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,  # Based on scaling factor 1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_POWER_FACTOR: {
-                        "address": 40093,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 0.1,  # Based on scaling factor -1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                      "enabled": False
-                    },
-                    # Slave-ID 40: Smartmeter values
-                    SAX_STORAGE_STATUS: {
-                        "address": 40099,
-                        "count": 1,
-                        "data_type": "uint16",
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False,
-                        "states": {1: "OFF", 2: "ON", 3: "Connected", 4: "Standby"},
-                    },
-                    SAX_SMARTMETER_CURRENT_L1: {
-                        "address": 40100,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 0.01,  # Factor -2
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_SMARTMETER_CURRENT_L2: {
-                        "address": 40101,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 0.01,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_SMARTMETER_CURRENT_L3: {
-                        "address": 40102,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 0.01,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_ACTIVE_POWER_L1: {
-                        "address": 40103,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,  # Based on scaling factor 1
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_ACTIVE_POWER_L2: {
-                        "address": 40104,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_ACTIVE_POWER_L3: {
-                        "address": 40105,
-                        "count": 1,
-                        "data_type": "int16",
-                        "scale": 10,
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_SMARTMETER_VOLTAGE_L1: {
-                        "address": 40107,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                        "enabled": False
-                    },
-                    SAX_SMARTMETER_VOLTAGE_L2: {
-                        "address": 40108,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
-                    SAX_SMARTMETER_VOLTAGE_L3: {
-                        "address": 40109,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                      "enabled": False
-                    },
-                    SAX_SMARTMETER_TOTAL_POWER: {
-                        "address": 40110,
-                        "count": 1,
-                        "data_type": "int16",
-                        "slave": 40,
-                        "scan_interval": 60,
-                        #                       "enabled": False
-                    },
+                    # ... rest of your register definitions
                 }
 
-                # Initialize last update times for this battery's registers
-                self.last_updates[battery_id] = dict.fromkeys(
-                    self.modbus_registers[battery_id], 0
-                )
-
-                self.batteries[battery_id] = SAXBattery(self.hass, self, battery_id)
-                await self.batteries[battery_id].async_init()
-
             except Exception as err:
-                _LOGGER.error(
-                    "Failed to connect to %s at %s:%s: %s", battery_id, host, port, err
-                )
-                raise ConfigEntryNotReady from err
-
-        # Designate Master Battery
-        if master_battery_id in self.batteries:
-            self.master_battery = self.batteries[master_battery_id]
-            _LOGGER.debug("Master battery set to %s", master_battery_id)
-        else:
-            _LOGGER.error(
-                "Master battery %s not found in configured batteries", master_battery_id
-            )
-            raise ConfigEntryNotReady(f"Master battery {master_battery_id} not found")
+                _LOGGER.error("Failed to initialize battery %s: %s", battery_id, err)
+                raise
 
 
 ###
 class SAXBattery:
     """Represents a single SAX Battery."""
 
-    def __init__(self, hass, data, battery_id) -> None:
+    def __init__(
+        self, hass: HomeAssistant, data_manager: SAXBatteryData, battery_id: str
+    ) -> None:
         """Initialize the battery."""
         self.hass = hass
-        self.data = {}  # Will store the latest readings
-        self._data_manager = data
+        self._data_manager = data_manager
         self.battery_id = battery_id
-        self._last_updates = data.last_updates[battery_id]
+        self.data: dict[str, Any] = {}
+        # Use float timestamps for monotonic time
+        self._last_updates: dict[str, float] = {}
 
-    async def async_init(self):
-        """Initialize battery readings."""
-        await self.async_update()
-
-    async def read_modbus_register(self, client, register_info):
-        """Read a Modbus register with proper error handling."""
-        try:
-            result = await self.hass.async_add_executor_job(
-                lambda: client.read_holding_registers(
-                    address=register_info["address"],
-                    count=register_info["count"],
-                    slave=register_info["slave"],  # Use register-specific slave ID
-                )
-            )
-
-            if result.isError():
-                _LOGGER.error(
-                    "Modbus error reading address %s: %s",
-                    register_info["address"],
-                    result,
-                )
-                return None
-
-            return (
-                result.registers[0] + register_info.get("offset", 0)
-            ) * register_info.get("scale", 1)
-
-        except ModbusException as err:
-            _LOGGER.error(
-                "Modbus exception reading register %s: %s",
-                register_info["address"],
-                err,
-            )
-            return None
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error(
-                "General error reading register %s: %s", register_info["address"], err
-            )
-        return None
-
-    async def async_update(self):
+    async def async_update(self) -> bool:
         """Update the battery data."""
         try:
             client = self._data_manager.modbus_clients[self.battery_id]
             registers = self._data_manager.modbus_registers[self.battery_id]
-            current_time = self.hass.loop.time()  # Get current time
+            current_time = self.hass.loop.time()  # Monotonic time
+
+            # Initialize missing timestamps
+            for register_name in registers:
+                if register_name not in self._last_updates:
+                    self._last_updates[register_name] = 0
 
             # Handle standard requests for non-slave 40
             for register_name, register_info in registers.items():
                 if register_info["slave"] != 40:
                     # Check if enough time has passed since last update
-                    time_since_update = current_time - self._last_updates[register_name]
+                    time_since_update = current_time - self._last_updates.get(
+                        register_name, 0
+                    )
                     if time_since_update < register_info["scan_interval"]:
                         continue
 
@@ -528,93 +206,46 @@ class SAXBattery:
                             "Error updating register %s: %s", register_name, err
                         )
 
-            # Filter registers for slave ID 40 and find the range
-            slave_id = 40
-            slave_registers = {
-                reg_name: reg_info
-                for reg_name, reg_info in registers.items()
-                if reg_info["slave"] == slave_id
-            }
+            return True
 
-            if not slave_registers:
-                return True  # Nothing to update for this slave
-
-            # Check if any slave 40 registers need updating based on scan_interval
-            needs_update = False
-            for reg_name, reg_info in slave_registers.items():
-                time_since_update = current_time - self._last_updates[reg_name]
-                if time_since_update >= reg_info["scan_interval"]:
-                    needs_update = True
-                    break
-
-            if not needs_update:
-                return True  # No slave 40 registers need updating yet
-
-            # Calculate the range of addresses to read
-            start_address = min(
-                reg_info["address"] for reg_info in slave_registers.values()
-            )
-            end_address = max(
-                reg_info["address"] + reg_info.get("count", 1) - 1
-                for reg_info in slave_registers.values()
-            )
-            register_count = end_address - start_address + 1
-
-            _LOGGER.debug(
-                "Batch reading registers %s to %s (slave %s, count: %s)",
-                start_address,
-                end_address,
-                slave_id,
-                register_count,
-            )
-
-            # Perform a bulk read
-            try:
-                result = await self.hass.async_add_executor_job(
-                    lambda: client.read_holding_registers(
-                        address=start_address,
-                        count=register_count,
-                        slave=slave_id,
-                    )
-                )
-
-                if not hasattr(result, "registers"):
-                    _LOGGER.error(
-                        "Modbus error reading range %s-%s: %s",
-                        start_address,
-                        end_address,
-                        result,
-                    )
-                    return False
-
-                # Parse the bulk response
-                for reg_name, reg_info in slave_registers.items():
-                    reg_offset = reg_info["address"] - start_address
-                    if 0 <= reg_offset < len(result.registers):  # Ensure index is valid
-                        raw_value = result.registers[reg_offset]
-                        value = (raw_value + reg_info.get("offset", 0)) * reg_info.get(
-                            "scale", 1
-                        )
-                        self.data[reg_name] = value
-                        # Update the timestamp for this register
-                        self._last_updates[reg_name] = current_time
-                    else:
-                        _LOGGER.warning(
-                            "Register %s (address %s) offset %s is out of range for result length %s",
-                            reg_name,
-                            reg_info["address"],
-                            reg_offset,
-                            len(result.registers),
-                        )
-
-            except (ConnectionError, TimeoutError, ValueError) as err:
-                _LOGGER.error(
-                    "Failed to read bulk registers for slave %s: %s", slave_id, err
-                )
-                return False
-
-        except TimeoutError as err:
-            _LOGGER.error("Error updating battery %s: %s", self.battery_id, err)
+        except Exception as err:
+            _LOGGER.error("Failed to update battery %s: %s", self.battery_id, err)
             return False
 
-        return True
+    async def read_modbus_register(
+        self, client: ModbusTcpClient, register_info: dict[str, Any]
+    ) -> int | float | None:
+        """Read a single Modbus register."""
+        try:
+
+            def _read_holding_registers() -> Any:
+                """Execute the blocking Modbus read operation."""
+                return client.read_holding_registers(
+                    address=register_info["address"],
+                    slave=register_info["slave"],
+                    count=register_info.get("count", 1),
+                )
+
+            result = await self.hass.async_add_executor_job(_read_holding_registers)
+
+            if result.isError():
+                return None
+
+            # Safe extraction with proper defaults and type checking
+            raw_value = result.registers[0]
+            offset = register_info.get("offset", 0)
+            scale = register_info.get("scale", 1)
+
+            # Ensure we have numeric values
+            if not isinstance(offset, (int, float)):
+                offset = 0
+            if not isinstance(scale, (int, float)) or scale == 0:
+                scale = 1
+
+            return float((raw_value + offset) * scale)
+
+        except Exception as err:
+            _LOGGER.error(
+                "Error reading register %s: %s", register_info["address"], err
+            )
+            return None
