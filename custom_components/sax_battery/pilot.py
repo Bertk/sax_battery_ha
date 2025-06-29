@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+
     from .data_manager import SAXBatteryDataManager
 
 from .const import SAX_COMBINED_SOC, SAX_SOC
@@ -28,11 +30,54 @@ class SAXBatteryPilot:
         self.solar_charging_enabled = True
         self.calculated_power: float | None = None
         self._requested_manual_power: float | None = None
+        self.is_enabled = False
 
         # Entity IDs for power calculations
         self.total_power_entity_id: str | None = None
         self.priority_power_entity_id: str | None = None
         self.battery_power_entity_id: str | None = None
+
+    async def async_setup(self, entry: ConfigEntry) -> None:
+        """Set up the pilot with configuration from config entry."""
+        # Extract entity IDs from config entry
+        self.total_power_entity_id = entry.data.get("total_power_entity_id")
+        self.priority_power_entity_id = entry.data.get("priority_power_entity_id")
+        self.battery_power_entity_id = entry.data.get("battery_power_entity_id")
+
+        # Enable pilot if entity IDs are configured
+        self.is_enabled = bool(
+            self.total_power_entity_id
+            and self.priority_power_entity_id
+            and self.battery_power_entity_id
+        )
+
+        if self.is_enabled:
+            _LOGGER.debug("Pilot enabled with entity IDs configured")
+        else:
+            _LOGGER.debug("Pilot disabled - missing required entity IDs")
+
+    async def async_update(self) -> None:
+        """Update pilot calculations and send commands if needed."""
+        if not self.is_enabled:
+            return
+
+        # Calculate new power setpoint
+        calculated_power = await self._calculate_power()
+
+        # Only send command if power has changed significantly
+        if (
+            self.calculated_power is None
+            or abs(calculated_power - self.calculated_power) > 10  # 10W threshold
+        ):
+            await self.send_power_command(calculated_power, 1.0)
+            self.calculated_power = calculated_power
+
+    async def async_shutdown(self) -> None:
+        """Shutdown the pilot and clean up resources."""
+        self.is_enabled = False
+        self.calculated_power = None
+        self._requested_manual_power = None
+        _LOGGER.debug("Pilot shutdown complete")
 
     async def _get_master_battery_soc(self) -> float:
         """Get SOC from master battery or combined data."""
@@ -98,17 +143,16 @@ class SAXBatteryPilot:
             master_soc,
         )
 
-        # Calculate net power based on priority logic
-        if priority_power > 50:
-            _LOGGER.debug(
-                "Condition met: priority_power > 50 (%s > 50)", priority_power
-            )
-            net_power = 0.0
-        else:
-            _LOGGER.debug(
-                "Condition met: priority_power <= 50 (%s <= 50)", priority_power
-            )
-            net_power = total_power - battery_power
+        # Calculate net power based on priority logic using pattern matching
+        match priority_power:
+            case p if p > 50:
+                _LOGGER.debug("Condition met: priority_power > 50 (%s > 50)", p)
+                net_power = 0.0
+            case _:
+                _LOGGER.debug(
+                    "Condition met: priority_power <= 50 (%s <= 50)", priority_power
+                )
+                net_power = total_power - battery_power
 
         _LOGGER.debug("Final net_power value: %s", net_power)
         return net_power
@@ -180,6 +224,13 @@ class SAXBatterySolarChargingSwitch(Entity):
             f"sax_battery_solar_charging_{pilot.data_manager.device_id}"
         )
         self._attr_name = "Solar Charging"
+        self._attr_icon = "mdi:solar-power"
+
+        # Set extra state attributes using _attr_extra_state_attributes
+        self._attr_extra_state_attributes = {
+            "solar_charging_enabled": self._pilot.solar_charging_enabled,
+            "pilot_enabled": self._pilot.is_enabled,
+        }
 
         self._attr_device_info = {
             "identifiers": {("sax_battery", pilot.data_manager.device_id)},
@@ -194,15 +245,35 @@ class SAXBatterySolarChargingSwitch(Entity):
         """Return true if solar charging is enabled."""
         return self._pilot.solar_charging_enabled
 
-    @property
-    def icon(self) -> str:
-        """Return the icon to use for the switch."""
-        return "mdi:solar-power" if self.is_on else "mdi:solar-power-off"
+    async def async_update(self) -> None:
+        """Update the switch state and attributes."""
+        # Update icon dynamically based on state
+        self._attr_icon = "mdi:solar-power" if self.is_on else "mdi:solar-power-off"
+
+        # Update extra state attributes
+        self._attr_extra_state_attributes = {
+            "solar_charging_enabled": self._pilot.solar_charging_enabled,
+            "pilot_enabled": self._pilot.is_enabled,
+        }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on solar charging."""
         await self._pilot.set_solar_charging(True)
+        self._attr_icon = "mdi:solar-power"
+
+        # Update attributes after state change
+        self._attr_extra_state_attributes = {
+            "solar_charging_enabled": True,
+            "pilot_enabled": self._pilot.is_enabled,
+        }
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off solar charging."""
         await self._pilot.set_solar_charging(False)
+        self._attr_icon = "mdi:solar-power-off"
+
+        # Update attributes after state change
+        self._attr_extra_state_attributes = {
+            "solar_charging_enabled": False,
+            "pilot_enabled": self._pilot.is_enabled,
+        }

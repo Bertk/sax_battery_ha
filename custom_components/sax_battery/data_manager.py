@@ -15,7 +15,13 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-from .const import CONF_DEVICE_ID, SAX_COMBINED_SOC
+from .const import (
+    CONF_DEVICE_ID,
+    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_MANUAL_CONTROL,
+    SAX_STATUS,
+)
+from .pilot import SAXBatteryPilot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,14 +76,20 @@ class SAXBatteryDataManager:
 
         self.device_id: str = device_id
         self.batteries: dict[str, BatteryData] = {}
-        self.combined_data: dict[
-            str, float | None
-        ] = {}  # Change to dict for compatibility
+        self.combined_data: dict[str, float | None] = {}  # For compatibility
         self.modbus_clients: dict[str, Any] = {}
         self.modbus_registers: dict[str, dict[str, Any]] = {}
 
         # Keep structured data separate for internal use
         self._structured_combined_data: CombinedData = CombinedData()
+
+        # Initialize pilot functionality
+        self.pilot: SAXBatteryPilot = SAXBatteryPilot(hass, self)
+
+    async def async_setup(self) -> None:
+        """Set up the data manager and initialize pilot."""
+        # Initialize pilot with configuration from config entry
+        await self.pilot.async_setup(self.entry)
 
     async def async_update_data(self) -> None:
         """Update data from all batteries."""
@@ -100,6 +112,10 @@ class SAXBatteryDataManager:
         # Update combined data after all individual updates
         self._update_combined_data()
 
+        # Update pilot calculations if enabled
+        if hasattr(self.pilot, "is_enabled") and self.pilot.is_enabled:
+            await self.pilot.async_update()
+
     async def _update_battery_data(self, battery_id: str, battery: BatteryData) -> None:
         """Update data for a single battery."""
         try:
@@ -115,7 +131,6 @@ class SAXBatteryDataManager:
         """Read Modbus data for a single battery."""
         # Placeholder for actual Modbus reading implementation
         # This should contain your existing Modbus reading logic
-        pass
 
     def _update_combined_data(self) -> None:
         """Update combined data from all batteries."""
@@ -162,29 +177,23 @@ class SAXBatteryDataManager:
             total_energy_consumed if total_energy_consumed > 0 else None
         )
 
-        # Update dict-based combined_data for sensor compatibility
+        # Update compatibility dict for external access
         self.combined_data.update(
             {
-                "combined_power": float(total_power),
-                "combined_soc": float(
-                    total_soc / valid_soc_count if valid_soc_count > 0 else Decimal(0)
-                ),
-                SAX_COMBINED_SOC: float(
-                    total_soc / valid_soc_count if valid_soc_count > 0 else Decimal(0)
-                ),
+                "combined_power": float(self._structured_combined_data.combined_power),
+                "combined_soc": float(self._structured_combined_data.combined_soc),
                 "total_energy_produced": (
-                    float(total_energy_produced) if total_energy_produced > 0 else None
+                    float(self._structured_combined_data.total_energy_produced)
+                    if self._structured_combined_data.total_energy_produced is not None
+                    else None
                 ),
                 "total_energy_consumed": (
-                    float(total_energy_consumed) if total_energy_consumed > 0 else None
+                    float(self._structured_combined_data.total_energy_consumed)
+                    if self._structured_combined_data.total_energy_consumed is not None
+                    else None
                 ),
             }
         )
-
-    @property
-    def structured_combined_data(self) -> CombinedData:
-        """Get structured combined data."""
-        return self._structured_combined_data
 
     def add_battery(self, battery_id: str) -> BatteryData:
         """Add a new battery to the data manager."""
@@ -202,3 +211,94 @@ class SAXBatteryDataManager:
         if modbus_client := self.modbus_clients.pop(battery_id, None):
             if hasattr(modbus_client, "close"):
                 modbus_client.close()
+
+    async def async_shutdown(self) -> None:
+        """Shutdown the data manager and clean up resources."""
+        # Shutdown pilot
+        if hasattr(self.pilot, "async_shutdown"):
+            await self.pilot.async_shutdown()
+
+        # Close all Modbus clients
+        for client in self.modbus_clients.values():
+            if hasattr(client, "close"):
+                with contextlib.suppress(Exception):
+                    client.close()
+
+        self.modbus_clients.clear()
+        self.batteries.clear()
+
+    async def set_battery_switch(self, battery_id: str, enabled: bool) -> None:
+        """Set battery switch state via Modbus."""
+        try:
+            battery = self.batteries.get(battery_id)
+            if not battery:
+                _LOGGER.error("Battery %s not found", battery_id)
+                return
+
+            client = self.modbus_clients.get(battery_id)
+            if not client:
+                _LOGGER.error("No Modbus client found for battery %s", battery_id)
+                return
+
+            # Get the register configuration for battery switch
+            register_config = self.modbus_registers.get(battery_id, {}).get(
+                SAX_STATUS, {}
+            )
+            register_address = register_config.get("address", 1)
+            state_value = register_config.get(
+                "state_on" if enabled else "state_off", 1 if enabled else 0
+            )
+
+            # Write to Modbus register
+            result = await self.hass.async_add_executor_job(
+                lambda: client.write_register(register_address, state_value, slave=64)
+            )
+
+            if hasattr(result, "isError") and result.isError():
+                _LOGGER.error(
+                    "Error setting battery %s switch to %s: %s",
+                    battery_id,
+                    enabled,
+                    result,
+                )
+            else:
+                _LOGGER.debug(
+                    "Successfully set battery %s switch to %s", battery_id, enabled
+                )
+                # Update local data
+                battery.data[SAX_STATUS] = state_value
+
+        except Exception as err:
+            _LOGGER.error("Failed to set battery %s switch: %s", battery_id, err)
+
+    async def set_solar_charging_enabled(self, enabled: bool) -> None:
+        """Enable or disable solar charging system-wide."""
+        try:
+            # Update config entry data
+            new_data = dict(self.entry.data)
+            new_data[CONF_ENABLE_SOLAR_CHARGING] = enabled
+
+            self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+
+            # If pilot exists, update it directly
+            if hasattr(self, "pilot") and self.pilot:
+                await self.pilot.set_solar_charging(enabled)
+
+            _LOGGER.info("Solar charging %s", "enabled" if enabled else "disabled")
+
+        except Exception as err:
+            _LOGGER.error("Failed to set solar charging to %s: %s", enabled, err)
+
+    async def set_manual_control_enabled(self, enabled: bool) -> None:
+        """Enable or disable manual control mode."""
+        try:
+            # Update config entry data
+            new_data = dict(self.entry.data)
+            new_data[CONF_MANUAL_CONTROL] = enabled
+
+            self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+
+            _LOGGER.info("Manual control %s", "enabled" if enabled else "disabled")
+
+        except Exception as err:
+            _LOGGER.error("Failed to set manual control to %s: %s", enabled, err)

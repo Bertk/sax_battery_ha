@@ -1,7 +1,10 @@
 """Integration for SAX Battery."""
 
+from __future__ import annotations
+
+import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pymodbus.client import ModbusTcpClient
 
@@ -9,16 +12,19 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
+from homeassistant.helpers.device_registry import DeviceInfo
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
 
 from .const import (
     CONF_DEVICE_ID,
     # CONF_MANUAL_CONTROL,
-    CONF_PILOT_FROM_HA,
     DOMAIN,
     SAX_SOC,
     SAX_STATUS,
 )
-from .pilot import async_setup_pilot
+from .data_manager import SAXBatteryDataManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,23 +39,87 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SAX Battery from a config entry."""
     try:
-        # Create SAX Battery data instance
-        sax_battery_data = SAXBatteryData(hass, entry)
-        await sax_battery_data.async_init()
-    except (ConnectionError, TimeoutError, ValueError) as err:
-        _LOGGER.error("Failed to initialize SAX Battery: %s", err)
+        data_manager = SAXBatteryDataManager(hass, entry)
+
+        # Initialize the data manager and pilot
+        await data_manager.async_setup()
+
+        # Test connectivity before proceeding
+        if not await _test_connectivity(data_manager):
+            raise ConfigEntryNotReady("Unable to connect to SAX Battery system")
+
+        # Store the data manager
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data_manager
+
+        # Set up platforms
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+        return True
+
+    except Exception as err:
+        _LOGGER.error("Failed to set up SAX Battery integration: %s", err)
         raise ConfigEntryNotReady from err
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = sax_battery_data
 
-    # Set up platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+async def _test_connectivity(data_manager: SAXBatteryDataManager) -> bool:
+    """Test connectivity to SAX Battery system."""
+    if not data_manager.modbus_clients:
+        _LOGGER.debug("No Modbus clients configured")
+        return False
 
-    # Set up pilot service if enabled
-    if entry.data.get(CONF_PILOT_FROM_HA, False):
-        await async_setup_pilot(hass, entry.entry_id)
+    # Test each Modbus client connection
+    connection_tasks = [
+        _test_modbus_connection(client)
+        for client in data_manager.modbus_clients.values()
+    ]
 
+    results = await asyncio.gather(*connection_tasks, return_exceptions=True)
+
+    # Check if at least one connection succeeded
+    success_count = sum(1 for result in results if result is True)
+
+    if success_count == 0:
+        _LOGGER.error("Failed to connect to any SAX Battery devices")
+        return False
+
+    _LOGGER.debug("Successfully connected to %d SAX Battery device(s)", success_count)
     return True
+
+
+async def _test_modbus_connection(client: ModbusTcpClient) -> bool:
+    """Test a single Modbus client connection with proper typing."""
+    try:
+        # Use executor to run the synchronous connect method
+        def _connect() -> bool:
+            """Connect to Modbus client synchronously."""
+            return bool(client.connect())
+
+        # Run the connect operation in an executor
+        connected = await asyncio.get_event_loop().run_in_executor(None, _connect)
+
+        if connected:
+            # Test basic communication
+            def _test_read() -> bool:
+                """Test reading from Modbus device."""
+                try:
+                    result = client.read_holding_registers(1, 1, slave=64)
+                    return not (hasattr(result, "isError") and result.isError())
+                except Exception:
+                    return False
+                finally:
+                    client.close()
+
+            # Test read operation
+            read_success = await asyncio.get_event_loop().run_in_executor(
+                None, _test_read
+            )
+            return read_success
+
+        return False
+
+    except Exception as err:
+        _LOGGER.debug("Modbus connection test failed: %s", err)
+        return False
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -57,17 +127,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Stop pilot service if running
-        sax_battery_data = hass.data[DOMAIN][entry.entry_id]
-        if hasattr(sax_battery_data, "pilot"):
-            await sax_battery_data.pilot.async_stop()
-
-        # Close all Modbus connections
-        for client in sax_battery_data.modbus_clients.values():
-            client.close()
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data_manager: SAXBatteryDataManager = hass.data[DOMAIN].pop(entry.entry_id)
+        await data_manager.async_shutdown()
 
     return unload_ok
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry."""
+    await async_unload_entry(hass, entry)
+    await async_setup_entry(hass, entry)
 
 
 class SAXBatteryData:
