@@ -7,7 +7,7 @@ description = "SAX battery pilot for HomeAssistant"
 readme = "README.md"
 authors = [
   { name = "matfroh" },
-                                                    
+
 ]
 keywords = ["home", "automation"]
 classifiers = [
@@ -22,7 +22,7 @@ requires-python = ">=3.13.2"
 dependencies = [
   "pymodbus==3.8.3",
   "voluptuous==0.15.2",
-                          
+
 ]
 
 [project.urls]
@@ -374,7 +374,7 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-required-version = ">=0.12.0"
+required-version = ">=0.12.1"
 
 [tool.ruff.lint]
 select = [

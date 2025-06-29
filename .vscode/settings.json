@@ -13,6 +13,8 @@
         "pymodbus"
     ],
     "python.analysis.diagnosticSeverityOverrides": {
-          "reportIncompatibleMethodOverride": false
+        "reportIncompatibleMethodOverride": false
     },
+    "ruff.configurationPreference": "filesystemFirst",
+    "ruff.configuration": "pyproject.toml",
 }
