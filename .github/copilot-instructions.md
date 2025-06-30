@@ -1,7 +1,77 @@
 # Instructions for GitHub Copilot
 
-This repository holds a custom integration for Home Assistant, a Python 3 based home
+This repository holds a custom integration of SAX battery for Home Assistant, a Python 3 based home
 automation application.
+
+## 🔋 SAX-power Home Battery System — Communication Architecture
+
+The SAX-power energy storage solution ensures precise, intelligent power management across a multi-phase installation using structured communication protocols and a coordinated control hierarchy.
+
+---
+
+### 📡 Communication Interfaces
+
+Each battery unit is equipped with the following:
+
+#### Ethernet Port (Modbus TCP/IP)
+
+- Allows remote monitoring, data acquisition, and system configuration
+- Used to exchange live data and control signals with energy management systems
+
+#### RS485 Port (Modbus RTU)
+
+- Used for communication between the batteries and the smart meter
+- Facilitates grid connection measurements for synchronized system behavior
+
+---
+
+### ⚙️ Smart Meter Integration
+
+- A single smart meter is connected to all three grid phases: **L1, L2, and L3**
+- Communicates via RS485 to all battery units
+- Provides real-time measurements of:
+  - Grid voltage and current
+  - Import/export power levels
+  - Total energy consumption
+- Acts as the reference point for system control and balancing logic
+
+---
+
+### 🧠 Master Battery Configuration
+
+- **Battery A** is configured as the master unit
+- The master manages:
+  - Power limit for charging
+  - Power limit for discharging
+- **Battery B and Battery C** act as slaves, following instructions from the master
+- All communication coordination is based on **RS485 grid values** and shared logic via **Ethernet**
+
+---
+
+### 🔌 Power Phase Mapping
+
+| Battery | Grid Phase | Role   |
+| ------- | ---------- | ------ |
+| A       | L1         | Master |
+| B       | L2         | Slave  |
+| C       | L3         | Slave  |
+
+- Each battery is connected to a dedicated grid phase (L1, L2, or L3) to balance power flow
+- Ensures equal load distribution and phase-specific control
+
+---
+
+### System Diagram
+
+A visual representation includes:
+
+- Separate **RS485** and **Ethernet** connections
+- One unified smart meter with direct connection to all three grid phases (**L1/L2/L3**)
+- Distinct power line routing
+
+[](../assets/battery_cluster.drawio.png)
+
+# project guidelines
 
 - Python code must be compatible with Python 3.13
 - Use the newest Python language features if possible:
