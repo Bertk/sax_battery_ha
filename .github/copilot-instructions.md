@@ -69,7 +69,7 @@ A visual representation includes:
 - One unified smart meter with direct connection to all three grid phases (**L1/L2/L3**)
 - Distinct power line routing
 
-[](../assets/battery_cluster.drawio.png)
+![](./assets/battery_cluster.drawio.png)
 
 # project guidelines
 
