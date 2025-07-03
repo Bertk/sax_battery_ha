@@ -1,5 +1,6 @@
 """Integration for SAX Battery."""
 
+from datetime import timedelta
 import logging
 from typing import Any
 
@@ -11,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
+    CONF_AUTO_PILOT_INTERVAL,
     CONF_DEVICE_ID,
     CONF_PILOT_FROM_HA,
     DOMAIN,
@@ -47,6 +49,8 @@ from .const import (
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
 )
+from .coordinator import SAXBatteryCoordinator
+from .models import SAXBatterySystem
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,8 +66,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SAX Battery from a config entry."""
     try:
         # Create SAX Battery data instance
-        sax_battery_data = SAXBatteryData(hass, entry)
-        await sax_battery_data.async_init()
+        sax_battery_data = SAXBatterySystem(entry=entry)
+        # Initialize the legacy data for compatibility
+        legacy_data = SAXBatteryData(hass, entry)
+        await legacy_data.async_init()
+
+        # Copy battery data to new system
+        sax_battery_data.batteries = legacy_data.batteries
+        sax_battery_data.device_id = legacy_data.device_id
+        if legacy_data.master_battery:
+            sax_battery_data.master_battery_id = f"battery_{chr(96 + 1)}"  # battery_a
     except (ConnectionError, TimeoutError, ValueError) as err:
         _LOGGER.error("Failed to initialize SAX Battery: %s", err)
         raise ConfigEntryNotReady from err
@@ -79,6 +91,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .pilot import async_setup_pilot  # noqa: PLC0415
 
         await async_setup_pilot(hass, entry.entry_id)
+
+    # Create coordinator with appropriate interval
+    update_interval = timedelta(
+        seconds=max(5, entry.data.get(CONF_AUTO_PILOT_INTERVAL, 30))
+    )
+    coordinator = SAXBatteryCoordinator(hass, sax_battery_data, update_interval)
+    sax_battery_data.coordinator = coordinator
+
+    # Perform first update
+    await coordinator.async_config_entry_first_refresh()
+
+    # Store data
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = sax_battery_data
+
+    # Setup platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
