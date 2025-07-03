@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, SAX_COMBINED_SOC, SAX_STATUS
+from .const import DOMAIN
 from .models import SAXBatteryData
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,12 +49,21 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Check for exceptions
             exceptions = [r for r in results if isinstance(r, Exception)]
+
             if exceptions and not self._first_update_done:
                 # If first update fails completely, raise ConfigEntryNotReady
-                raise ConfigEntryNotReady("Failed to connect to SAX Battery system")
-            elif exceptions:
+                self._raise_config_not_ready()
+
+            if exceptions:
                 _LOGGER.warning("Some battery updates failed: %s", exceptions)
 
+        except Exception as err:
+            if not self._first_update_done:
+                raise ConfigEntryNotReady(
+                    f"Failed to setup SAX Battery: {err}"
+                ) from err
+            raise UpdateFailed(f"Error communicating with SAX Battery: {err}") from err
+        else:
             # Collect all data
             combined_data = {}
             for battery_id, battery in self.sax_data.batteries.items():
@@ -65,17 +74,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             master_battery = self.sax_data.get_master_battery()
             if (
                 master_battery
-                and hasattr(master_battery, "_data_manager")
-                and hasattr(master_battery._data_manager, "combined_data")
+                and hasattr(master_battery, "data_manager")
+                and hasattr(master_battery.data_manager, "combined_data")
             ):
-                combined_data["combined"] = master_battery._data_manager.combined_data
+                combined_data["combined"] = master_battery.data_manager.combined_data
 
             self._first_update_done = True
             return combined_data
-
-        except Exception as err:
-            if not self._first_update_done:
-                raise ConfigEntryNotReady(
-                    f"Failed to setup SAX Battery: {err}"
-                ) from err
-            raise UpdateFailed(f"Error communicating with SAX Battery: {err}") from err

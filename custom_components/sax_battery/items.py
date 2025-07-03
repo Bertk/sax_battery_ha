@@ -262,6 +262,7 @@ class ModbusItem(ApiItem):
             device: Device the entity belongs to.
             translation_key: Translation key of the entity.
             resultlist: Result list of the entity. Defaults to None.
+            slave: Modbus slave ID for the device. Defaults to 1.
             params: Additional parameters for the entity. Defaults to None.
 
         """

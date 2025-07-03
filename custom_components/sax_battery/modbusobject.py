@@ -13,9 +13,7 @@ from typing import Any
 from pymodbus import ExceptionResponse, ModbusException
 from pymodbus.client import AsyncModbusTcpClient
 
-from homeassistant.config_entries import ConfigEntry
-
-from .const import DEFAULT_PORT, FormatConstants, TypeConstants
+from .const import FormatConstants, TypeConstants
 from .items import ModbusItem
 from .models import SAXBatteryData
 
@@ -224,8 +222,6 @@ class ModbusObject:
     @property
     async def value(self) -> int | None:
         """Returns the value from the modbus register."""
-        if self._modbus_client is None:
-            return None
         if self._modbus_client.connected is False:
             # on first check_availability call connection still not available, suppress warning
             if self._no_connect_warn is True:
@@ -253,12 +249,6 @@ class ModbusObject:
                             self._modbus_item.address, slave=1
                         )
                         return self.validate_modbus_answer(mbr)
-                    case _:
-                        _LOGGER.warning(
-                            "Unknown Sensor type: %s in %s",
-                            str(self._modbus_item.type),
-                            str(self._modbus_item.name),
-                        )
             except ModbusException as exc:
                 _LOGGER.warning(
                     "ModbusException: Reading %s in item: %s failed",
@@ -274,8 +264,6 @@ class ModbusObject:
         :param val: The value to write to the modbus
         :type val: int
         """
-        if self._modbus_client is None:
-            return
         if self._modbus_client.connected is False:
             return
         try:
