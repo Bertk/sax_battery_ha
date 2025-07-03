@@ -19,7 +19,8 @@ from .const import (
     CONF_MASTER_BATTERY,
     DOMAIN,
     MODBUS_BATTERY_ITEMS,
-    SAX_COMBINED_SOC,
+    SAX_POWER,
+    SAX_SOC,
     SENSOR_TYPES,
     TypeConstants,
 )
@@ -133,7 +134,7 @@ class SAXBatteryCombinedPowerSensor(SAXBatterySensorBase):
 
         total_power = 0
         for battery in self._sax_data.batteries.values():
-            power = battery.data.get("sax_power")
+            power = battery.data.get(SAX_POWER)
             if power is not None:
                 total_power += power
         return total_power
@@ -154,10 +155,21 @@ class SAXBatteryCombinedSOCSensor(SAXBatterySensorBase):
     @property
     def native_value(self) -> Any:
         """Return the native value of the sensor."""
-        coordinator = self._sax_data.coordinator
-        if coordinator is None:
+        if not self._sax_data.batteries:
             return None
-        return coordinator.data.get(SAX_COMBINED_SOC)
+
+        total_soc = 0
+        battery_count = 0
+        for battery in self._sax_data.batteries.values():
+            soc = battery.data.get(SAX_SOC)
+            if soc is not None:
+                total_soc += soc
+                battery_count += 1
+
+        if battery_count == 0:
+            return None
+
+        return total_soc / battery_count
 
 
 class SAXBatteryCumulativeEnergyProducedSensor(SAXBatterySensorBase):

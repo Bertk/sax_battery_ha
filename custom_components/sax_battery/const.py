@@ -1,7 +1,5 @@
 """Constants for the SAX Battery integration."""
 
-from enum import Enum
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -16,6 +14,7 @@ from homeassistant.const import (
     UnitOfPower,
 )
 
+from .enums import DeviceConstants, FormatConstants, TypeConstants
 from .items import ModbusItem, StatusItem
 
 DOMAIN = "sax_battery"
@@ -99,34 +98,6 @@ SAX_SMARTMETER_VOLTAGE_L2 = "smartmeter_voltage_l2"
 SAX_SMARTMETER_VOLTAGE_L3 = "smartmeter_voltage_l3"
 SAX_SMARTMETER_TOTAL_POWER = "smartmeter_total_power"
 SAX_STORAGE_STATUS = "storage_status"
-
-
-class FormatConstants(Enum):
-    """Format constants."""
-
-    TEMPERATURE = "temperature"
-    PERCENTAGE = "percentage"
-    NUMBER = "number"
-    STATUS = "status"
-    UNKNOWN = "unknown"
-
-
-class TypeConstants(Enum):
-    """Type constants."""
-
-    SENSOR = "Sensor"
-    SENSOR_CALC = "Sensor_Calc"
-    SELECT = "Select"
-    NUMBER = "Number"
-    NUMBER_RO = "Number_RO"
-
-
-class DeviceConstants(Enum):
-    """Device constants."""
-
-    SYS = "dev_battery"
-    SM = "dev_smartmeter"
-    UK = "dev_unknown"
 
 
 SYS_STATUSANZEIGE: list[StatusItem] = [
