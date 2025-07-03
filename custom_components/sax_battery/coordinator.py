@@ -38,6 +38,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from SAX Battery system."""
+
+        def _raise_not_ready(msg: str) -> None:
+            """Raise ConfigEntryNotReady exception."""
+            raise ConfigEntryNotReady(msg)
+
         try:
             # Gather all battery updates concurrently
             update_tasks = [
@@ -52,7 +57,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if exceptions and not self._first_update_done:
                 # If first update fails completely, raise ConfigEntryNotReady
-                self._raise_config_not_ready()
+                _raise_not_ready(f"Failed to initialize SAX Battery: {exceptions}")
 
             if exceptions:
                 _LOGGER.warning("Some battery updates failed: %s", exceptions)
