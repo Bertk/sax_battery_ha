@@ -7,7 +7,7 @@ coverage:
         informational: true
       required:
         target: auto
-        threshold: 1
+        threshold: "1"
         paths:
           - custom_components/sax_battery/config_flow.py
           - custom_components/sax_battery/const.py
@@ -38,7 +38,9 @@ coverage:
           - homeassistant/components/*/media_source.py
           - homeassistant/components/*/recorder.py
           - homeassistant/components/*/scene.py
-comment: false
+  gcov:
+    enable: no
+#comment: false
 # To make partial tests possible,
 # we need to carry forward.
 #flag_management:
