@@ -12,12 +12,9 @@ from custom_components.sax_battery.const import (
     SAX_POWER,
     SAX_SOC,
     SAX_TEMP,
-    SAX_VOLTAGE_L1,
 )
-from custom_components.sax_battery.models import SAXBatteryData
 from custom_components.sax_battery.sensor import async_setup_entry
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
 
