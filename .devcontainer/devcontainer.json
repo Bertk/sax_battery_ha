@@ -77,7 +77,6 @@
   },
   "remoteUser": "vscode",
   "containerEnv": {
-    "BASH_DEFAULT_TIMEOUT_MS": "300000",
-    "BASH_MAX_TIMEOUT_MS": "300000"
+    "CODECOV_TOKEN": "${localEnv:CODECOV_TOKEN}"
   }
 }
