@@ -36,4 +36,7 @@
     "mypy",
     "pymodbus"
   ],
+  "workbench.editor.restoreViewState": false,
+  "workbench.editor.enablePreview": false,
+  "workbench.editor.enablePreviewFromQuickOpen": false
 }

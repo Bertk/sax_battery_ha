@@ -2,6 +2,9 @@
   "name": "SAX battery",
   "context": "..",
   "dockerFile": "../Dockerfile.dev",
+  "containerEnv": {
+    "CODECOV_TOKEN": "${localEnv:CODECOV_TOKEN}"
+  },
   "postCreateCommand": "scripts/post-create.sh",
   "customizations": {
     "vscode": {
@@ -75,8 +78,5 @@
       }
     }
   },
-  "remoteUser": "vscode",
-  "containerEnv": {
-    "CODECOV_TOKEN": "${localEnv:CODECOV_TOKEN}"
-  }
+  "remoteUser": "vscode"
 }

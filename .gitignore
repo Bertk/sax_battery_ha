@@ -32,3 +32,9 @@ home-assistant.log
 home-assistant_v2.db
 home-assistant.log.1
 documentation/*
+# do not commit vscode phantom files
+test_sensor_integration.py
+test_sensor_simplified.py
+sensor_new.py
+sensor_clean.py
+
