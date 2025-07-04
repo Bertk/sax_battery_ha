@@ -114,14 +114,23 @@ class TestSAXBatteryPilotSetup:
     """Test SAX Battery pilot setup functionality."""
 
     @patch("custom_components.sax_battery.pilot.EntityComponent")
+    @patch("custom_components.sax_battery.pilot.async_track_time_interval")
     async def test_pilot_setup_enabled(
         self,
+        mock_track_time,
         mock_entity_component,
         hass: HomeAssistant,
         mock_sax_pilot_entry_enabled,
         mock_battery_data_pilot,
     ) -> None:
         """Test pilot setup when pilot mode is enabled."""
+        # Override the entry data to ensure pilot is enabled
+        mock_battery_data_pilot.entry = mock_sax_pilot_entry_enabled
+
+        # Mock timer removal function for cleanup
+        mock_remove_timer = MagicMock()
+        mock_track_time.return_value = mock_remove_timer
+
         # Store in hass.data
         hass.data.setdefault(DOMAIN, {})[mock_sax_pilot_entry_enabled.entry_id] = (
             mock_battery_data_pilot
@@ -147,6 +156,9 @@ class TestSAXBatteryPilotSetup:
         assert any(isinstance(e, SAXBatteryPilotPowerEntity) for e in entities)
         assert any(isinstance(e, SAXBatterySolarChargingSwitch) for e in entities)
 
+        # Clean up - stop the pilot to prevent lingering timers
+        await mock_battery_data_pilot.pilot.async_stop()
+
     async def test_pilot_setup_disabled(
         self,
         hass: HomeAssistant,
@@ -154,6 +166,13 @@ class TestSAXBatteryPilotSetup:
         mock_battery_data_pilot,
     ) -> None:
         """Test pilot setup when pilot mode is disabled."""
+        # Override the entry data to ensure pilot is disabled
+        mock_battery_data_pilot.entry = mock_sax_pilot_entry_disabled
+
+        # Remove any existing pilot attribute to start clean
+        if hasattr(mock_battery_data_pilot, "pilot"):
+            delattr(mock_battery_data_pilot, "pilot")
+
         # Store in hass.data
         hass.data.setdefault(DOMAIN, {})[mock_sax_pilot_entry_disabled.entry_id] = (
             mock_battery_data_pilot
@@ -441,10 +460,8 @@ class TestSAXBatteryPilotEntities:
 class TestSAXBatteryPilotIntegration:
     """Test SAX Battery pilot integration scenarios."""
 
-    @patch("homeassistant.core.HomeAssistant.states")
     async def test_pilot_update_with_sensors(
         self,
-        mock_states,
         hass: HomeAssistant,
         mock_sax_pilot_entry_enabled,
         mock_battery_data_pilot,
@@ -452,20 +469,13 @@ class TestSAXBatteryPilotIntegration:
         """Test pilot update calculation with sensor data."""
         mock_battery_data_pilot.entry = mock_sax_pilot_entry_enabled
 
-        # Mock sensor states
-        def mock_get_state(entity_id):
-            states = {
-                "sensor.grid_power": MagicMock(state="2500"),  # Grid power
-                "sensor.grid_pf": MagicMock(state="0.95"),  # Power factor
-                "sensor.priority_device1": MagicMock(state="100"),  # Priority device
-                "sensor.priority_device2": MagicMock(state="50"),  # Priority device
-                "sensor.sax_battery_combined_power": MagicMock(
-                    state="1800"
-                ),  # Battery power
-            }
-            return states.get(entity_id)
-
-        mock_states.get.side_effect = mock_get_state
+        # Create real state objects and set them in hass
+        # Set up sensor states in hass
+        hass.states.async_set("sensor.grid_power", "2500", {"unit_of_measurement": "W"})
+        hass.states.async_set("sensor.grid_pf", "0.95")
+        hass.states.async_set("sensor.priority_device1", "100", {"unit_of_measurement": "W"})
+        hass.states.async_set("sensor.priority_device2", "50", {"unit_of_measurement": "W"})
+        hass.states.async_set("sensor.sax_battery_combined_power", "1800", {"unit_of_measurement": "W"})
 
         pilot = SAXBatteryPilot(hass, mock_battery_data_pilot)
 
