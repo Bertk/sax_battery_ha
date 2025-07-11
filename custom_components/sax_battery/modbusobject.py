@@ -258,7 +258,7 @@ class ModbusObject:
         return None
 
     # @value.setter
-    async def setvalue(self, value: int) -> None:
+    async def set_value(self, value: int) -> None:
         """Set the value of the modbus register, does nothing when not R/W.
 
         :param val: The value to write to the modbus

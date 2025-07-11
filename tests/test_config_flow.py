@@ -1,384 +1,230 @@
-"""Tests for the SAX Battery config flow."""
+"""Test config flow for SAX Battery integration."""
 
-from unittest.mock import patch
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
 
 import pytest
-import voluptuous as vol
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sax_battery.config_flow import SAXBatteryConfigFlow
-
-# filepath: custom_components/sax_battery/test_config_flow.py
-from custom_components.sax_battery.const import (
-    CONF_AUTO_PILOT_INTERVAL,
-    CONF_BATTERY_COUNT,
-    CONF_DEVICE_ID,
-    CONF_ENABLE_SOLAR_CHARGING,
-    CONF_LIMIT_POWER,
-    CONF_MASTER_BATTERY,
-    CONF_MIN_SOC,
-    CONF_PF_SENSOR,
-    CONF_PILOT_FROM_HA,
-    CONF_POWER_SENSOR,
-    CONF_PRIORITY_DEVICES,
-    DEFAULT_AUTO_PILOT_INTERVAL,
-    DEFAULT_MIN_SOC,
-    DEFAULT_PORT,
+from custom_components.sax_battery.const import DOMAIN
+from custom_components.sax_battery.enums import (
+    DeviceConstants,
+    FormatConstants,
+    TypeConstants,
 )
+from custom_components.sax_battery.items import ModbusItem, SAXItem
+from homeassistant import config_entries
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.setup import async_setup_component
 
 
-@pytest.fixture(name="mock_entity_selector")
-def mock_entity_selector_fixture():
-    """Mock the entity selector."""
-    with patch("homeassistant.helpers.selector.EntitySelector") as mock:
-        yield mock
+@pytest.fixture
+def mock_modbus_api():
+    """Create a mock ModbusAPI."""
+    api = MagicMock()
+    api.async_write_holding_register = MagicMock(return_value=True)
+    api.read_holding_registers = MagicMock(return_value=[42])
+    return api
 
 
-@pytest.fixture(name="config_flow")
-def config_flow_fixture(hass):
-    """Create a config flow instance."""
-    return SAXBatteryConfigFlow()
+@pytest.fixture
+def sample_modbus_item():
+    """Create a sample ModbusItem for testing."""
+    return ModbusItem(
+        slave=1,
+        address=100,
+        name="test_sensor",
+        mformat=FormatConstants.NUMBER,
+        mtype=TypeConstants.SENSOR,
+        device=DeviceConstants.SYS,
+    )
+
+
+@pytest.fixture
+def sample_sax_item():
+    """Create a sample SAXItem for testing."""
+    return SAXItem(
+        name="test_pilot",
+        mformat=FormatConstants.STATUS,
+        mtype=TypeConstants.SWITCH,
+        device=DeviceConstants.SYS,
+    )
+
+
+@pytest.fixture
+async def hass_with_sax(hass: HomeAssistant, mock_sax_data):
+    """Set up Home Assistant with SAX Battery integration."""
+    hass.data[DOMAIN] = {"test_entry": mock_sax_data}
+
+    with patch("custom_components.sax_battery.async_setup_entry", return_value=True):
+        assert await async_setup_component(hass, DOMAIN, {})
+
+    return hass
 
 
 class TestSAXBatteryConfigFlow:
-    """Test the SAX Battery config flow."""
+    """Test config flow."""
 
-    @pytest.fixture(autouse=True)
-    def setup_config_flow(self, config_flow):
-        """Set up the config flow for testing."""
-        config_flow._data = {}
-        config_flow._battery_count = 1
-        config_flow._pilot_from_ha = True
-        return config_flow
+    async def test_form_user_success(
+        self,
+        hass: HomeAssistant,
+        mock_modbus_client,
+        mock_setup_entry,
+    ) -> None:
+        """Test successful user configuration."""
+        with patch(
+            "custom_components.sax_battery.config_flow.ModbusAPI",
+            return_value=mock_modbus_client,
+        ):
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": config_entries.SOURCE_USER}
+            )
+            assert result.get("type") == FlowResultType.FORM
+            assert result.get("errors") == {}
 
-    async def test_user_step(self, hass, config_flow, mock_entity_selector):
-        """Test the user step."""
-        # Test initial form
-        result = await config_flow.async_step_user()
-        assert result["type"] == "form"
-        assert result["step_id"] == "user"
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "host": "192.168.1.100",
+                    "port": 502,
+                    "slave_id": 64,
+                    "battery_id": "battery_a",
+                },
+            )
+            await hass.async_block_till_done()
 
-        # Test with valid input
-        result = await config_flow.async_step_user({CONF_BATTERY_COUNT: 2})
-        assert result["type"] == "form"
-        assert result["step_id"] == "control_options"
-        assert config_flow._battery_count == 2
-        assert config_flow._data[CONF_DEVICE_ID] is not None
-
-    async def test_control_options_step(self, hass, config_flow, mock_entity_selector):
-        """Test the control options step."""
-        config_flow._battery_count = 2
-
-        # Test initial form
-        result = await config_flow.async_step_control_options()
-        assert result["type"] == "form"
-        assert result["step_id"] == "control_options"
-
-        # Test with pilot from HA enabled
-        result = await config_flow.async_step_control_options(
-            {CONF_PILOT_FROM_HA: True, CONF_LIMIT_POWER: True}
-        )
-        assert result["type"] == "form"
-        assert result["step_id"] == "pilot_options"
-        assert config_flow._pilot_from_ha is True
-        assert config_flow._limit_power is True
-
-
-class TestPilotOptionsFlow:
-    """Test the pilot options configuration flow."""
-
-    @pytest.fixture(autouse=True)
-    def setup_pilot_options(self, config_flow):
-        """Set up pilot options tests."""
-        config_flow._battery_count = 1
-        config_flow._pilot_from_ha = True
-        config_flow._data = {}
-        return config_flow
-
-    async def test_valid_input(self, hass, config_flow, mock_entity_selector):
-        """Test pilot options with valid input."""
-        user_input = {
-            CONF_MIN_SOC: DEFAULT_MIN_SOC,
-            CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-            CONF_ENABLE_SOLAR_CHARGING: True,
-        }
-        result = await config_flow.async_step_pilot_options(user_input)
-        assert result["type"] == "form"
-        assert result["step_id"] == "sensors"
-
-    async def test_pilot_options_invalid_values(self, hass, config_flow):
-        """Test pilot options with invalid values."""
-        config_flow._battery_count = 1
-        config_flow._data = {}
-
-        # Test with invalid AUTO_PILOT_INTERVAL
-        user_input = {
-            CONF_MIN_SOC: DEFAULT_MIN_SOC,
-            CONF_AUTO_PILOT_INTERVAL: "invalid",
-            CONF_ENABLE_SOLAR_CHARGING: True,
-        }
-        result = await config_flow.async_step_pilot_options(user_input)
-        assert result["type"] == "form"
-        assert result["step_id"] == "pilot_options"
-        assert result["errors"][CONF_AUTO_PILOT_INTERVAL] == "invalid_interval"
-
-    async def test_pilot_options_voluptuous_invalid(self, hass, config_flow):
-        """Test pilot options with input that triggers voluptuous.Invalid."""
-        config_flow._battery_count = 1
-        config_flow._data = {}
-
-        with patch("voluptuous.Schema.__call__", side_effect=vol.Invalid("test error")):
-            user_input = {
-                CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+            assert result2.get("type") == FlowResultType.CREATE_ENTRY
+            assert result2.get("title") == "SAX Battery (battery_a)"
+            assert result2.get("data") == {
+                "host": "192.168.1.100",
+                "port": 502,
+                "slave_id": 64,
+                "battery_id": "battery_a",
             }
-            result = await config_flow.async_step_pilot_options(user_input)
-            assert result["type"] == "form"
-            assert result["step_id"] == "pilot_options"
-            assert result["errors"]["base"] == "invalid_pilot_options"
 
-    async def test_pilot_options_validation_errors(self, hass, config_flow):
-        """Test pilot options with various validation errors."""
-        test_cases = [
-            (
-                {
-                    CONF_MIN_SOC: "invalid",
-                    CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                    CONF_ENABLE_SOLAR_CHARGING: True,
-                },
-                "invalid_min_soc",
-            ),
-            (
-                {
-                    CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                    CONF_AUTO_PILOT_INTERVAL: "invalid",
-                    CONF_ENABLE_SOLAR_CHARGING: True,
-                },
-                "invalid_interval",
-            ),
-            (
-                {
-                    CONF_MIN_SOC: 101,  # Above max
-                    CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                    CONF_ENABLE_SOLAR_CHARGING: True,
-                },
-                "invalid_min_soc",
-            ),
-            (
-                {
-                    CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                    CONF_AUTO_PILOT_INTERVAL: 4,  # Below min
-                    CONF_ENABLE_SOLAR_CHARGING: True,
-                },
-                "invalid_interval",
-            ),
-        ]
+    async def test_form_user_connection_error(
+        self,
+        hass: HomeAssistant,
+        mock_modbus_client,
+    ) -> None:
+        """Test connection error during configuration."""
+        mock_modbus_client.connect.return_value = False
 
-        for user_input, expected_error in test_cases:
-            result = await config_flow.async_step_pilot_options(user_input)
-            assert result["type"] == "form"
-            assert result["step_id"] == "pilot_options"
-            assert any(expected_error in error for error in result["errors"].values())
-
-    async def test_pilot_options_invalid_input(self, hass, config_flow):
-        """Test pilot options with invalid inputs."""
-        config_flow._battery_count = 1
-        config_flow._data = {}
-
-        test_cases = [
-            # Test MIN_SOC validation
-            {
-                CONF_MIN_SOC: 101,  # Too high
-                CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-            {
-                CONF_MIN_SOC: -1,  # Too low
-                CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-            {
-                CONF_MIN_SOC: "invalid",  # Invalid type
-                CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-            # Test AUTO_PILOT_INTERVAL validation
-            {
-                CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                CONF_AUTO_PILOT_INTERVAL: 4,  # Too low
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-            {
-                CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                CONF_AUTO_PILOT_INTERVAL: 301,  # Too high
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-            {
-                CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                CONF_AUTO_PILOT_INTERVAL: "invalid",  # Invalid type
-                CONF_ENABLE_SOLAR_CHARGING: True,
-            },
-        ]
-
-        for user_input in test_cases:
-            result = await config_flow.async_step_pilot_options(user_input)
-            assert result["type"] == "form"
-            assert result["step_id"] == "pilot_options"
-            assert len(result["errors"]) > 0
-            # Verify either MIN_SOC or AUTO_PILOT_INTERVAL has an error
-            assert any(
-                key in result["errors"]
-                for key in [CONF_MIN_SOC, CONF_AUTO_PILOT_INTERVAL]
+        with patch(
+            "custom_components.sax_battery.config_flow.ModbusAPI",
+            return_value=mock_modbus_client,
+        ):
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": config_entries.SOURCE_USER}
             )
 
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "host": "192.168.1.100",
+                    "port": 502,
+                    "slave_id": 64,
+                    "battery_id": "battery_a",
+                },
+            )
 
-class TestSensorsFlow:
-    """Test the sensors configuration flow."""
+            assert result2.get("type") == FlowResultType.FORM
+            assert result2.get("errors") == {"base": "cannot_connect"}
 
-    @pytest.fixture(autouse=True)
-    def setup_sensors(self, config_flow):
-        """Set up sensors tests."""
-        config_flow._data = {}
-        config_flow._pilot_from_ha = True
-        return config_flow
+    async def test_form_user_invalid_host(
+        self,
+        hass: HomeAssistant,
+    ) -> None:
+        """Test invalid host format."""
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
 
-    async def test_sensors_with_pilot_from_ha(
-        self, hass, config_flow, mock_entity_selector
-    ):
-        """Test sensors step with pilot from HA enabled."""
-        result = await config_flow.async_step_sensors()
-        assert result["type"] == "form"
-        assert result["step_id"] == "sensors"
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "host": "invalid_host_format",
+                "port": 502,
+                "slave_id": 64,
+                "battery_id": "battery_a",
+            },
+        )
 
-        user_input = {
-            CONF_POWER_SENSOR: "sensor.power",
-            CONF_PF_SENSOR: "sensor.pf",
+        assert result2.get("type") == FlowResultType.FORM
+        assert result2.get("errors") == {"host": "invalid_host"}
+
+    async def test_form_user_duplicate_battery_id(
+        self,
+        hass: HomeAssistant,
+        mock_modbus_client,
+    ) -> None:
+        """Test duplicate battery ID error."""
+        # Create existing entry
+        existing_entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={"battery_id": "battery_a"},
+            unique_id="battery_a",
+        )
+        existing_entry.add_to_hass(hass)
+
+        with patch(
+            "custom_components.sax_battery.config_flow.ModbusAPI",
+            return_value=mock_modbus_client,
+        ):
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": config_entries.SOURCE_USER}
+            )
+
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "host": "192.168.1.101",
+                    "port": 502,
+                    "slave_id": 65,
+                    "battery_id": "battery_a",  # Duplicate ID
+                },
+            )
+
+            assert result2.get("type") == FlowResultType.FORM
+            assert result2.get("errors") == {"battery_id": "already_configured"}
+
+    async def test_options_flow(
+        self,
+        hass: HomeAssistant,
+        mock_modbus_client,
+    ) -> None:
+        """Test options flow."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                "host": "192.168.1.100",
+                "port": 502,
+                "slave_id": 64,
+                "battery_id": "battery_a",
+            },
+            options={
+                "scan_interval": 10,
+                "pilot_enabled": True,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result.get("type") == FlowResultType.FORM
+        assert result.get("step_id") == "init"
+
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "scan_interval": 15,
+                "pilot_enabled": False,
+            },
+        )
+
+        assert result2.get("type") == FlowResultType.CREATE_ENTRY
+        assert result2.get("data") == {
+            "scan_interval": 15,
+            "pilot_enabled": False,
         }
-        result = await config_flow.async_step_sensors(user_input)
-        assert result["type"] == "form"
-        assert result["step_id"] == "priority_devices"
-        assert config_flow._data[CONF_POWER_SENSOR] == "sensor.power"
-        assert config_flow._data[CONF_PF_SENSOR] == "sensor.pf"
-
-    async def test_sensors_without_pilot_from_ha(
-        self, hass, config_flow, mock_entity_selector
-    ):
-        """Test sensors step with pilot from HA disabled."""
-        config_flow._pilot_from_ha = False
-        result = await config_flow.async_step_sensors()
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-    async def test_sensors_step_skip_when_not_pilot_from_ha(self, hass, config_flow):
-        """Test that sensors step is skipped when not piloting from HA."""
-        # Set pilot_from_ha to False
-        config_flow._pilot_from_ha = False
-        config_flow._data = {}
-
-        # Call async_step_sensors without user_input
-        result = await config_flow.async_step_sensors()
-
-        # Verify it skips to battery config
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-
-class TestPriorityDevicesFlow:
-    """Test the priority devices configuration flow."""
-
-    @pytest.fixture(autouse=True)
-    def setup_priority_devices(self, config_flow):
-        """Set up priority devices tests."""
-        config_flow._data = {}
-        return config_flow
-
-    async def test_priority_devices_with_devices(
-        self, hass, config_flow, mock_entity_selector
-    ):
-        """Test priority devices step with devices selected."""
-        result = await config_flow.async_step_priority_devices()
-        assert result["type"] == "form"
-        assert result["step_id"] == "priority_devices"
-
-        user_input = {CONF_PRIORITY_DEVICES: ["sensor.device1", "sensor.device2"]}
-        result = await config_flow.async_step_priority_devices(user_input)
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-        assert config_flow._data[CONF_PRIORITY_DEVICES] == [
-            "sensor.device1",
-            "sensor.device2",
-        ]
-
-    async def test_priority_devices_without_devices(
-        self, hass, config_flow, mock_entity_selector
-    ):
-        """Test priority devices step with no devices selected."""
-        user_input = {CONF_PRIORITY_DEVICES: []}
-        result = await config_flow.async_step_priority_devices(user_input)
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-
-class TestBatteryConfigFlow:
-    """Test the battery configuration flow."""
-
-    @pytest.fixture(autouse=True)
-    def setup_battery_config(self, config_flow):
-        """Set up battery config tests."""
-        config_flow._data = {}
-        config_flow._battery_count = 2
-        return config_flow
-
-    async def test_battery_config_single_battery(self, hass, config_flow):
-        """Test battery configuration with a single battery."""
-        config_flow._battery_count = 1
-        result = await config_flow.async_step_battery_config()
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-        user_input = {
-            "battery_a_host": "192.168.1.10",
-            "battery_a_port": DEFAULT_PORT,
-            CONF_MASTER_BATTERY: "battery_a",
-        }
-        result = await config_flow.async_step_battery_config(user_input)
-        assert result["type"] == "create_entry"
-        assert result["title"] == "SAX Battery"
-        assert result["data"][CONF_MASTER_BATTERY] == "battery_a"
-
-    async def test_battery_config_multiple_batteries(self, hass, config_flow):
-        """Test battery configuration with multiple batteries."""
-        result = await config_flow.async_step_battery_config()
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-        user_input = {
-            "battery_a_host": "192.168.1.10",
-            "battery_a_port": DEFAULT_PORT,
-            "battery_b_host": "192.168.1.11",
-            "battery_b_port": DEFAULT_PORT,
-            CONF_MASTER_BATTERY: "battery_a",
-        }
-        result = await config_flow.async_step_battery_config(user_input)
-        assert result["type"] == "create_entry"
-        assert result["title"] == "SAX Battery"
-        assert result["data"][CONF_MASTER_BATTERY] == "battery_a"
-
-    async def test_battery_config_none_battery_count(self, hass, config_flow):
-        """Test battery configuration with None battery count."""
-        config_flow._battery_count = None
-        result = await config_flow.async_step_battery_config()
-        assert result["type"] == "form"
-        assert result["step_id"] == "battery_config"
-
-
-@pytest.mark.asyncio
-async def test_config_flow_initialization():
-    """Test ConfigFlow initialization and attribute access."""
-    flow = SAXBatteryConfigFlow()
-    # Force attribute access to ensure coverage
-    assert isinstance(flow._data, dict)
-    assert len(flow._data) == 0
-    assert flow._battery_count is None
-    assert flow._pilot_from_ha is False
-    assert flow._limit_power is False

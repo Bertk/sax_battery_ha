@@ -1,79 +1,71 @@
-"""Integration for SAX Battery."""
+"""SAX Battery integration."""
+
+from __future__ import annotations
 
 from datetime import timedelta
-import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import CONF_AUTO_PILOT_INTERVAL, CONF_PILOT_FROM_HA, DOMAIN
+from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
-from .models import SAXBatteryData
+from .models import SAXBatterySystem
 
-_LOGGER = logging.getLogger(__name__)
-
-PLATFORMS = [Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
-
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the SAX Battery integration."""
-    return True
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.NUMBER,
+    Platform.SWITCH,
+    Platform.BINARY_SENSOR,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SAX Battery from a config entry."""
-    try:
-        # Create SAX Battery data instance
-        sax_battery_data = SAXBatteryData(entry)
+    # Initialize SAX Battery system
+    sax_system = SAXBatterySystem(entry=entry)
+    await sax_system.async_setup()
 
-        # Create coordinator with appropriate interval
-        update_interval = timedelta(
-            seconds=max(5, entry.data.get(CONF_AUTO_PILOT_INTERVAL, 30))
+    # Create battery-specific coordinators
+    coordinators = {}
+    for battery_id, battery in sax_system.batteries.items():
+        # Get appropriate update interval for this battery
+        update_interval = sax_system.get_polling_interval_for_battery(
+            battery_id, "battery_realtime"
         )
-        coordinator = SAXBatteryCoordinator(hass, sax_battery_data, update_interval)
-        sax_battery_data.coordinator = coordinator
 
-        # Perform first update
+        if sax_system.modbus_api is None:
+            raise RuntimeError(
+                f"Modbus API is not initialized for battery {battery_id}"
+            )
+
+        coordinator = SAXBatteryCoordinator(
+            hass=hass,
+            battery_id=battery_id,
+            sax_data=sax_system,
+            modbus_api=sax_system.modbus_api,
+            update_interval=timedelta(seconds=update_interval),
+        )
+
+        # Perform initial data fetch
         await coordinator.async_config_entry_first_refresh()
+        coordinators[battery_id] = coordinator
 
-        # Store data
-        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = sax_battery_data
+    # Store coordinators in sax_system for entity access
+    sax_system.coordinators = coordinators
 
-        # Setup platforms
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Store data
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = sax_system
 
-        # Set up pilot service if enabled
-        if entry.data.get(CONF_PILOT_FROM_HA, False):
-            # Import here to avoid circular import issues
-            from .pilot import async_setup_pilot  # noqa: PLC0415
-
-            await async_setup_pilot(hass, entry.entry_id)
-
-    except (ConnectionError, TimeoutError, ValueError) as err:
-        _LOGGER.error("Failed to initialize SAX Battery: %s", err)
-        raise ConfigEntryNotReady from err
+    # Set up platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if unload_ok:
-        sax_battery_data = hass.data[DOMAIN][entry.entry_id]
-
-        # Stop pilot service if running
-        if hasattr(sax_battery_data, "pilot"):
-            await sax_battery_data.pilot.async_stop()
-
-        # Close all Modbus connections
-        for battery in sax_battery_data.batteries.values():
-            if hasattr(battery, "client") and battery.client:
-                battery.client.close()
-
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok

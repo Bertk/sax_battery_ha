@@ -776,7 +776,7 @@ class TestModbusObject:
         type(mock_modbus_client).connected = PropertyMock(return_value=False)
 
         # Should return early without doing anything
-        await obj.setvalue(100)
+        await obj.set_value(100)
 
         # No assertions needed, just verify it doesn't crash
 
@@ -796,7 +796,7 @@ class TestModbusObject:
         obj = ModbusObject(api, mock_item)
         type(mock_modbus_client).connected = PropertyMock(return_value=True)
 
-        await obj.setvalue(100)
+        await obj.set_value(100)
 
         # Should not write for read-only sensor
         mock_modbus_client.write_register.assert_not_called()
@@ -817,7 +817,7 @@ class TestModbusObject:
         obj = ModbusObject(api, mock_item)
         type(mock_modbus_client).connected = PropertyMock(return_value=True)
 
-        await obj.setvalue(100)
+        await obj.set_value(100)
 
         # Should not write for read-only sensor calc
         mock_modbus_client.write_register.assert_not_called()
@@ -838,7 +838,7 @@ class TestModbusObject:
         obj = ModbusObject(api, mock_item)
         type(mock_modbus_client).connected = PropertyMock(return_value=True)
 
-        await obj.setvalue(100)
+        await obj.set_value(100)
 
         # Should not write for read-only number
         mock_modbus_client.write_register.assert_not_called()
@@ -860,7 +860,7 @@ class TestModbusObject:
         type(mock_modbus_client).connected = PropertyMock(return_value=True)
 
         with patch.object(obj, "check_valid_response", return_value=100):
-            await obj.setvalue(100)
+            await obj.set_value(100)
 
             mock_modbus_client.write_register.assert_called_once_with(100, 100, slave=1)
 
@@ -881,7 +881,7 @@ class TestModbusObject:
         type(mock_modbus_client).connected = PropertyMock(return_value=True)
 
         with patch.object(obj, "check_valid_response", return_value=2):
-            await obj.setvalue(2)
+            await obj.set_value(2)
 
             mock_modbus_client.write_register.assert_called_once_with(100, 2, slave=1)
 
@@ -907,6 +907,6 @@ class TestModbusObject:
             )
 
             # Should not raise exception, just log warning
-            await obj.setvalue(100)
+            await obj.set_value(100)
 
             mock_modbus_client.write_register.assert_called_once()
