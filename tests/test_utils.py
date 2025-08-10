@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem, SAXItem
+from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.utils import (
     create_entity_unique_id,
     determine_entity_category,
@@ -20,9 +20,9 @@ from homeassistant.const import EntityCategory
 class TestCreateEntityUniqueId:
     """Test create_entity_unique_id function."""
 
-    def test_create_unique_id_with_api_item(self) -> None:
-        """Test creating unique ID with ApiItem."""
-        api_item = ApiItem(
+    def test_create_unique_id_with_modbus_item(self) -> None:
+        """Test creating unique ID with ModbusItem."""
+        api_item = ModbusItem(
             name="voltage",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -47,7 +47,7 @@ class TestCreateEntityUniqueId:
 
     def test_create_unique_id_with_different_indices(self) -> None:
         """Test creating unique IDs with different indices."""
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="temperature",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -64,7 +64,7 @@ class TestCreateEntityUniqueId:
 
     def test_create_unique_id_with_special_characters_in_name(self) -> None:
         """Test creating unique ID with special characters in item name."""
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="max_charge_power",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -96,7 +96,7 @@ class TestDetermineEntityCategory:
         mock_entity_desc = MagicMock()
         mock_entity_desc.entity_category = EntityCategory.CONFIG
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="setting",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -114,7 +114,7 @@ class TestDetermineEntityCategory:
         mock_entity_desc = MagicMock()
         mock_entity_desc.entity_category = "config"
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -132,7 +132,7 @@ class TestDetermineEntityCategory:
         mock_entity_desc = MagicMock()
         mock_entity_desc.entity_category = "diagnostic"
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="status",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -156,7 +156,7 @@ class TestDetermineEntityCategory:
         ]
 
         for item_name, expected_category in test_cases:
-            item = ApiItem(
+            item = ModbusItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
                 mtype=TypeConstants.SENSOR,
@@ -182,7 +182,7 @@ class TestDetermineEntityCategory:
         ]
 
         for item_name, expected_category in test_cases:
-            item = ApiItem(
+            item = ModbusItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
                 mtype=TypeConstants.SENSOR,
@@ -207,7 +207,7 @@ class TestDetermineEntityCategory:
         ]
 
         for item_name in test_cases:
-            item = ApiItem(
+            item = ModbusItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
                 mtype=TypeConstants.SENSOR,
@@ -232,7 +232,7 @@ class TestDetermineEntityCategory:
 
     def test_category_no_entity_description(self) -> None:
         """Test category determination when no entitydescription exists."""
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="config_value",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -257,9 +257,9 @@ class TestShouldIncludeEntity:
         return entry
 
     @pytest.fixture
-    def basic_api_item(self) -> ApiItem:
+    def basic_api_item(self) -> ModbusItem:
         """Create basic API item."""
-        return ApiItem(
+        return ModbusItem(
             name="voltage",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -277,7 +277,7 @@ class TestShouldIncludeEntity:
         """Test entity exclusion by device type mismatch."""
         mock_config_entry.data = {"device_type": DeviceConstants.SM}
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="voltage",
             device=DeviceConstants.SYS,  # Different from config
             mtype=TypeConstants.SENSOR,
@@ -293,7 +293,7 @@ class TestShouldIncludeEntity:
         """Test entity inclusion by device type match."""
         mock_config_entry.data = {"device_type": DeviceConstants.SYS}
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="voltage",
             device=DeviceConstants.SYS,  # Matches config
             mtype=TypeConstants.SENSOR,
@@ -316,7 +316,7 @@ class TestShouldIncludeEntity:
             }
         }
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -324,7 +324,7 @@ class TestShouldIncludeEntity:
             battery_slave_id=1,
             divider=1.0,
         )
-        # Dynamically add attribute - ApiItem supports this
+        # Dynamically add attribute - ModbusItem supports this
         setattr(api_item, "master_only", True)
 
         result = should_include_entity(api_item, mock_config_entry, "battery_a")
@@ -341,7 +341,7 @@ class TestShouldIncludeEntity:
             }
         }
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -361,7 +361,7 @@ class TestShouldIncludeEntity:
         """Test master-only item exclusion when no battery config exists."""
         mock_config_entry.data = {"batteries": {}}
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -383,7 +383,7 @@ class TestShouldIncludeEntity:
             "features": ["smart_meter", "power_control", "diagnostics"]
         }
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="power_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -401,7 +401,7 @@ class TestShouldIncludeEntity:
         """Test entity exclusion when required features are missing."""
         mock_config_entry.data = {"features": ["smart_meter"]}
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="power_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -421,7 +421,7 @@ class TestShouldIncludeEntity:
         """Test entity exclusion when no features are configured."""
         mock_config_entry.data = {}
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="power_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -454,7 +454,7 @@ class TestShouldIncludeEntity:
             "features": ["smart_meter", "power_control"],
         }
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="smart_meter_control",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -479,7 +479,7 @@ class TestShouldIncludeEntity:
             "features": ["smart_meter", "power_control"],
         }
 
-        api_item = ApiItem(
+        api_item = ModbusItem(
             name="smart_meter_control",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -495,9 +495,9 @@ class TestShouldIncludeEntity:
         assert result is False
 
     def test_api_item_compatibility(self, mock_config_entry) -> None:
-        """Test function works with base ApiItem type."""
-        # Create a basic ApiItem (parent class)
-        api_item = ApiItem(
+        """Test function works with base ModbusItem type."""
+        # Create a basic ModbusItem (parent class)
+        api_item = ModbusItem(
             name="test_item",
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
@@ -512,7 +512,7 @@ class TestShouldIncludeEntity:
     def test_sax_item_compatibility(self, mock_config_entry) -> None:
         """Test function works with SAXItem type."""
         # Test that should_include_entity works with SAXItem
-        # Note: should_include_entity signature shows it expects ApiItem,
+        # Note: should_include_entity signature shows it expects ModbusItem,
         # but if it should accept SAXItem too, this test documents that behavior
         sax_item = SAXItem(
             name="calculated_power",
@@ -521,10 +521,10 @@ class TestShouldIncludeEntity:
         )
 
         # This test may need to be adjusted based on actual function signature
-        # If should_include_entity only accepts ApiItem, this test should be removed
-        # For now, testing with ApiItem conversion pattern if needed
+        # If should_include_entity only accepts ModbusItem, this test should be removed
+        # For now, testing with ModbusItem conversion pattern if needed
         result = should_include_entity(
-            ApiItem(
+            ModbusItem(
                 name=sax_item.name,
                 device=sax_item.device,
                 mtype=sax_item.mtype,

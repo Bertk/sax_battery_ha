@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type
 from .enums import TypeConstants
-from .items import ApiItem
+from .items import ModbusItem
 from .models import SAXBatteryData
 from .utils import create_entity_unique_id, determine_entity_category
 
@@ -59,7 +59,7 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         self,
         coordinator: SAXBatteryCoordinator,
         battery_id: str,
-        modbus_item: ApiItem,
+        modbus_item: ModbusItem,
         index: int,
     ) -> None:
         """Initialize the switch."""

@@ -22,7 +22,7 @@ from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
-from .items import ApiItem, SAXItem
+from .items import ModbusItem, SAXItem
 from .models import SAXBatteryData
 from .utils import create_entity_unique_id, determine_entity_category
 
@@ -81,17 +81,17 @@ async def async_setup_entry(
 class SAXBatterySensorEntityDescription(SensorEntityDescription):
     """Describes SAX Battery sensor entity."""
 
-    value_fn: Callable[[ApiItem], Any] | None = None
+    value_fn: Callable[[ModbusItem], Any] | None = None
 
 
 class SAXBatterySensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntity):
-    """Implementation of a SAX Battery sensor for ModbusItem/ApiItem data."""
+    """Implementation of a SAX Battery sensor for ModbusItem data."""
 
     def __init__(
         self,
         coordinator: SAXBatteryCoordinator,
         battery_id: str,
-        modbus_item: ApiItem,
+        modbus_item: ModbusItem,
         index: int,
     ) -> None:
         """Initialize the sensor."""

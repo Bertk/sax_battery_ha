@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem, ModbusItem
+from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.modbusobject import ModbusAPI
 
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -100,20 +100,6 @@ def mock_modbus_item():
         battery_slave_id=1,
         mtype=TypeConstants.NUMBER,
         device=DeviceConstants.SYS,  # Fixed: Use SYS instead of BATTERY
-        divider=10,
-    )
-    return item  # noqa: RET504
-
-
-@pytest.fixture
-def mock_api_item():
-    """Create mock ApiItem for backward compatibility."""
-    item = ApiItem(
-        name="test_item",
-        address=100,
-        battery_slave_id=1,
-        mtype=TypeConstants.NUMBER,
-        device=DeviceConstants.BATTERY,
         divider=10,
     )
     return item  # noqa: RET504

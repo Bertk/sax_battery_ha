@@ -35,16 +35,6 @@ class DeviceConstants(Enum):
 # fmt: on
 
 
-# class FormatConstants(Enum):  # modbus format -> not home assistant formats
-#     """Modbus format constants for data adaptation."""
-
-#     PERCENTAGE = "percentage"
-#     TEMPERATURE = "temperature"
-#     NUMBER = "number"
-#     STATUS = "status"
-#     UNKNOWN = "unknown"  # Used for error scenarios which should not happen e.g. uninitialized items
-
-
 class TypeConstants(Enum):  # item types -> not home assistant types
     """Modbus type constants mapped to Home Assistant entity types."""
 

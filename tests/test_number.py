@@ -8,7 +8,7 @@ import pytest
 
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem
+from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.number import SAXBatteryNumber, async_setup_entry
 from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.const import EntityCategory
@@ -45,7 +45,7 @@ def mock_coordinator():
 @pytest.fixture
 def power_number_item():
     """Create power number item."""
-    return ApiItem(
+    return ModbusItem(
         address=100,
         name="max_charge_power",
         mtype=TypeConstants.NUMBER,
@@ -64,7 +64,7 @@ def power_number_item():
 @pytest.fixture
 def percentage_number_item():
     """Create percentage number item."""
-    return ApiItem(
+    return ModbusItem(
         address=101,
         name="min_soc",
         mtype=TypeConstants.NUMBER,
@@ -131,7 +131,7 @@ class TestSAXBatteryNumber:
 
     def test_number_init_without_entity_description(self, mock_coordinator) -> None:
         """Test number entity initialization without entity description."""
-        item_without_desc = ApiItem(
+        item_without_desc = ModbusItem(
             name="test_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -162,7 +162,7 @@ class TestSAXBatteryNumber:
 
     def test_number_native_value_with_divider(self, mock_coordinator) -> None:
         """Test number native value with divider."""
-        item_with_divider = ApiItem(
+        item_with_divider = ModbusItem(
             name="test_number_divider",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -281,7 +281,7 @@ class TestNumberPlatformSetup:
     ) -> None:
         """Test successful setup of number entries."""
         # Mock number items for each battery
-        mock_number_item = ApiItem(
+        mock_number_item = ModbusItem(
             name="test_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -361,7 +361,7 @@ class TestNumberEntityConfiguration:
 
     def test_number_entity_category_config(self, mock_coordinator) -> None:
         """Test number entity category configuration."""
-        config_item = ApiItem(
+        config_item = ModbusItem(
             name="config_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -378,7 +378,7 @@ class TestNumberEntityConfiguration:
 
     def test_number_entity_category_diagnostic(self, mock_coordinator) -> None:
         """Test number entity category diagnostic."""
-        diagnostic_item = ApiItem(
+        diagnostic_item = ModbusItem(
             name="diagnostic_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -417,7 +417,7 @@ class TestNumberEntityConfiguration:
 
     def test_number_name_formatting(self, mock_coordinator) -> None:
         """Test number name formatting."""
-        item_with_underscores = ApiItem(
+        item_with_underscores = ModbusItem(
             name="test_underscore_name",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -434,7 +434,7 @@ class TestNumberEntityConfiguration:
 
     def test_number_without_unit(self, mock_coordinator) -> None:
         """Test number entity without unit."""
-        unitless_item = ApiItem(
+        unitless_item = ModbusItem(
             name="unitless_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,
@@ -452,7 +452,7 @@ class TestNumberEntityConfiguration:
     def test_number_mode_property(self, mock_coordinator) -> None:
         """Test number mode property with different mode values."""
         # Test BOX mode
-        box_item = ApiItem(
+        box_item = ModbusItem(
             name="charge_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -472,7 +472,7 @@ class TestNumberEntityConfiguration:
         assert box_number.mode == NumberMode.BOX
 
         # Test SLIDER mode
-        slider_item = ApiItem(
+        slider_item = ModbusItem(
             name="power_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -492,7 +492,7 @@ class TestNumberEntityConfiguration:
         assert slider_number.mode == NumberMode.SLIDER
 
         # Test AUTO mode (default case)
-        auto_item = ApiItem(
+        auto_item = ModbusItem(
             name="temperature_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
@@ -512,7 +512,7 @@ class TestNumberEntityConfiguration:
         assert auto_number.mode == NumberMode.AUTO
 
         # Test no mode attribute (should default to AUTO)
-        no_mode_item = ApiItem(
+        no_mode_item = ModbusItem(
             name="voltage_limit",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,

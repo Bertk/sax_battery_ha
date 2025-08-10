@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem
+from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.switch import SAXBatterySwitch
 from homeassistant.exceptions import HomeAssistantError
 
@@ -36,9 +36,9 @@ class TestSAXBatterySwitch:
         return coordinator
 
     @pytest.fixture
-    def modbus_item(self) -> ApiItem:
+    def modbus_item(self) -> ModbusItem:
         """Create a test modbus item."""
-        return ApiItem(
+        return ModbusItem(
             name="test_switch",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
@@ -48,7 +48,7 @@ class TestSAXBatterySwitch:
         )
 
     def test_switch_initialization(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch entity initialization."""
         switch = SAXBatterySwitch(
@@ -64,7 +64,7 @@ class TestSAXBatterySwitch:
         assert switch._modbus_item == modbus_item
 
     def test_switch_is_on_true(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch is_on returns True when value matches on_value."""
         mock_coordinator.data = {"test_switch": 1}
@@ -79,7 +79,7 @@ class TestSAXBatterySwitch:
         assert switch.is_on is True
 
     def test_switch_is_on_false(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch is_on returns False when value matches off_value."""
         mock_coordinator.data = {"test_switch": 0}
@@ -94,7 +94,7 @@ class TestSAXBatterySwitch:
         assert switch.is_on is False
 
     async def test_switch_turn_on_success(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test successful turn_on operation."""
         switch = SAXBatterySwitch(
@@ -111,7 +111,7 @@ class TestSAXBatterySwitch:
         )
 
     async def test_switch_turn_on_failure(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test turn_on operation failure."""
         mock_coordinator.async_write_switch_value.return_value = False
@@ -127,7 +127,7 @@ class TestSAXBatterySwitch:
             await switch.async_turn_on()
 
     def test_switch_extra_state_attributes(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test extra state attributes."""
         # Set the address to match expected value
@@ -148,7 +148,7 @@ class TestSAXBatterySwitch:
         assert "raw_value" in attrs
 
     def test_switch_unavailable_coordinator(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch behavior when coordinator is unavailable."""
         mock_coordinator.last_update_success = False
@@ -163,7 +163,7 @@ class TestSAXBatterySwitch:
         assert switch.available is False
 
     def test_switch_no_data(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch behavior when coordinator has no data."""
         mock_coordinator.data = None
@@ -179,7 +179,7 @@ class TestSAXBatterySwitch:
         assert switch.available is False
 
     def test_switch_missing_data_key(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch behavior when data key is missing."""
         mock_coordinator.data = {"other_switch": 1}
@@ -195,7 +195,7 @@ class TestSAXBatterySwitch:
         assert switch.available is False
 
     def test_switch_string_values(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test switch with string values."""
         test_cases = [
@@ -223,7 +223,7 @@ class TestSAXBatterySwitch:
             assert switch.is_on is expected_bool, f"Failed for '{string_value}'"
 
     async def test_switch_turn_off_success(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test successful turn_off operation."""
         switch = SAXBatterySwitch(
@@ -240,7 +240,7 @@ class TestSAXBatterySwitch:
         )
 
     async def test_switch_turn_off_failure(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test turn_off operation failure."""
         mock_coordinator.async_write_switch_value.return_value = False
@@ -256,7 +256,7 @@ class TestSAXBatterySwitch:
             await switch.async_turn_off()
 
     def test_switch_device_info(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test device info property."""
         switch = SAXBatterySwitch(
@@ -273,7 +273,7 @@ class TestSAXBatterySwitch:
         assert device_info["manufacturer"] == "SAX Power"
 
     def test_switch_icon_property(
-        self, mock_coordinator: MagicMock, modbus_item: ApiItem
+        self, mock_coordinator: MagicMock, modbus_item: ModbusItem
     ) -> None:
         """Test icon property."""
         switch = SAXBatterySwitch(

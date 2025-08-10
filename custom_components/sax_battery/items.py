@@ -62,65 +62,6 @@ class BaseItem(ABC):
 
 
 @dataclass
-class ApiItem(BaseItem):
-    """API item for backward compatibility - immutable for data integrity."""
-
-    address: int = 0
-    battery_slave_id: int = 1
-    divider: float = 1.0
-    entitydescription: (
-        SensorEntityDescription
-        | SwitchEntityDescription
-        | NumberEntityDescription
-        | None
-    ) = None
-    resultlist: list[StatusItem] | None = None
-
-    def convert_raw_value(self, raw_value: int) -> float:
-        """Convert raw modbus value to real value using entitydescription or defaults."""
-        # Always apply signed 16-bit conversion for sensors
-        if (self.mtype == TypeConstants.SENSOR and raw_value > 32767) or (
-            self.entitydescription
-            and getattr(self.entitydescription, "device_class", None)
-            == SensorDeviceClass.POWER
-        ):
-            if raw_value > 32767:
-                raw_value -= 65536
-
-        value = raw_value / self.divider if self.divider else raw_value
-
-        # Apply precision if available
-        precision = getattr(self.entitydescription, "suggested_display_precision", None)
-        if precision is not None:
-            return round(value, precision)
-        return value
-
-    def convert_to_raw_value(self, value: float) -> int:
-        """Convert real value to raw modbus value using entitydescription or defaults."""
-        raw_value = int(value * self.divider)
-
-        min_value = getattr(self.entitydescription, "native_min_value", None)
-        max_value = getattr(self.entitydescription, "native_max_value", None)
-        unit = getattr(self.entitydescription, "native_unit_of_measurement", None)
-        device_class = getattr(self.entitydescription, "device_class", None)
-
-        # Clamp value for percentage
-        if unit == PERCENTAGE:
-            raw_value = max(0, min(100, raw_value))
-        # Clamp value for signed 16-bit if power or sensor
-        elif (
-            device_class == SensorDeviceClass.POWER
-            or self.mtype == TypeConstants.SENSOR
-        ):
-            raw_value = max(-32768, min(32767, raw_value))
-        # Clamp using entitydescription min/max if available
-        if min_value is not None and max_value is not None:
-            raw_value = max(int(min_value), min(int(max_value), raw_value))
-
-        return raw_value
-
-
-@dataclass
 class ModbusItem(BaseItem):
     """Modbus-specific item with enhanced functionality."""
 

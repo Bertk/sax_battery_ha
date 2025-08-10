@@ -1,7 +1,7 @@
 """Test items.py functionality."""
 
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem, ModbusItem, SAXItem, StatusItem
+from custom_components.sax_battery.items import ModbusItem, SAXItem, StatusItem
 from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 
@@ -37,7 +37,7 @@ class TestBaseItem:
 
     def test_base_item_state_management(self) -> None:
         """Test BaseItem state property management."""
-        item = ApiItem(
+        item = ModbusItem(
             name="test_item",
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
@@ -54,129 +54,6 @@ class TestBaseItem:
         # Test invalid state
         item.is_invalid = True
         assert item.is_invalid is True
-
-
-class TestApiItem:
-    """Test ApiItem dataclass."""
-
-    def test_api_item_init_required_params(self) -> None:
-        """Test ApiItem initialization with required parameters."""
-        item = ApiItem(
-            name="test_item",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-        )
-
-        assert item.name == "test_item"
-        assert item.mtype == TypeConstants.SENSOR
-        assert item.device == DeviceConstants.SYS
-        assert item.translation_key == ""
-        assert not item.params
-        assert item.address == 0
-        assert item.battery_slave_id == 1
-        assert item.divider == 1.0
-        assert item.entitydescription is None
-        assert item.resultlist is None
-
-    def test_api_item_init_with_optional_params(self) -> None:
-        """Test ApiItem initialization with optional parameters."""
-        status_list = [StatusItem(1, "Status One", "status_one")]
-        params = {"param1": "value1", "param2": 42}
-        entity_desc = SensorEntityDescription(key="test_sensor")
-
-        item = ApiItem(
-            name="test_item",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            translation_key="test_translation",
-            params=params,
-            address=100,
-            battery_slave_id=2,
-            divider=10.0,
-            entitydescription=entity_desc,
-            resultlist=status_list,
-        )
-
-        assert item.name == "test_item"
-        assert item.translation_key == "test_translation"
-        assert item.params == params
-        assert item.address == 100
-        assert item.battery_slave_id == 2
-        assert item.divider == 10.0
-        assert item.entitydescription == entity_desc
-        assert item.resultlist == status_list
-
-    def test_api_item_convert_raw_value_number(self) -> None:
-        """Test ApiItem convert_raw_value for number format."""
-        entity_desc = NumberEntityDescription(key="test_number")
-        item = ApiItem(
-            name="test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            divider=10.0,
-            entitydescription=entity_desc,
-        )
-
-        # Test positive number
-        assert item.convert_raw_value(1500) == 150.0
-
-        # Test signed 16-bit conversion (value > 32767)
-        assert item.convert_raw_value(65000) == -53.6  # (65000 - 65536) / 10
-
-        # Test negative number (already negative)
-        assert item.convert_raw_value(500) == 50.0
-
-    def test_api_item_convert_raw_value_zero_divider(self) -> None:
-        """Test ApiItem convert_raw_value with zero divider."""
-        entity_desc = NumberEntityDescription(key="test_number")
-        item = ApiItem(
-            name="test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            divider=0.0,
-            entitydescription=entity_desc,
-        )
-
-        # Should return raw value when divider is 0
-        assert item.convert_raw_value(1500) == 1500
-
-    def test_api_item_convert_to_raw_value_number(self) -> None:
-        """Test ApiItem convert_to_raw_value for number format."""
-        entity_desc = NumberEntityDescription(key="test_number")
-        item = ApiItem(
-            name="test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            divider=10.0,
-            entitydescription=entity_desc,
-        )
-
-        # Test normal conversion
-        assert item.convert_to_raw_value(150.0) == 1500
-
-        # Test constraint limits
-        assert item.convert_to_raw_value(5000.0) == 32767  # Clamped to max
-        assert item.convert_to_raw_value(-5000.0) == -32768  # Clamped to min
-
-    def test_api_item_convert_to_raw_value_percentage(self) -> None:
-        """Test ApiItem convert_to_raw_value for percentage format."""
-        entity_desc = NumberEntityDescription(
-            key="test_number", native_unit_of_measurement="%"
-        )
-        item = ApiItem(
-            name="test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            divider=1.0,
-            entitydescription=entity_desc,
-        )
-
-        # Test normal conversion
-        assert item.convert_to_raw_value(50.0) == 50
-
-        # Test constraint limits
-        assert item.convert_to_raw_value(150.0) == 100  # Clamped to max
-        assert item.convert_to_raw_value(-10.0) == 0  # Clamped to min
 
 
 class TestModbusItem:
@@ -430,42 +307,9 @@ class TestSAXItem:
 class TestItemInteroperability:
     """Test interoperability between different item types."""
 
-    def test_convert_api_to_modbus_item(self) -> None:
-        """Test conversion patterns between ApiItem and ModbusItem."""
-        api_item = ApiItem(
-            name="test_conversion",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            address=300,
-            battery_slave_id=2,
-            divider=100.0,
-        )
-
-        # Test that both have compatible conversion methods
-        raw_value = 23000
-        api_converted = api_item.convert_raw_value(raw_value)
-
-        modbus_item = ModbusItem(
-            name=api_item.name,
-            mtype=api_item.mtype,
-            device=api_item.device,
-            address=api_item.address,
-            battery_slave_id=api_item.battery_slave_id,
-            divider=api_item.divider,
-        )
-
-        modbus_converted = modbus_item.convert_raw_value(raw_value)
-
-        assert api_converted == modbus_converted
-
     def test_all_items_share_common_interface(self) -> None:
         """Test that all item types share common BaseItem interface."""
         items = [
-            ApiItem(
-                name="api_test",
-                mtype=TypeConstants.SENSOR,
-                device=DeviceConstants.SYS,
-            ),
             ModbusItem(
                 name="modbus_test",
                 mtype=TypeConstants.SENSOR,

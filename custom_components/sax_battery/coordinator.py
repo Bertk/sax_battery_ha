@@ -19,7 +19,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import BATTERY_POLL_INTERVAL, DOMAIN
-from .items import ApiItem, ModbusItem, SAXItem
+from .items import ModbusItem, SAXItem
 from .modbusobject import ModbusAPI, ModbusObject
 from .models import SAXBatteryData
 
@@ -72,10 +72,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Create ModbusObjects if not already created
             for item in modbus_items:
                 if item.name not in self._modbus_objects:
-                    # Convert ModbusItem to ApiItem for compatibility
-                    api_item = self._convert_modbus_to_api_item(item)
                     self._modbus_objects[item.name] = ModbusObject(
-                        self.modbus_api, api_item
+                        self.modbus_api, item
                     )
 
             # Read data from modbus
@@ -147,21 +145,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(
                 f"Error communicating with battery {self.battery_id}: {err}"
             ) from err
-
-    def _convert_modbus_to_api_item(self, modbus_item: ModbusItem) -> ApiItem:
-        """Convert ModbusItem to ApiItem for backward compatibility."""
-        return ApiItem(
-            name=modbus_item.name,
-            mtype=modbus_item.mtype,
-            device=modbus_item.device,
-            translation_key=modbus_item.translation_key,
-            params=modbus_item.params,
-            address=modbus_item.address,
-            battery_slave_id=modbus_item.battery_slave_id,
-            divider=modbus_item.divider,
-            entitydescription=modbus_item.entitydescription,
-            resultlist=modbus_item.resultlist,
-        )
 
     async def _update_smart_meter_data(self, data: dict[str, Any]) -> None:
         """Update smart meter data (only for master battery)."""
@@ -265,34 +248,22 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         return result
 
-    async def async_write_number_value(
-        self, item: ModbusItem | ApiItem, value: float
-    ) -> bool:
+    async def async_write_number_value(self, item: ModbusItem, value: float) -> bool:
         """Write a number value to modbus register."""
         try:
-            # Convert to ModbusItem for consistent handling
-            if isinstance(item, ApiItem):
-                modbus_item = self._convert_api_to_modbus_item(item)
-            else:
-                modbus_item = item
-
             # Get or create ModbusObject for this item
-            if modbus_item.name not in self._modbus_objects:
-                api_item = self._convert_modbus_to_api_item(modbus_item)
-                self._modbus_objects[modbus_item.name] = ModbusObject(
-                    self.modbus_api, api_item
-                )
+            if item.name not in self._modbus_objects:
+                self._modbus_objects[item.name] = ModbusObject(self.modbus_api, item)
 
-            modbus_obj = self._modbus_objects[modbus_item.name]
-            raw_value = modbus_item.convert_to_raw_value(value)
+            modbus_obj = self._modbus_objects[item.name]
+            raw_value = item.convert_to_raw_value(value)
 
             success = await modbus_obj.async_write_value(raw_value)
 
             if success:
                 # Update local data
                 if battery := self.sax_data.batteries.get(self.battery_id):
-                    battery.set_value(modbus_item.name, value)
-                # Note: We don't set state on ApiItem since it shouldn't have setters
+                    battery.set_value(item.name, value)
 
             return success  # noqa: TRY300
 
@@ -300,30 +271,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Failed to write %s: %s", item.name, err)
             return False
 
-    def _convert_api_to_modbus_item(self, api_item: ApiItem) -> ModbusItem:
-        """Convert ApiItem to ModbusItem for write operations."""
-        return ModbusItem(
-            name=api_item.name,
-            mtype=api_item.mtype,
-            device=api_item.device,
-            translation_key=api_item.translation_key,
-            params=api_item.params,
-            address=api_item.address,
-            battery_slave_id=api_item.battery_slave_id,
-            divider=api_item.divider,
-            entitydescription=api_item.entitydescription,
-            resultlist=list(api_item.resultlist) if api_item.resultlist else [],
-        )
-
-    async def async_write_switch_value(
-        self, item: ModbusItem | ApiItem, value: bool
-    ) -> bool:
+    async def async_write_switch_value(self, item: ModbusItem, value: bool) -> bool:
         """Write a switch value to modbus register."""
         return await self.async_write_number_value(item, float(value))
 
-    async def async_write_int_value(
-        self, item: ModbusItem | ApiItem, value: int
-    ) -> bool:
+    async def async_write_int_value(self, item: ModbusItem, value: int) -> bool:
         """Write an integer value to modbus register."""
         return await self.async_write_number_value(item, float(value))
 

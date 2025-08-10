@@ -8,7 +8,7 @@ import pytest
 
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem, SAXItem
+from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.sensor import SAXBatteryCalcSensor, SAXBatterySensor
 
 
@@ -41,7 +41,7 @@ def mock_coordinator():
 @pytest.fixture
 def temperature_item():
     """Create temperature sensor item."""
-    return ApiItem(
+    return ModbusItem(
         address=100,
         name="sax_temperature",
         mtype=TypeConstants.SENSOR,
@@ -52,7 +52,7 @@ def temperature_item():
 @pytest.fixture
 def percentage_item():
     """Create percentage sensor item."""
-    return ApiItem(
+    return ModbusItem(
         address=101,
         name="sax_soc",
         mtype=TypeConstants.SENSOR,
@@ -121,7 +121,7 @@ class TestSAXBatterySensor:
 
     def test_sensor_state_class_determination(self, mock_coordinator) -> None:
         """Test state class determination."""
-        temperature_item = ApiItem(
+        temperature_item = ModbusItem(
             name="sax_temperature",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SENSOR,

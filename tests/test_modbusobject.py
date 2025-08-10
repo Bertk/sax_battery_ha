@@ -8,7 +8,7 @@ from pymodbus import ModbusException
 import pytest
 
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ApiItem
+from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.modbusobject import ModbusAPI, ModbusObject
 
 
@@ -33,9 +33,9 @@ def mock_modbus_api_instance(mock_modbus_client):
 
 
 @pytest.fixture
-def mock_api_item():
-    """Fixture for a basic ApiItem."""
-    return ApiItem(
+def mock_modbus_item():
+    """Fixture for a basic ModbusItem."""
+    return ModbusItem(
         name="test_sensor",
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
@@ -45,9 +45,9 @@ def mock_api_item():
 
 
 @pytest.fixture
-def mock_modbus_object(mock_modbus_api_instance, mock_api_item):
+def mock_modbus_object(mock_modbus_api_instance, mock_modbus_item):
     """Fixture for ModbusObject."""
-    return ModbusObject(mock_modbus_api_instance, mock_api_item)
+    return ModbusObject(mock_modbus_api_instance, mock_modbus_item)
 
 
 class TestModbusObject:

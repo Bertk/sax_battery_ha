@@ -15,7 +15,7 @@ from .const import MANUAL_CONTROL_SWITCH, SOLAR_CHARGING_SWITCH
 from .enums import TypeConstants
 
 if TYPE_CHECKING:
-    from .items import ApiItem
+    from .items import ModbusItem
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class ModbusItemValidator:
     """Validates modbus values based on device class and format."""
 
     @staticmethod
-    def validate_value(item: ApiItem, raw_value: int) -> int | None:
+    def validate_value(item: ModbusItem, raw_value: int) -> int | None:
         """Validate and process raw modbus value."""
         if not item.entitydescription:
             return raw_value
@@ -259,7 +259,7 @@ class ModbusObject:
     def __init__(
         self,
         modbus_api: ModbusAPI,
-        modbus_item: ApiItem,
+        modbus_item: ModbusItem,
     ) -> None:
         """Initialize ModbusObject.
 
@@ -390,6 +390,6 @@ class ModbusObject:
         return self._modbus_item.name in [SOLAR_CHARGING_SWITCH, MANUAL_CONTROL_SWITCH]
 
     @property
-    def item(self) -> ApiItem:
+    def item(self) -> ModbusItem:
         """Get the modbus item."""
         return self._modbus_item

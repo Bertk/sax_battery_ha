@@ -5,11 +5,11 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 
-from .items import ApiItem, SAXItem
+from .items import ModbusItem, SAXItem
 
 
 def create_entity_unique_id(
-    battery_id: str, modbus_item: ApiItem | SAXItem, index: int
+    battery_id: str, modbus_item: ModbusItem | SAXItem, index: int
 ) -> str:
     """Create unique ID for an entity.
 
@@ -28,7 +28,7 @@ def create_entity_unique_id(
 
 
 def determine_entity_category(
-    modbus_item: ApiItem | SAXItem,
+    modbus_item: ModbusItem | SAXItem,
 ) -> EntityCategory | None:
     """Determine entity category based on modbus item.
 
@@ -66,7 +66,7 @@ def determine_entity_category(
 
 
 def should_include_entity(
-    modbus_item: ApiItem,
+    modbus_item: ModbusItem,
     config_entry: ConfigEntry,
     battery_id: str,
 ) -> bool:
