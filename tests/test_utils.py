@@ -6,11 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem, SAXItem
 from custom_components.sax_battery.utils import (
     create_entity_unique_id,
@@ -29,7 +25,6 @@ class TestCreateEntityUniqueId:
         api_item = ApiItem(
             name="voltage",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -44,7 +39,6 @@ class TestCreateEntityUniqueId:
         sax_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -56,7 +50,6 @@ class TestCreateEntityUniqueId:
         api_item = ApiItem(
             name="temperature",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.TEMPERATURE,
             mtype=TypeConstants.SENSOR,
             address=200,
             battery_slave_id=1,
@@ -74,7 +67,6 @@ class TestCreateEntityUniqueId:
         api_item = ApiItem(
             name="max_charge_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=300,
             battery_slave_id=1,
@@ -89,7 +81,6 @@ class TestCreateEntityUniqueId:
         sax_item = SAXItem(
             name="total_power (Calculated)",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -108,7 +99,6 @@ class TestDetermineEntityCategory:
         api_item = ApiItem(
             name="setting",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -127,7 +117,6 @@ class TestDetermineEntityCategory:
         api_item = ApiItem(
             name="limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -146,7 +135,6 @@ class TestDetermineEntityCategory:
         api_item = ApiItem(
             name="status",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.STATUS,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -171,7 +159,6 @@ class TestDetermineEntityCategory:
             item = ApiItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR,
                 address=100,
                 battery_slave_id=1,
@@ -198,7 +185,6 @@ class TestDetermineEntityCategory:
             item = ApiItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR,
                 address=100,
                 battery_slave_id=1,
@@ -224,7 +210,6 @@ class TestDetermineEntityCategory:
             item = ApiItem(
                 name=item_name,
                 device=DeviceConstants.SYS,
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR,
                 address=100,
                 battery_slave_id=1,
@@ -239,7 +224,6 @@ class TestDetermineEntityCategory:
         sax_item = SAXItem(
             name="debug_calculation",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -251,7 +235,6 @@ class TestDetermineEntityCategory:
         api_item = ApiItem(
             name="config_value",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -279,7 +262,6 @@ class TestShouldIncludeEntity:
         return ApiItem(
             name="voltage",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -298,7 +280,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="voltage",
             device=DeviceConstants.SYS,  # Different from config
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -315,7 +296,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="voltage",
             device=DeviceConstants.SYS,  # Matches config
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -339,7 +319,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -365,7 +344,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -386,7 +364,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="smart_meter_data",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=100,
             battery_slave_id=1,
@@ -409,7 +386,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="power_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -428,7 +404,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="power_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -449,7 +424,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="power_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -483,7 +457,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="smart_meter_control",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -509,7 +482,6 @@ class TestShouldIncludeEntity:
         api_item = ApiItem(
             name="smart_meter_control",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=100,
             battery_slave_id=1,
@@ -527,7 +499,6 @@ class TestShouldIncludeEntity:
         # Create a basic ApiItem (parent class)
         api_item = ApiItem(
             name="test_item",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             address=100,
@@ -546,7 +517,6 @@ class TestShouldIncludeEntity:
         sax_item = SAXItem(
             name="calculated_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -557,7 +527,6 @@ class TestShouldIncludeEntity:
             ApiItem(
                 name=sax_item.name,
                 device=sax_item.device,
-                mformat=sax_item.mformat,
                 mtype=sax_item.mtype,
             ),
             mock_config_entry,

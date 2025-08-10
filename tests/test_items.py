@@ -1,11 +1,8 @@
 """Test items.py functionality."""
 
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem, ModbusItem, SAXItem, StatusItem
+from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 
 # mypy: disable-error-code="arg-type"
@@ -42,7 +39,6 @@ class TestBaseItem:
         """Test BaseItem state property management."""
         item = ApiItem(
             name="test_item",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
         )
@@ -67,13 +63,11 @@ class TestApiItem:
         """Test ApiItem initialization with required parameters."""
         item = ApiItem(
             name="test_item",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
         )
 
         assert item.name == "test_item"
-        assert item.mformat == FormatConstants.NUMBER
         assert item.mtype == TypeConstants.SENSOR
         assert item.device == DeviceConstants.SYS
         assert item.translation_key == ""
@@ -92,7 +86,6 @@ class TestApiItem:
 
         item = ApiItem(
             name="test_item",
-            mformat=FormatConstants.PERCENTAGE,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             translation_key="test_translation",
@@ -115,12 +108,13 @@ class TestApiItem:
 
     def test_api_item_convert_raw_value_number(self) -> None:
         """Test ApiItem convert_raw_value for number format."""
+        entity_desc = NumberEntityDescription(key="test_number")
         item = ApiItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=10.0,
+            entitydescription=entity_desc,
         )
 
         # Test positive number
@@ -132,27 +126,15 @@ class TestApiItem:
         # Test negative number (already negative)
         assert item.convert_raw_value(500) == 50.0
 
-    def test_api_item_convert_raw_value_other_formats(self) -> None:
-        """Test ApiItem convert_raw_value for other formats."""
-        item = ApiItem(
-            name="test",
-            mformat=FormatConstants.PERCENTAGE,
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-            divider=2.0,
-        )
-
-        # Test percentage format (no signed conversion)
-        assert item.convert_raw_value(200) == 100.0
-
     def test_api_item_convert_raw_value_zero_divider(self) -> None:
         """Test ApiItem convert_raw_value with zero divider."""
+        entity_desc = NumberEntityDescription(key="test_number")
         item = ApiItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=0.0,
+            entitydescription=entity_desc,
         )
 
         # Should return raw value when divider is 0
@@ -160,12 +142,13 @@ class TestApiItem:
 
     def test_api_item_convert_to_raw_value_number(self) -> None:
         """Test ApiItem convert_to_raw_value for number format."""
+        entity_desc = NumberEntityDescription(key="test_number")
         item = ApiItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=10.0,
+            entitydescription=entity_desc,
         )
 
         # Test normal conversion
@@ -177,12 +160,15 @@ class TestApiItem:
 
     def test_api_item_convert_to_raw_value_percentage(self) -> None:
         """Test ApiItem convert_to_raw_value for percentage format."""
+        entity_desc = NumberEntityDescription(
+            key="test_number", native_unit_of_measurement="%"
+        )
         item = ApiItem(
             name="test",
-            mformat=FormatConstants.PERCENTAGE,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=1.0,
+            entitydescription=entity_desc,
         )
 
         # Test normal conversion
@@ -200,13 +186,11 @@ class TestModbusItem:
         """Test ModbusItem initialization with required parameters."""
         item = ModbusItem(
             name="test_modbus",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
         )
 
         assert item.name == "test_modbus"
-        assert item.mformat == FormatConstants.NUMBER
         assert item.mtype == TypeConstants.SENSOR
         assert item.device == DeviceConstants.SYS
         assert item.address == 0
@@ -221,7 +205,6 @@ class TestModbusItem:
 
         item = ModbusItem(
             name="test_modbus",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
             address=200,
@@ -239,12 +222,13 @@ class TestModbusItem:
 
     def test_modbus_item_convert_raw_value(self) -> None:
         """Test ModbusItem convert_raw_value method."""
+        entity_desc = SensorEntityDescription(key="test_sensor")
         item = ModbusItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=100.0,
+            entitydescription=entity_desc,
         )
 
         # Test conversion
@@ -255,12 +239,13 @@ class TestModbusItem:
 
     def test_modbus_item_convert_to_raw_value(self) -> None:
         """Test ModbusItem convert_to_raw_value method."""
+        entity_desc = NumberEntityDescription(key="test_number")
         item = ModbusItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             divider=10.0,
+            entitydescription=entity_desc,
         )
 
         # Test conversion
@@ -270,7 +255,6 @@ class TestModbusItem:
         """Test ModbusItem state management (inherited from BaseItem)."""
         item = ModbusItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
         )
@@ -291,13 +275,11 @@ class TestSAXItem:
         """Test SAXItem initialization with required parameters."""
         item = SAXItem(
             name="test_sax",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
         )
 
         assert item.name == "test_sax (Calculated)"
-        assert item.mformat == FormatConstants.NUMBER
         assert item.mtype == TypeConstants.SENSOR_CALC
         assert item.device == DeviceConstants.SYS
         assert item.entitydescription is None
@@ -313,7 +295,6 @@ class TestSAXItem:
 
         item = SAXItem(
             name="total_power",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             entitydescription=entity_desc,
@@ -328,7 +309,6 @@ class TestSAXItem:
         """Test SAXItem calculate_value with no calculation parameter."""
         item = SAXItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
         )
@@ -346,7 +326,6 @@ class TestSAXItem:
         """Test SAXItem calculate_value with coordinator values."""
         item = SAXItem(
             name="combined_power",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             params={
@@ -374,7 +353,6 @@ class TestSAXItem:
 
         item = SAXItem(
             name="average_soc",
-            mformat=FormatConstants.PERCENTAGE,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             entitydescription=entity_desc,
@@ -397,7 +375,6 @@ class TestSAXItem:
         """Test SAXItem calculate_value with invalid calculation."""
         item = SAXItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             params={"calculation": "invalid_syntax +"},
@@ -411,7 +388,6 @@ class TestSAXItem:
         """Test SAXItem calculate_value with missing variables."""
         item = SAXItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             params={"calculation": "val_0 + missing_var"},
@@ -425,7 +401,6 @@ class TestSAXItem:
         """Test SAXItem calculate_value with division by zero."""
         item = SAXItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             params={"calculation": "val_0 / val_1"},
@@ -439,7 +414,6 @@ class TestSAXItem:
         """Test SAXItem state management (inherited from BaseItem)."""
         item = SAXItem(
             name="test",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
         )
@@ -460,7 +434,6 @@ class TestItemInteroperability:
         """Test conversion patterns between ApiItem and ModbusItem."""
         api_item = ApiItem(
             name="test_conversion",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             device=DeviceConstants.SYS,
             address=300,
@@ -474,7 +447,6 @@ class TestItemInteroperability:
 
         modbus_item = ModbusItem(
             name=api_item.name,
-            mformat=api_item.mformat,
             mtype=api_item.mtype,
             device=api_item.device,
             address=api_item.address,
@@ -491,19 +463,16 @@ class TestItemInteroperability:
         items = [
             ApiItem(
                 name="api_test",
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR,
                 device=DeviceConstants.SYS,
             ),
             ModbusItem(
                 name="modbus_test",
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR,
                 device=DeviceConstants.SYS,
             ),
             SAXItem(
                 name="sax_test",
-                mformat=FormatConstants.NUMBER,
                 mtype=TypeConstants.SENSOR_CALC,
                 device=DeviceConstants.SYS,
             ),
@@ -514,7 +483,6 @@ class TestItemInteroperability:
             assert hasattr(item, "name")
             assert hasattr(item, "state")
             assert hasattr(item, "is_invalid")
-            assert hasattr(item, "mformat")
             assert hasattr(item, "mtype")
             assert hasattr(item, "device")
 

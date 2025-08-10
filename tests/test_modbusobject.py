@@ -7,11 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from pymodbus import ModbusException
 import pytest
 
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem
 from custom_components.sax_battery.modbusobject import ModbusAPI, ModbusObject
 
@@ -41,7 +37,6 @@ def mock_api_item():
     """Fixture for a basic ApiItem."""
     return ApiItem(
         name="test_sensor",
-        mformat=FormatConstants.NUMBER,
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
         address=100,

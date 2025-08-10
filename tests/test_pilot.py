@@ -11,11 +11,7 @@ from custom_components.sax_battery.const import (
     PILOT_ITEMS,
     SOLAR_CHARGING_SWITCH,
 )
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import SAXItem
 from custom_components.sax_battery.pilot import (
     SAXBatteryManualControlSwitch,
@@ -354,7 +350,6 @@ class TestSAXBatterySolarChargingSwitch:
         return SAXItem(
             name=SOLAR_CHARGING_SWITCH,
             mtype=TypeConstants.SWITCH,
-            mformat=FormatConstants.STATUS,
             device=DeviceConstants.SYS,
         )
 
@@ -465,7 +460,6 @@ class TestSAXBatteryManualControlSwitch:
         return SAXItem(
             name=MANUAL_CONTROL_SWITCH,
             mtype=TypeConstants.SWITCH,
-            mformat=FormatConstants.STATUS,
             device=DeviceConstants.SYS,
         )
 

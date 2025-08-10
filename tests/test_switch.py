@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem
 from custom_components.sax_battery.switch import SAXBatterySwitch
 from homeassistant.exceptions import HomeAssistantError
@@ -45,7 +41,6 @@ class TestSAXBatterySwitch:
         return ApiItem(
             name="test_switch",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.STATUS,
             mtype=TypeConstants.SWITCH,
             address=1000,  # Use valid Modbus address instead of 0
             battery_slave_id=1,

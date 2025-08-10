@@ -12,11 +12,7 @@ from custom_components.sax_battery.coordinator import (
     SAFE_OPERATIONS,
     SAXBatteryCoordinator,
 )
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.modbusobject import ModbusAPI
 from custom_components.sax_battery.models import SAXBatteryData
@@ -78,7 +74,6 @@ class TestSAXBatteryCoordinator:
         return ModbusItem(
             name="smartmeter_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=1000,
             battery_slave_id=1,
@@ -173,7 +168,6 @@ class TestSAXBatteryCoordinator:
         item_with_divider = ModbusItem(
             name="smartmeter_voltage",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=1001,
             battery_slave_id=1,
@@ -222,7 +216,6 @@ class TestSAXBatteryCoordinator:
         item1 = ModbusItem(
             name="smartmeter_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=1000,
             battery_slave_id=1,
@@ -231,7 +224,6 @@ class TestSAXBatteryCoordinator:
         item2 = ModbusItem(
             name="smartmeter_voltage",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
             address=1001,
             battery_slave_id=1,
@@ -441,7 +433,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 - val_1",
@@ -458,7 +449,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="total_system_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_1",
@@ -475,7 +465,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="power_efficiency",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.PERCENTAGE,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "(val_0 * val_1) / val_2",
@@ -494,7 +483,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="test_item",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "val_0": "sax_voltage",
@@ -510,7 +498,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="test_item",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params=None,
         )
@@ -525,7 +512,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="test_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_1",
@@ -546,7 +532,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="grid_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 * 2",
@@ -567,7 +552,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="test_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_1",
@@ -584,7 +568,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="invalid_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + + val_1",  # Invalid syntax
@@ -601,7 +584,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="invalid_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 ++ val_1",  # Consecutive operators
@@ -627,7 +609,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="sum_all_vals",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params=params,
         )
@@ -647,7 +628,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="type_error_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_1",
@@ -664,7 +644,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="partial_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_2 + val_5",  # Skip val_1, val_3, val_4
@@ -683,7 +662,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="mixed_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 + val_1 - val_2",
@@ -707,7 +685,6 @@ class TestCalculateSaxValue:
         sax_item = SAXItem(
             name="zero_calc",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "val_0 - val_1",

@@ -7,11 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem, SAXItem
 from custom_components.sax_battery.sensor import SAXBatteryCalcSensor, SAXBatterySensor
 
@@ -48,7 +44,6 @@ def temperature_item():
     return ApiItem(
         address=100,
         name="sax_temperature",
-        mformat=FormatConstants.TEMPERATURE,
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
     )
@@ -60,7 +55,6 @@ def percentage_item():
     return ApiItem(
         address=101,
         name="sax_soc",
-        mformat=FormatConstants.PERCENTAGE,
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
     )
@@ -130,7 +124,6 @@ class TestSAXBatterySensor:
         temperature_item = ApiItem(
             name="sax_temperature",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.TEMPERATURE,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -172,7 +165,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "sax_discharge_power - sax_charge_power",
@@ -199,7 +191,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -221,7 +212,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -243,7 +233,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 
@@ -264,7 +253,6 @@ class TestSAXBatteryCalcSensor:
         """Test calculated sensor name includes '(Calculated)'."""
         calc_item = SAXItem(
             name="total_power",
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
             params={
@@ -292,7 +280,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
             params={
                 "calculation": "sax_discharge_power - sax_charge_power",
@@ -318,7 +305,6 @@ class TestSAXBatteryCalcSensor:
         calc_item = SAXItem(
             name="total_power",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR_CALC,
         )
 

@@ -7,11 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem
 from custom_components.sax_battery.number import SAXBatteryNumber, async_setup_entry
 from homeassistant.components.number import NumberEntityDescription, NumberMode
@@ -52,7 +48,6 @@ def power_number_item():
     return ApiItem(
         address=100,
         name="max_charge_power",
-        mformat=FormatConstants.NUMBER,
         mtype=TypeConstants.NUMBER,
         device=DeviceConstants.SYS,
         entitydescription=NumberEntityDescription(
@@ -72,7 +67,6 @@ def percentage_number_item():
     return ApiItem(
         address=101,
         name="min_soc",
-        mformat=FormatConstants.PERCENTAGE,
         mtype=TypeConstants.NUMBER,
         device=DeviceConstants.SYS,
         entitydescription=NumberEntityDescription(
@@ -140,7 +134,6 @@ class TestSAXBatteryNumber:
         item_without_desc = ApiItem(
             name="test_number",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -172,7 +165,6 @@ class TestSAXBatteryNumber:
         item_with_divider = ApiItem(
             name="test_number_divider",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
         item_with_divider.divider = 10
@@ -292,7 +284,6 @@ class TestNumberPlatformSetup:
         mock_number_item = ApiItem(
             name="test_number",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
         mock_sax_data.get_modbus_items_for_battery.return_value = [mock_number_item]
@@ -373,7 +364,6 @@ class TestNumberEntityConfiguration:
         config_item = ApiItem(
             name="config_number",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -391,7 +381,6 @@ class TestNumberEntityConfiguration:
         diagnostic_item = ApiItem(
             name="diagnostic_number",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -431,7 +420,6 @@ class TestNumberEntityConfiguration:
         item_with_underscores = ApiItem(
             name="test_underscore_name",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -449,7 +437,6 @@ class TestNumberEntityConfiguration:
         unitless_item = ApiItem(
             name="unitless_number",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.SENSOR,
         )
 
@@ -468,7 +455,6 @@ class TestNumberEntityConfiguration:
         box_item = ApiItem(
             name="charge_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.PERCENTAGE,
             mtype=TypeConstants.NUMBER,
             address=200,
             battery_slave_id=1,
@@ -489,7 +475,6 @@ class TestNumberEntityConfiguration:
         slider_item = ApiItem(
             name="power_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=201,
             battery_slave_id=1,
@@ -510,7 +495,6 @@ class TestNumberEntityConfiguration:
         auto_item = ApiItem(
             name="temperature_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.TEMPERATURE,
             mtype=TypeConstants.NUMBER,
             address=202,
             battery_slave_id=1,
@@ -531,7 +515,6 @@ class TestNumberEntityConfiguration:
         no_mode_item = ApiItem(
             name="voltage_limit",
             device=DeviceConstants.SYS,
-            mformat=FormatConstants.NUMBER,
             mtype=TypeConstants.NUMBER,
             address=203,
             battery_slave_id=1,

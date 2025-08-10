@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.sax_battery.enums import (
-    DeviceConstants,
-    FormatConstants,
-    TypeConstants,
-)
+from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ApiItem, ModbusItem
 from custom_components.sax_battery.modbusobject import ModbusAPI
 
@@ -102,7 +98,6 @@ def mock_modbus_item():
         name="test_item",
         address=100,
         battery_slave_id=1,
-        mformat=FormatConstants.PERCENTAGE,
         mtype=TypeConstants.NUMBER,
         device=DeviceConstants.SYS,  # Fixed: Use SYS instead of BATTERY
         divider=10,
@@ -117,7 +112,6 @@ def mock_api_item():
         name="test_item",
         address=100,
         battery_slave_id=1,
-        mformat=FormatConstants.PERCENTAGE,
         mtype=TypeConstants.NUMBER,
         device=DeviceConstants.BATTERY,
         divider=10,

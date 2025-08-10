@@ -152,7 +152,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Convert ModbusItem to ApiItem for backward compatibility."""
         return ApiItem(
             name=modbus_item.name,
-            mformat=modbus_item.mformat,
             mtype=modbus_item.mtype,
             device=modbus_item.device,
             translation_key=modbus_item.translation_key,
@@ -305,7 +304,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Convert ApiItem to ModbusItem for write operations."""
         return ModbusItem(
             name=api_item.name,
-            mformat=api_item.mformat,
             mtype=api_item.mtype,
             device=api_item.device,
             translation_key=api_item.translation_key,
