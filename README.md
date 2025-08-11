@@ -28,50 +28,52 @@ Follow these steps to set up the SAX Battery integration in Home Assistant:
 
 2. **Select Number of Batteries**
 
-   *Choose how many batteries you want to configure (1–3).*
-   ![Step 1: Select Number of Batteries](assets/step1.png =800x)
+    *Choose how many batteries you want to configure (1–3).*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step1.png" width="600" alt="Select Number of Batteries">
 
-3. **Select Control Options**
+4. **Select Control Options**
 
     *Choose if you want to enable "Pilot from Home Assistant" and/or "Limit Power".*
-    ![Step 2: Select Control Options](assets/step2.png =800x)
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step2.png" width="600" alt="Select Control Options">
 
-  > [!IMPORTANT] You need to have register 41, 42, 43, 44 writable for full control.
+  > [!IMPORTANT]
+  > You need to have register 41, 42, 43, 44 writable for full control.
   > Contact SAX Power customer service and request write access for control registers e.g. 41, 42 (limit charge/discharge power)
   >
   > [SAX Power Customer service ticket](https://sax-power.net/kontakt/kundenservice/)
 
 4. **Configure Pilot Options** *(only if "Pilot from HA" is enabled)*
 
-   *Set minimum SOC, auto pilot interval, and enable solar charging.*
-   ![Step 3: Configure Pilot Options](assets/step3.png =800x)
+    *Set minimum SOC, auto pilot interval, and enable solar charging.*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step3.png" width="600" alt="Configure Pilot Options">
 
   > [!IMPORTANT]
   > Power limiter to charge or discharge works but the device does not allow reading that value, so by default, slider is set to maximum and unless there is an error, the value passed is taken as working.
 
-  > [!WARNING] battery steering
+  > [!WARNING] 
+  > Battery steering:
   > Setup all necessary protection to avoid deep discharge (bringing battery to SOC 0%) as this might damage your battery system. Recommendation is to start setting thresholds for discharge at 15% to avoid battery to go below 10%.
 
 5. **Configure Sensors** *(only if "Pilot from HA" is enabled)*
 
-  *Select power and power factor sensors.*
-  ![Step 4: Configure Sensors](assets/step4.png =800x)
+    *Select power and power factor sensors.*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step4.png" width="600" alt="Configure Sensors">
 
 6. **Configure Priority Devices**
 
-   *Optionally select devices (e.g., EV charger, heat pump) that should have priority over battery usage.*
-   ![Step 5: Configure Priority Devices](assets/step5.png =800x)
+    *Optionally select devices (e.g., EV charger, heat pump) that should have priority over battery usage.*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step5.png" width="600" alt="Configure Priority Devices">
 
 7. **Configure Battery Connection**
 
-   - *Enter IP and port for each battery.*
-   - *Select the master battery if more than one.*
-   ![Step 6: Configure Battery Connection](assets/step6.png =800x)
+    - *Enter IP and port for each battery.*
+    - *Select the master battery if more than one.*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step6.png" width="600" alt="Configure Battery Connection">
 
 8. **Review and Finish**
 
-   - Confirm your settings and finish the setup.
-   - ![Step 7: Review and Finish](assets/step7.png =800x)
+    *Confirm your settings and finish the setup.*
+    <img src="https://github.com/matfroh/sax_battery_ha/blob/main/assets/step7.png" width="600" alt="Review and Finish">
 
 After restart, your sensors should immediately appear and give you current values
 
@@ -83,5 +85,5 @@ After restart, your sensors should immediately appear and give you current value
 
 ## Advanced: Manual Control
 
-- Use the pilot mode to manually set charging/discharging values.
-- ![Advanced: Manual Control](assets/saxpilot.png)
+*Use the pilot mode to manually set charging/discharging values.*
+![Advanced: Manual Control](assets/saxpilot.png)
