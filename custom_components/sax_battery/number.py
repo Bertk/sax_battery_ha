@@ -34,14 +34,14 @@ async def async_setup_entry(
     for battery_id, coordinator in sax_data.coordinators.items():
         # Number entities (both read-write and read-only)
         number_items = filter_items_by_type(
-            coordinator.api_items,
+            sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.NUMBER,
             config_entry,
             battery_id,
         )
 
         number_ro_items = filter_items_by_type(
-            coordinator.api_items,
+            sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.NUMBER_RO,
             config_entry,
             battery_id,

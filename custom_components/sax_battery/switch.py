@@ -33,7 +33,7 @@ async def async_setup_entry(
 
     for battery_id, coordinator in sax_data.coordinators.items():
         switch_items = filter_items_by_type(
-            coordinator.api_items,
+            sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.SWITCH,
             config_entry,
             battery_id,

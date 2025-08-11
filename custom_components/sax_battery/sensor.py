@@ -40,7 +40,7 @@ async def async_setup_entry(
     for battery_id, coordinator in sax_data.coordinators.items():
         # Regular sensors from Modbus/API items
         sensor_items = filter_items_by_type(
-            coordinator.api_items,
+            sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.SENSOR,
             config_entry,
             battery_id,

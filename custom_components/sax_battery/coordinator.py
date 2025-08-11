@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import BATTERY_POLL_INTERVAL, DOMAIN
+from .const import BATTERY_POLL_INTERVAL, DOMAIN, WRITE_ONLY_REGISTERS
 from .items import ModbusItem, SAXItem
 from .modbusobject import ModbusAPI, ModbusObject
 from .models import SAXBatteryData
@@ -82,6 +82,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             total_items = len(self._modbus_objects)
 
             for item_name, modbus_obj in self._modbus_objects.items():
+                # Skip read for write-only registers (e.g., 41, 42, 43, 44)
+                if getattr(modbus_obj.item, "address", None) in WRITE_ONLY_REGISTERS:
+                    data[item_name] = None
+                    continue
                 try:
                     raw_value = await modbus_obj.async_read_value()
                     if raw_value is not None:
