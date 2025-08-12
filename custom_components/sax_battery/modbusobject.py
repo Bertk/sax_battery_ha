@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from pymodbus.client import ModbusTcpClient
+from pymodbus.client.mixin import ModbusClientMixin  # For DATATYPE
 from pymodbus.exceptions import ModbusException
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -39,11 +40,10 @@ class ModbusAPI:
         self._connect_pending = False
         self._failed_reconnect_counter = 0
 
-        # Use sync client with proper timeout settings
         self._modbus_client = ModbusTcpClient(
             host=host,
             port=port,
-            timeout=10,  # Increased timeout
+            timeout=10,
             retries=1,
             name=f"SAX_BATTERY_{battery_id.upper()}",
         )
@@ -63,10 +63,8 @@ class ModbusAPI:
                 )
                 await asyncio.sleep(300)
 
-            # Use executor for sync connection with proper type handling
             def _connect() -> bool:
                 result = self._modbus_client.connect()  # type: ignore[no-untyped-call]
-                # Handle both boolean and connection result types
                 return bool(result)
 
             connected = await asyncio.get_event_loop().run_in_executor(None, _connect)
@@ -101,7 +99,7 @@ class ModbusAPI:
     def _close_connection(self) -> bool:
         """Close connection with proper error handling."""
         try:
-            # Handle untyped close() call by wrapping in typed function
+
             def _close() -> Any:
                 return self._modbus_client.close()  # type: ignore[no-untyped-call]
 
@@ -128,7 +126,6 @@ class ModbusAPI:
         try:
 
             def _write() -> bool:
-                # Use 'device_id' parameter which is the correct parameter name
                 result = self._modbus_client.write_register(
                     address=address, value=value, device_id=slave
                 )
@@ -141,9 +138,14 @@ class ModbusAPI:
             return False
 
     async def read_holding_registers(
-        self, address: int, count: int = 1, slave: int = 1
-    ) -> list[int] | None:
-        """Read multiple holding registers."""
+        self,
+        address: int,
+        count: int = 1,
+        slave: int = 1,
+        data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.INT16,
+        modbus_item: ModbusItem | None = None,
+    ) -> int | None:
+        """Read and validate a single holding register value."""
         if not self._modbus_client.connected:
             await self.connect()
             if not self._modbus_client.connected:
@@ -152,8 +154,7 @@ class ModbusAPI:
 
         try:
 
-            def _read() -> list[int] | None:
-                # Use 'device_id' parameter which is the correct parameter name
+            def _read() -> int | None:
                 result = self._modbus_client.read_holding_registers(
                     address=address, count=count, device_id=slave
                 )
@@ -162,7 +163,24 @@ class ModbusAPI:
                         "Error reading holding registers at %d: %s", address, result
                     )
                     return None
-                return list(result.registers)
+                value = ModbusTcpClient.convert_from_registers(
+                    result.registers, data_type=data_type
+                )
+                # Ensure value is int for validation
+                if isinstance(value, list):
+                    value_int = int(value[0]) if value else None
+                elif isinstance(value, (int, float)):
+                    value_int = int(value)
+                elif isinstance(value, str):
+                    try:
+                        value_int = int(value)
+                    except ValueError:
+                        value_int = None
+                # else:
+                #    value_int = None # Statement is unreachable
+                if modbus_item and value_int is not None:
+                    return self.validate_value(modbus_item, value_int)
+                return value_int
 
             return await asyncio.get_event_loop().run_in_executor(None, _read)
 
@@ -171,9 +189,14 @@ class ModbusAPI:
             return None
 
     async def read_input_registers(
-        self, address: int, count: int = 1, slave: int = 1
-    ) -> list[int] | None:
-        """Read multiple input registers."""
+        self,
+        address: int,
+        count: int = 1,
+        slave: int = 1,
+        data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.INT16,
+        modbus_item: ModbusItem | None = None,
+    ) -> int | None:
+        """Read and validate a single input register value."""
         if not self._modbus_client.connected:
             await self.connect()
             if not self._modbus_client.connected:
@@ -182,8 +205,7 @@ class ModbusAPI:
 
         try:
 
-            def _read() -> list[int] | None:
-                # Use 'device_id' parameter which is the correct parameter name
+            def _read() -> int | None:
                 result = self._modbus_client.read_input_registers(
                     address=address, count=count, device_id=slave
                 )
@@ -192,17 +214,30 @@ class ModbusAPI:
                         "Error reading input registers at %d: %s", address, result
                     )
                     return None
-                return list(result.registers)
+                value = ModbusTcpClient.convert_from_registers(
+                    result.registers, data_type=data_type
+                )
+                # Ensure value is int for validation
+                if isinstance(value, list):
+                    value_int = int(value[0]) if value else None
+                elif isinstance(value, (int, float)):
+                    value_int = int(value)
+                elif isinstance(value, str):
+                    try:
+                        value_int = int(value)
+                    except ValueError:
+                        value_int = None
+                # else:
+                #    value_int = None # Statement is unreachable
+                if modbus_item and value_int is not None:
+                    return self.validate_value(modbus_item, value_int)
+                return value_int
 
             return await asyncio.get_event_loop().run_in_executor(None, _read)
 
         except ModbusException as exc:
             _LOGGER.warning("Failed to read input registers at %d: %s", address, exc)
             return None
-
-
-class ModbusItemValidator:
-    """Validates modbus values based on device class and format."""
 
     @staticmethod
     def validate_value(item: ModbusItem, raw_value: int) -> int | None:
@@ -216,9 +251,9 @@ class ModbusItemValidator:
 
         match device_class:
             case SensorDeviceClass.TEMPERATURE:
-                return ModbusItemValidator._validate_temperature(raw_value)
+                return ModbusAPI._validate_temperature(raw_value)
             case SensorDeviceClass.BATTERY:
-                return ModbusItemValidator._validate_percentage(raw_value)
+                return ModbusAPI._validate_percentage(raw_value)
             case (
                 SensorDeviceClass.POWER
                 | SensorDeviceClass.ENERGY
@@ -234,13 +269,10 @@ class ModbusItemValidator:
         """Validate temperature values."""
         match val:
             case -32768 | 32768:
-                # No sensor or invalid reading
                 return None
             case -32767:
-                # Sensor broken
                 return -999
             case _:
-                # Handle signed values
                 if val > 32768:
                     val -= 65536
                 return val
@@ -270,7 +302,6 @@ class ModbusObject:
         """
         self._modbus_api = modbus_api
         self._modbus_item = modbus_item
-        self._validator = ModbusItemValidator()
 
     async def async_read_value(self) -> int | None:
         """Read value from modbus register."""
@@ -278,7 +309,6 @@ class ModbusObject:
             return None
 
         try:
-            # Ensure connection before reading
             if not self._modbus_api.get_device().connected:
                 connected = await self._modbus_api.connect()
                 if not connected:
@@ -287,30 +317,22 @@ class ModbusObject:
                     )
                     return None
 
-            # Use holding registers for all register types in this implementation
-            # This matches the working implementation pattern
-            raw_values = await self._modbus_api.read_holding_registers(
+            value = await self._modbus_api.read_holding_registers(
                 self._modbus_item.address,
                 count=1,
                 slave=self._modbus_item.battery_slave_id,
+                data_type=self._modbus_item.data_type,
+                modbus_item=self._modbus_item,
             )
 
-            if not raw_values:
+            if value is None:
                 _LOGGER.debug("No data received for %s", self._modbus_item.name)
+                self._modbus_item.is_invalid = True
                 return None
 
-            validated_value = self._validator.validate_value(
-                self._modbus_item, raw_values[0]
-            )
-
-            # Update item state
-            if validated_value is None:
-                self._modbus_item.is_invalid = True
-            else:
-                self._modbus_item.state = validated_value
-                self._modbus_item.is_invalid = False
-
-            return validated_value  # noqa: TRY300
+            self._modbus_item.state = value
+            self._modbus_item.is_invalid = False
+            return value  # noqa: TRY300
 
         except ModbusException as exc:
             _LOGGER.warning(
@@ -319,7 +341,6 @@ class ModbusObject:
                 self._modbus_item.address,
                 exc,
             )
-            # Don't close connection on every error to avoid reconnection overhead
             return None
 
     async def async_write_value(self, value: int) -> bool:
@@ -353,7 +374,6 @@ class ModbusObject:
 
     def _prepare_write_value(self, value: int) -> int:
         """Prepare value for writing to modbus."""
-        # Handle signed values for temperature
         if (
             self._modbus_item.entitydescription
             and self._modbus_item.entitydescription.device_class

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any
 
+from pymodbus.client.mixin import ModbusClientMixin  # For DATATYPE
+
 from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 from homeassistant.components.switch import SwitchEntityDescription
@@ -67,7 +69,9 @@ class ModbusItem(BaseItem):
 
     address: int = 0
     battery_slave_id: int = 0
+    data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.INT16
     divider: float = 1.0
+    offset: int = 0
     entitydescription: (
         SensorEntityDescription
         | SwitchEntityDescription

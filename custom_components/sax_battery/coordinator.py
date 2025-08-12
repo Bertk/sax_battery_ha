@@ -160,7 +160,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         item.address, 1, item.battery_slave_id
                     )
                     if raw_values:
-                        converted_value = item.convert_raw_value(raw_values[0])
+                        converted_value = item.convert_raw_value(raw_values)
                         data[item.name] = converted_value
                         # Update smart meter data in sax_data
                         if self.sax_data.smart_meter_data:
@@ -225,7 +225,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for i in range(9):
             key = f"val_{i}"
             param_name = params.get(key)
-            if param_name is None:
+            if param_name is None or not isinstance(param_name, str):
                 continue
             if param_name.startswith("smartmeter_"):
                 value = (

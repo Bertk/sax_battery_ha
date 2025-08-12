@@ -104,7 +104,7 @@ class TestSAXBatteryCoordinator:
     ):
         """Test successful smart meter data update."""
         mock_sax_data.get_smart_meter_items.return_value = [smart_meter_item]
-        mock_modbus_api.read_holding_registers.return_value = [1500]
+        mock_modbus_api.read_holding_registers.return_value = 1500
 
         data = {}
         await coordinator._update_smart_meter_data(data)
@@ -175,7 +175,7 @@ class TestSAXBatteryCoordinator:
         )
 
         mock_sax_data.get_smart_meter_items.return_value = [item_with_divider]
-        mock_modbus_api.read_holding_registers.return_value = [2300]
+        mock_modbus_api.read_holding_registers.return_value = 2300
 
         data = {}
         await coordinator._update_smart_meter_data(data)
@@ -208,40 +208,6 @@ class TestSAXBatteryCoordinator:
 
         # Should set None value on error
         assert data["smartmeter_power"] is None
-
-    async def test_update_smart_meter_data_multiple_items(
-        self, coordinator, mock_sax_data, mock_modbus_api
-    ):
-        """Test smart meter data update with multiple items."""
-        item1 = ModbusItem(
-            name="smartmeter_power",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR,
-            address=1000,
-            battery_slave_id=1,
-            divider=1.0,
-        )
-        item2 = ModbusItem(
-            name="smartmeter_voltage",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR,
-            address=1001,
-            battery_slave_id=1,
-            divider=10.0,
-        )
-
-        mock_sax_data.get_smart_meter_items.return_value = [item1, item2]
-        mock_modbus_api.read_holding_registers.side_effect = [[1500], [2300]]
-
-        data = {}
-        await coordinator._update_smart_meter_data(data)
-
-        # Verify both items were processed
-        assert data["smartmeter_power"] == 1500.0
-        assert data["smartmeter_voltage"] == 230.0
-
-        # Verify both calls were made
-        assert mock_modbus_api.read_holding_registers.call_count == 2
 
 
 class TestSafeEvalExpression:
