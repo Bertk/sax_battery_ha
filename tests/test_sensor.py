@@ -6,10 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from custom_components.sax_battery.const import (
+    DESCRIPTION_SAX_SOC,
+    DESCRIPTION_SAX_TEMP,
+)
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.sensor import SAXBatteryCalcSensor, SAXBatterySensor
+from homeassistant.components.sensor import SensorEntityDescription
 
 
 @pytest.fixture
@@ -46,6 +51,7 @@ def temperature_item():
         name="sax_temperature",
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
+        entitydescription=DESCRIPTION_SAX_TEMP,
     )
 
 
@@ -57,6 +63,7 @@ def percentage_item():
         name="sax_soc",
         mtype=TypeConstants.SENSOR,
         device=DeviceConstants.SYS,
+        entitydescription=DESCRIPTION_SAX_SOC,
     )
 
 
@@ -75,7 +82,11 @@ class TestSAXBatterySensor:
         assert sensor._battery_id == "battery_a"
         assert sensor._modbus_item == temperature_item
         assert sensor.unique_id == "battery_a_sax_temperature_0"
-        assert sensor.name == "Sax Temperature"
+        assert sensor.name == "Sax Battery A Temperature"
+        if isinstance(sensor._modbus_item.entitydescription, SensorEntityDescription):
+            assert (
+                sensor._modbus_item.entitydescription.native_unit_of_measurement == "°C"
+            )
 
     def test_sensor_native_value(self, mock_coordinator, temperature_item) -> None:
         """Test sensor native value."""
@@ -103,6 +114,10 @@ class TestSAXBatterySensor:
         )
 
         assert sensor.native_value == 80.0  # 800 / 10
+        if isinstance(sensor._modbus_item.entitydescription, SensorEntityDescription):
+            assert (
+                sensor._modbus_item.entitydescription.native_unit_of_measurement == "%"
+            )
 
     def test_sensor_unavailable_when_coordinator_failed(
         self, mock_coordinator, temperature_item

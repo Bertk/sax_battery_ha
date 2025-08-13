@@ -74,8 +74,8 @@ class ModbusItem(BaseItem):
     offset: int = 0
     entitydescription: (
         SensorEntityDescription
-        | SwitchEntityDescription
         | NumberEntityDescription
+        | SwitchEntityDescription
         | None
     ) = None
     resultlist: list[StatusItem] = field(default_factory=list)
@@ -128,7 +128,12 @@ class ModbusItem(BaseItem):
 class SAXItem(BaseItem):
     """SAX item for calculated sensors and pilot controls."""
 
-    entitydescription: Any = None
+    entitydescription: (
+        SensorEntityDescription
+        | NumberEntityDescription
+        | SwitchEntityDescription
+        | None
+    ) = None
     _calculation_compiled: Any = field(default=None, init=False)
     _calculation_source: str | None = field(default=None, init=False)
 

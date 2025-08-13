@@ -113,7 +113,10 @@ class SAXBatterySensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntity):
             base_name = str(self._modbus_item.entitydescription.name)
             base_name = base_name.removeprefix("Sax ")  # Remove "Sax " prefix
         else:
+            # When no entity description, use the item name and clean it up
             base_name = self._modbus_item.name.replace("_", " ").title()
+            # Remove "Sax" prefix from the cleaned name
+            base_name = base_name.removeprefix("Sax ")
 
         battery_name = self._battery_id.replace("_", " ").title()
         return f"Sax {battery_name} {base_name}"
@@ -193,7 +196,18 @@ class SAXBatteryCalcSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntit
     @property
     def name(self) -> str:
         """Return sensor name."""
-        return self._sax_item.name.replace("_", " ").title()
+        # Extract base name from entity description, remove "Sax" prefix if present
+        if self._sax_item.entitydescription and self._sax_item.entitydescription.name:
+            base_name = str(self._sax_item.entitydescription.name)
+            base_name = base_name.removeprefix("Sax ")  # Remove "Sax " prefix
+        else:
+            # When no entity description, use the item name and clean it up
+            base_name = self._sax_item.name.replace("_", " ").title()
+            # Remove "Sax" prefix from the cleaned name
+            base_name = base_name.removeprefix("Sax ")
+
+        battery_name = self._battery_id.replace("_", " ").title()
+        return f"Sax {battery_name} {base_name}"
 
     @property
     def native_value(self) -> float | None:

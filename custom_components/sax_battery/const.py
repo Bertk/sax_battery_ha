@@ -306,7 +306,7 @@ DESCRIPTION_SAX_NOMINAL_FACTOR = SensorEntityDescription(
 
 DESCRIPTION_SAX_SOC = SensorEntityDescription(
     key=SAX_SOC,
-    name="Sax Battery SOC",
+    name="Sax SOC",
     device_class=SensorDeviceClass.BATTERY,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=PERCENTAGE,
@@ -314,7 +314,7 @@ DESCRIPTION_SAX_SOC = SensorEntityDescription(
 
 DESCRIPTION_SAX_POWER = SensorEntityDescription(
     key=SAX_POWER,
-    name="Sax Battery Power",
+    name="Sax Power",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
@@ -322,7 +322,7 @@ DESCRIPTION_SAX_POWER = SensorEntityDescription(
 
 DESCRIPTION_SAX_SMARTMETER = SensorEntityDescription(
     key=SAX_SMARTMETER,
-    name="Sax Battery Smartmeter",
+    name="Sax Smartmeter",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
@@ -330,7 +330,7 @@ DESCRIPTION_SAX_SMARTMETER = SensorEntityDescription(
 
 DESCRIPTION_SAX_CAPACITY = SensorEntityDescription(
     key=SAX_CAPACITY,
-    name="Sax Battery Capacity",
+    name="Sax Capacity",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
@@ -338,13 +338,13 @@ DESCRIPTION_SAX_CAPACITY = SensorEntityDescription(
 
 DESCRIPTION_SAX_CYCLES = SensorEntityDescription(
     key=SAX_CYCLES,
-    name="Sax Battery Cycles",
+    name="Sax Cycles",
     state_class=SensorStateClass.MEASUREMENT,
 )
 
 DESCRIPTION_SAX_TEMP = SensorEntityDescription(
     key=SAX_TEMP,
-    name="Sax Battery Temperature",
+    name="Sax Temperature",
     device_class=SensorDeviceClass.TEMPERATURE,
     suggested_display_precision=1,
     state_class=SensorStateClass.MEASUREMENT,
@@ -353,7 +353,7 @@ DESCRIPTION_SAX_TEMP = SensorEntityDescription(
 
 DESCRIPTION_SAX_BATTERY_SWITCH = SwitchEntityDescription(
     key=SAX_BATTERY_SWITCH,
-    name="Sax Battery On/Off",
+    name="Sax On/Off",
     icon="mdi:battery",
 )
 
@@ -595,7 +595,7 @@ DESCRIPTION_SAX_COMBINED_SOC = SensorEntityDescription(
 
 DESCRIPTION_SAX_BATTERY_SWITCH = SwitchEntityDescription(
     key=SAX_BATTERY_SWITCH,
-    name="Sax Battery On/Off",
+    name="Sax On/Off",
     icon="mdi:battery",
   )
 
