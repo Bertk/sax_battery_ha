@@ -509,29 +509,29 @@ PARAMS_SAX_TEMP: dict = {
 PARAMS_SAX_COMBINED_POWER: dict = {
     "min": 0,
     "max": 999999999999,
-    "val_0": "power battery A",
-    "val_1": "power battery B",
-    "val_2": "power battery C",
-    "calculation": "val_0 + val_1 + val_2",
+    "val_1": "power battery A",
+    "val_2": "power battery B",
+    "val_3": "power battery C",
+    "calculation": "val_1 + val_2 + val_3",
 }
 
 PARAMS_SAX_CUMULATIVE_ENERGY: dict = {
     "min": 0,
     "max": 999999999999,
-    "val_0": "energy battery A",
-    "val_1": "energy battery B",
-    "val_2": "energy battery C",
-    "calculation": "val_0 + val_1 + val_2",
+    "val_1": "energy battery A",
+    "val_2": "energy battery B",
+    "val_3": "energy battery C",
+    "calculation": "val_1 + val_2 + val_3",
 }
 
 PARAMS_SAX_COMBINED_SOC: dict = {
     "min": 0,
     "max": 100,
-    "val_0": "SOC battery A",
-    "val_1": "SOC battery B",
-    "val_2": "SOC battery C",
-    "val_3": "Number of batteries",
-    "calculation": "(val_0 + val_1 + val_2)/val_3",
+    "val_1": "SOC battery A",
+    "val_2": "SOC battery B",
+    "val_3": "SOC battery C",
+    "val_4": "Number of batteries",
+    "calculation": "(val_1 + val_2 + val_3)/val_4",
 }
 
 # fmt: off

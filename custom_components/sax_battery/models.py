@@ -72,7 +72,6 @@ class BaseModel(ABC):
 class BatteryModel(BaseModel):
     """Battery model using predefined items from const.py."""
 
-    slave_id: int = 1
     host: str = ""
     port: int = 502
     is_master: bool = False
@@ -207,7 +206,6 @@ class SAXBatteryData:
             battery = BatteryModel(
                 device_id=battery_id,
                 name=f"SAX Battery {battery_id.split('_')[1].upper()}",
-                slave_id=1,
                 host=host,
                 port=port,
                 is_master=is_master,

@@ -29,17 +29,44 @@ def create_entity_unique_id(
     """Create unique ID for an entity.
 
     Args:
-        battery_id: Battery identifier
+        battery_id: Battery identifier (e.g., "battery_a")
         modbus_item: Modbus item
         index: Item index
 
     Returns:
-        Unique entity ID
+        Unique entity ID without duplicate battery references
 
     """
     # Remove semantic suffixes like "(Calculated)" from SAXItem names
     clean_name = modbus_item.name.replace(" (Calculated)", "")
-    return f"{battery_id}_{clean_name}_{index}"
+
+    # Normalize the clean name to lowercase for comparison
+    clean_name_lower = clean_name.lower()
+    battery_id_lower = battery_id.lower()
+
+    # Extract battery letter for more specific checking
+    battery_letter = battery_id.split("_")[-1] if "_" in battery_id else battery_id
+
+    # More comprehensive battery reference patterns to check
+    battery_patterns = [
+        battery_id_lower,  # "battery_a"
+        f"sax_{battery_id_lower}",  # "sax_battery_a"
+        f"{battery_letter}_",  # "a_" at start
+        f"_{battery_letter}_",  # "_a_" in middle
+        f"_{battery_letter}",  # "_a" at end
+    ]
+
+    # Check if any battery pattern is already in the name
+    contains_battery_ref = any(
+        pattern in clean_name_lower for pattern in battery_patterns
+    )
+
+    if contains_battery_ref:
+        # If battery reference is already in the name, use it as-is
+        return f"{clean_name}_{index}"
+    else:  # noqa: RET505
+        # If no battery reference, add battery_id prefix
+        return f"{battery_id}_{clean_name}_{index}"
 
 
 def determine_entity_category(
@@ -92,6 +119,10 @@ def should_include_entity(
         True if entity should be included
 
     """
+    # Filter out write-only registers that cannot be read
+    if hasattr(modbus_item, "address") and modbus_item.address in WRITE_ONLY_REGISTERS:
+        return False
+
     device_type = getattr(modbus_item, "device", None)
     if device_type:
         config_device = config_entry.data.get("device_type")
@@ -258,46 +289,40 @@ class RegisterAccessConfig:
     battery_count: int = 1
 
     def can_write_register(self, address: int) -> bool:
-        """Check if register can be written based on configuration.
-
-        Args:
-            address: Register address to check
-
-        Returns:
-            True if write access is allowed, False otherwise
-
-        """
-        # Only master battery can write to any register
-        if not self.is_master_battery:
-            return False
-
-        # Check if register requires specific configuration
-        if address not in WRITE_ONLY_REGISTERS:
-            return True
-
-        required_config = REGISTER_ACCESS_CONTROL.get(address)
-        if required_config == CONF_PILOT_FROM_HA:
-            return self.pilot_from_ha
-        elif required_config == CONF_LIMIT_POWER:  # noqa: RET505
-            return self.limit_power
-
-        return False
+        """Check if a register can be written to based on configuration."""
+        if address in WRITE_ONLY_REGISTERS:
+            required_config = REGISTER_ACCESS_CONTROL.get(address)
+            if required_config == CONF_PILOT_FROM_HA:
+                return self.pilot_from_ha and self.is_master_battery
+            elif required_config == CONF_LIMIT_POWER:  # noqa: RET505
+                return self.limit_power and self.is_master_battery
+        return True
 
     # def should_load_pilot_module(self) -> bool:
     #     """Determine if pilot.py module should be loaded."""
     #     return self.pilot_from_ha and self.is_master_battery
 
     def get_system_max_charge(self) -> int:
-        """Get maximum charge power for the system."""
+        """Get system maximum charge based on battery count."""
         return calculate_system_max_charge(self.battery_count)
 
     def get_system_max_discharge(self) -> int:
-        """Get maximum discharge power for the system."""
+        """Get system maximum discharge based on battery count."""
         return calculate_system_max_discharge(self.battery_count)
 
     def get_writable_registers(self) -> set[int]:
-        """Get set of registers that are writable based on current configuration."""
-        return {addr for addr in WRITE_ONLY_REGISTERS if self.can_write_register(addr)}
+        """Get set of registers that are writable based on configuration."""
+        writable = set()
+
+        # Add pilot registers if enabled
+        if self.pilot_from_ha and self.is_master_battery:
+            writable.update({41, 42})  # Nominal Power, Nominal Factor
+
+        # Add power limiting registers if enabled
+        if self.limit_power and self.is_master_battery:
+            writable.update({43, 44})  # Max Discharge, Max Charge
+
+        return writable
 
 
 # Entity descriptions for read-only versions

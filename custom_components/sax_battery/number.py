@@ -247,9 +247,11 @@ class SAXBatteryNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
         if self._modbus_item.name in [SAX_MAX_CHARGE, SAX_MAX_DISCHARGE]:
             attributes["dynamic_limit_applied"] = True
             if self._modbus_item.name == SAX_MAX_CHARGE:
-                attributes["per_battery_limit"] = LIMIT_MAX_CHARGE_PER_BATTERY
+                attributes["per_battery_limit_charge"] = LIMIT_MAX_CHARGE_PER_BATTERY
             elif self._modbus_item.name == SAX_MAX_DISCHARGE:
-                attributes["per_battery_limit"] = LIMIT_MAX_DISCHARGE_PER_BATTERY
+                attributes["per_battery_limit_discharge"] = (
+                    LIMIT_MAX_DISCHARGE_PER_BATTERY
+                )
 
         return attributes
 

@@ -135,8 +135,24 @@ class SAXBatterySensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntity):
         else:
             base_name = self._modbus_item.name.replace("_", " ").title()
 
-        battery_name = self._battery_id.replace("_", " ").title()
-        return f"Sax {battery_name} {base_name}"
+        # Extract battery letter from battery_id for cleaner naming
+        battery_letter = (
+            self._battery_id.split("_")[-1]
+            if "_" in self._battery_id
+            else self._battery_id
+        )
+        battery_display = f"Battery {battery_letter.upper()}"
+
+        # Check if the base name already contains battery reference
+        if any(
+            ref in base_name.lower()
+            for ref in [self._battery_id.lower(), f"battery {battery_letter}"]
+        ):
+            # Name already contains battery reference, use as-is with Sax prefix
+            return f"Sax {base_name}"
+        else:  # noqa: RET505
+            # Add battery identifier to name
+            return f"Sax {battery_display} {base_name}"
 
     @property
     def native_value(self) -> Any:
@@ -213,7 +229,7 @@ class SAXBatteryCalcSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntit
 
     @property
     def name(self) -> str:
-        """Return sensor name."""
+        """Return the name of the sensor."""
         # Extract base name from entity description, remove "Sax" prefix if present
         if (
             self._sax_item.entitydescription
@@ -222,12 +238,28 @@ class SAXBatteryCalcSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntit
         ):
             entity_name = self._sax_item.entitydescription.name
             entity_name = entity_name.removeprefix("Sax ")  # Remove "Sax " prefix
-            final_name = entity_name
+            base_name = entity_name
         else:
-            final_name = self._sax_item.name.replace("_", " ").title()
+            base_name = self._sax_item.name.replace("_", " ").title()
 
-        battery_name = self._battery_id.replace("_", " ").title()
-        return f"Sax {battery_name} {final_name}"
+        # Extract battery letter from battery_id for cleaner naming
+        battery_letter = (
+            self._battery_id.split("_")[-1]
+            if "_" in self._battery_id
+            else self._battery_id
+        )
+        battery_display = f"Battery {battery_letter.upper()}"
+
+        # Check if the base name already contains battery reference
+        if any(
+            ref in base_name.lower()
+            for ref in [self._battery_id.lower(), f"battery {battery_letter}"]
+        ):
+            # Name already contains battery reference, use as-is with Sax prefix
+            return f"Sax {base_name}"
+        else:  # noqa: RET505
+            # Add battery identifier to name
+            return f"Sax {battery_display} {base_name}"
 
     @property
     def native_value(self) -> float | None:

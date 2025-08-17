@@ -18,7 +18,6 @@ class TestBatteryModel:
         battery = BatteryModel(
             device_id="battery_a",
             name="SAX Battery A",
-            slave_id=1,
             host="192.168.1.100",
             port=502,
             is_master=True,
@@ -26,7 +25,6 @@ class TestBatteryModel:
 
         assert battery.device_id == "battery_a"
         assert battery.name == "SAX Battery A"
-        assert battery.slave_id == 1
         assert battery.host == "192.168.1.100"
         assert battery.port == 502
         assert battery.is_master is True
