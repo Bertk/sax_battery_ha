@@ -83,10 +83,10 @@ SAX_CAPACITY = "sax_capacity"
 SAX_CYCLES = "sax_cycles"
 SAX_TEMP = "sax_temp"
 SAX_ENERGY_PRODUCED = "sax_energy_produced"
-SAX_CUMULATIVE_ENERGY_PRODUCED = "sax_cumulative_energy_produced"
 SAX_ENERGY_CONSUMED = "sax_energy_consumed"
+# Cumulative energy statistics (multiple batteries)
+SAX_CUMULATIVE_ENERGY_PRODUCED = "sax_cumulative_energy_produced"
 SAX_CUMULATIVE_ENERGY_CONSUMED = "sax_cumulative_energy_consumed"
-SAX_COMBINED_POWER = "sax_combined_power"
 SAX_COMBINED_SOC = "combined_soc"
 
 CONF_MIN_SOC = "min_soc"
@@ -147,7 +147,7 @@ SYS_STATUSANZEIGE: list[StatusItem] = [
     StatusItem(number=4, text="Standby", name="system_operationmode_standby"),
 ]
 
-# Entity descriptions - keeping existing ones...
+# Number Entity descriptions - keeping existing ones...
 DESCRIPTION_SAX_MAX_CHARGE = NumberEntityDescription(
     key=SAX_MAX_CHARGE,
     name="Sax Max Charge",
@@ -167,6 +167,27 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
     native_max_value=LIMIT_MAX_DISCHARGE_PER_BATTERY,
     native_step=100,
 )
+
+# Number Entity descriptions - Battery switches
+DESCRIPTION_SAX_BATTERY_SWITCH = SwitchEntityDescription(
+    key=SAX_BATTERY_SWITCH,
+    name="Sax On/Off",
+    icon="mdi:battery",
+)
+
+DESCRIPTION_SOLAR_CHARGING_SWITCH = SwitchEntityDescription(
+    key="solar_charging_switch",
+    name="Solar Charging Switch",
+    icon="mdi:solar-power",
+)
+
+DESCRIPTION_MANUAL_CONTROL_SWITCH = SwitchEntityDescription(
+    key="manual_control_switch",
+    name="Manual Control Switch",
+    icon="mdi:hand",
+)
+
+# Sensor Entity descriptions
 DESCRIPTION_SAX_NOMINAL_POWER = SensorEntityDescription(
     key=SAX_NOMINAL_POWER,
     name="Sax Nominal Power",
@@ -218,7 +239,7 @@ DESCRIPTION_SAX_CYCLES = SensorEntityDescription(
     key=SAX_CYCLES,
     name="Sax Cycles",
     state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement="",
+    native_unit_of_measurement="cycles",  # No standard unit, using "cycles"
 )
 
 DESCRIPTION_SAX_TEMP = SensorEntityDescription(
@@ -228,27 +249,7 @@ DESCRIPTION_SAX_TEMP = SensorEntityDescription(
     suggested_display_precision=1,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-)
-
-# Battery switches
-
-DESCRIPTION_SAX_BATTERY_SWITCH = SwitchEntityDescription(
-    key=SAX_BATTERY_SWITCH,
-    name="Sax On/Off",
-    icon="mdi:battery",
-)
-
-DESCRIPTION_SOLAR_CHARGING_SWITCH = SwitchEntityDescription(
-    key="solar_charging_switch",
-    name="Solar Charging Switch",
-    icon="mdi:solar-power",
-)
-
-DESCRIPTION_MANUAL_CONTROL_SWITCH = SwitchEntityDescription(
-    key="manual_control_switch",
-    name="Manual Control Switch",
-    icon="mdi:hand",
-)
+    )
 
 # Additional sensor descriptions...
 DESCRIPTION_SAX_ENERGY_PRODUCED = SensorEntityDescription(
@@ -259,27 +260,11 @@ DESCRIPTION_SAX_ENERGY_PRODUCED = SensorEntityDescription(
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
-DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED = SensorEntityDescription(
-    key=SAX_CUMULATIVE_ENERGY_PRODUCED,
-    name="Sax Cumulative Energy Produced",
-    device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.TOTAL_INCREASING,
-    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-)
-
 DESCRIPTION_SAX_ENERGY_CONSUMED = SensorEntityDescription(
     key=SAX_ENERGY_CONSUMED,
     name="Sax Energy Consumed",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL,
-    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-)
-
-DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED = SensorEntityDescription(
-    key=SAX_CUMULATIVE_ENERGY_CONSUMED,
-    name="Sax Cumulative Energy Consumed",
-    device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.TOTAL_INCREASING,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
@@ -388,6 +373,7 @@ DESCRIPTION_SAX_SMARTMETER_CURRENT_L1 = SensorEntityDescription(
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 
 DESCRIPTION_SAX_SMARTMETER_CURRENT_L2 = SensorEntityDescription(
@@ -396,6 +382,7 @@ DESCRIPTION_SAX_SMARTMETER_CURRENT_L2 = SensorEntityDescription(
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 
 DESCRIPTION_SAX_SMARTMETER_CURRENT_L3 = SensorEntityDescription(
@@ -404,6 +391,7 @@ DESCRIPTION_SAX_SMARTMETER_CURRENT_L3 = SensorEntityDescription(
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 
 DESCRIPTION_SAX_ACTIVE_POWER_L1 = SensorEntityDescription(
@@ -433,6 +421,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L1 = SensorEntityDescription(
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L2 = SensorEntityDescription(
     key=SAX_SMARTMETER_VOLTAGE_L2,
@@ -440,6 +429,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L2 = SensorEntityDescription(
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 
 DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L3 = SensorEntityDescription(
@@ -448,6 +438,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L3 = SensorEntityDescription(
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+    entity_registry_enabled_default=False,  # Disable by default
 )
 
 DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER = SensorEntityDescription(
@@ -458,12 +449,12 @@ DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER = SensorEntityDescription(
     native_unit_of_measurement=UnitOfPower.WATT,
 )
 
-DESCRIPTION_SAX_COMBINED_POWER = SensorEntityDescription(
-    key=SAX_COMBINED_POWER,
-    name="Sax Combined Power",
-    device_class=SensorDeviceClass.POWER,
-    state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement=UnitOfPower.WATT,
+DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED = SensorEntityDescription(
+    key=SAX_CUMULATIVE_ENERGY_PRODUCED,
+    name="Sax Cumulative Energy Produced",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
 DESCRIPTION_SAX_COMBINED_SOC = SensorEntityDescription(
@@ -474,65 +465,14 @@ DESCRIPTION_SAX_COMBINED_SOC = SensorEntityDescription(
     native_unit_of_measurement=PERCENTAGE,
 )
 
+DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED = SensorEntityDescription(
+    key=SAX_CUMULATIVE_ENERGY_CONSUMED,
+    name="Sax Cumulative Energy Consumed",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+)
 
-# fmt: off
-##############################################################################################################################
-# A parameter list that can contain the following elements:
-# all of the entries are optional on general
-# "min": The lowest allowed value of the entity that can be set by the user if read/write.
-#        Not needed for SENSOR, SELECT, SENSOR_CALC
-# "dynamic_min": The translation key of another entity of this integration. The content of this entity will be used as min val
-# "max": The highest allowed value of the entity that can be set by the user if read/write.
-#        Not needed for SENSOR, SELECT, SENSOR_CALC
-# "dynamic_max": The translation key of another entity of this integration. The content of this entity will be used as max val
-# "step": the step when entity is r/w, values can only be set according this step
-# "factor": On modbus, values usually are coded as int. To get the real float number,
-#            the modbus value has to be divided by this value
-# "precision": number of digits after the decimal point
-# "icon": The icon name as it is used in Home Assistant
-#
-# For SENSOR_CALC only:
-# "val_1" .. "val_8": translation keys of other entities that should be used to calculate the value of this entity
-# "calculation": A string that can be used by the eval() command to calculate the sensor value. All Python operations
-#                and the variables val_0 .. val_8 can be used here
-#                The value of the modbus address of the entity itself is available in val_0
-##############################################################################################################################
-
-PARAMS_SAX_TEMP: dict = {
-    "min": 16,
-    "max": 28,
-    "step": 0.5,
-    "factor": 10,
-    "precision": 1,
-}
-
-PARAMS_SAX_COMBINED_POWER: dict = {
-    "min": 0,
-    "max": 999999999999,
-    "val_1": "power battery A",
-    "val_2": "power battery B",
-    "val_3": "power battery C",
-    "calculation": "val_1 + val_2 + val_3",
-}
-
-PARAMS_SAX_CUMULATIVE_ENERGY: dict = {
-    "min": 0,
-    "max": 999999999999,
-    "val_1": "energy battery A",
-    "val_2": "energy battery B",
-    "val_3": "energy battery C",
-    "calculation": "val_1 + val_2 + val_3",
-}
-
-PARAMS_SAX_COMBINED_SOC: dict = {
-    "min": 0,
-    "max": 100,
-    "val_1": "SOC battery A",
-    "val_2": "SOC battery B",
-    "val_3": "SOC battery C",
-    "val_4": "Number of batteries",
-    "calculation": "(val_1 + val_2 + val_3)/val_4",
-}
 
 # fmt: off
 
@@ -548,14 +488,13 @@ PARAMS_SAX_COMBINED_SOC: dict = {
 # mtype:   The type of entity. Currently supported are:
 #              SENSOR: A standard sensor entity
 #              SENSOR_CALC: A "calculated" sensor. That means, the content of this entity is derived from other entities
-#                           of this integration. The definition of the calculation is done in params
+#                           of this integration.
 #              SELECT: A select entity
 #              NUMBER: A number entity. The value of this entity can be changed by the user interface
 #              NUMBER_RO: In principle, this is also a number entity that ir writable. But to avoid damages
 #                         we decided to make this entity read only.
 # device: The device this entity is assigned to. Devices are used here to group the entities in a meaningful way
 # entitydescription: The entity description that is used to create the Home Assistant entity.
-# params: Parameters to control the behavior of the entity, see description of the params lists
 # translation_key: The identifier that points to the right translation key. Therefore, the files strings.json and the
 #                  language specific files in the subfolder "translations" have to be up-to-date
 ##############################################################################################################################
@@ -621,10 +560,9 @@ MODBUS_SMARTMETER_PHASE_ITEMS: list[ModbusItem] = [
 
 # Aggregated items - calculated values (e.g., combined power) from all available batteries
 AGGREGATED_ITEMS: list[SAXItem] = [
-    SAXItem(name=SAX_CUMULATIVE_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED, params=PARAMS_SAX_CUMULATIVE_ENERGY),
-    SAXItem(name=SAX_CUMULATIVE_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED, params=PARAMS_SAX_CUMULATIVE_ENERGY),
-    SAXItem(name=SAX_COMBINED_POWER, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_POWER, params=PARAMS_SAX_COMBINED_POWER),
-    SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, params=PARAMS_SAX_COMBINED_SOC),
+    SAXItem(name=SAX_CUMULATIVE_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED, translation_key="sax_cumulative_energy_produced"),
+    SAXItem(name=SAX_CUMULATIVE_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED, translation_key="sax_cumulative_energy_consumed"),
+    SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, translation_key="sax_combined_soc"),
 ]
 
 # Pilot items - switches for manual control and solar charging

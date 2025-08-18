@@ -168,24 +168,13 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _calculate_sax_value(self, sax_item: SAXItem) -> float | None:
         """Calculate SAX item value using the item's own calculation method."""
-        if not sax_item.params or "calculation" not in sax_item.params:
-            return None
 
-        # Prepare coordinator values from battery and smart meter data
-        coordinator_values: dict[str, float | None] = {}
-
-        # Add battery data
-        if self.battery_id in self.sax_data.batteries:
-            battery_data = self.sax_data.batteries[self.battery_id].data
-            coordinator_values.update(battery_data)
-
-        # Add smart meter data if available
-        if self.sax_data.smart_meter_data:
-            smart_meter_data = self.sax_data.smart_meter_data.data
-            coordinator_values.update(smart_meter_data)
-
+        # ToDo: sax_cumulative_energy_produced, sax_cumulative_energy_consumed, sax_combined_soc
+        # This is only relevant for multi-battery scenarios and can be implemented => requires sensor entity names and CONF_BATTERY_COUNT
+        #
+        # battery_count = entry.data.get("battery_count", 1)
         # Use the SAXItem's own calculation method
-        return sax_item.calculate_value(coordinator_values)
+        return None
 
     async def async_write_number_value(self, item: ModbusItem, value: float) -> bool:
         """Write number value to modbus register."""
