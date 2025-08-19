@@ -69,6 +69,35 @@ def create_entity_unique_id(
         return f"{battery_id}_{clean_name}_{index}"
 
 
+def format_battery_display_name(battery_id: str) -> str:
+    """Format battery ID into a human-readable display name.
+
+    Args:
+        battery_id: The battery identifier (e.g., "battery_a", "battery_b")
+
+    Returns:
+        Formatted display name (e.g., "Battery A", "Battery B")
+
+    Examples:
+        >>> format_battery_display_name("battery_a")
+        "Battery A"
+        >>> format_battery_display_name("battery_b")
+        "Battery B"
+        >>> format_battery_display_name("custom_battery_c")
+        "Custom Battery C"
+
+    """
+    # Remove common prefixes and convert to title case
+    display_name = battery_id.replace("battery_", "Battery ").title()
+
+    # Handle edge cases where battery_id doesn't follow expected pattern
+    if not display_name.startswith("Battery"):
+        # If it doesn't start with "Battery", format it nicely
+        display_name = display_name.replace("_", " ").title()
+
+    return display_name
+
+
 def determine_entity_category(
     modbus_item: ModbusItem | SAXItem,
 ) -> EntityCategory | None:

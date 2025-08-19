@@ -76,18 +76,6 @@ class TestCreateEntityUniqueId:
         result = create_entity_unique_id("battery_a", api_item, 2)
         assert result == "battery_a_max_charge_power_2"
 
-    def test_create_unique_id_cleans_calculated_suffix(self) -> None:
-        """Test creating unique ID cleans '(Calculated)' suffix from SAXItem names."""
-        sax_item = SAXItem(
-            name="total_power (Calculated)",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR_CALC,
-        )
-
-        result = create_entity_unique_id("battery_a", sax_item, 0)
-        assert result == "battery_a_total_power_0"
-
-
 class TestDetermineEntityCategory:
     """Test determine_entity_category function."""
 

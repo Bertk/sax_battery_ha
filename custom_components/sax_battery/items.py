@@ -89,15 +89,6 @@ class SAXItem(BaseItem):
         | SwitchEntityDescription
         | None
     ) = None
-    _calculation_compiled: Any = field(default=None, init=False)
-    _calculation_source: str | None = field(default=None, init=False)
-
-    def __post_init__(self) -> None:
-        """Initialize compiled calculation after object creation."""
-        if self.mtype == TypeConstants.SENSOR_CALC and not self.name.endswith(
-            "(Calculated)"
-        ):
-            self.name = f"{self.name} (Calculated)"
 
     def calculate_value(
         self,
