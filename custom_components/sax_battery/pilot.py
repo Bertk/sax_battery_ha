@@ -18,7 +18,7 @@ from .coordinator import SAXBatteryCoordinator
 from .enums import TypeConstants
 from .items import SAXItem
 from .models import SAXBatteryData
-from .utils import create_entity_unique_id, determine_entity_category
+from .utils import determine_entity_category
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,24 +39,39 @@ async def async_setup_entry(
         coordinator = sax_data.coordinators[master_battery_id]
         pilot = SAXBatteryPilot(hass, sax_data, coordinator)
 
-        # Create pilot control entities from PILOT_ITEMS
-        for index, pilot_item in enumerate(PILOT_ITEMS):
-            if pilot_item.mtype == TypeConstants.SWITCH:
-                match pilot_item.name:
-                    case name if name == SOLAR_CHARGING_SWITCH:
-                        entities.append(
-                            SAXBatterySolarChargingSwitch(
-                                pilot, coordinator, pilot_item, index
-                            )
-                        )
-                    case name if name == MANUAL_CONTROL_SWITCH:
-                        entities.append(
-                            SAXBatteryManualControlSwitch(
-                                pilot, coordinator, pilot_item, index
-                            )
-                        )
+        # Create pilot control entities from PILOT_ITEMS using extend
+        entities.extend(
+            _create_pilot_entity(pilot, coordinator, pilot_item, master_battery_id)
+            for pilot_item in PILOT_ITEMS
+            if pilot_item.mtype == TypeConstants.SWITCH
+        )
 
-    async_add_entities(entities)
+    if entities:
+        async_add_entities(entities, update_before_add=True)
+
+
+def _create_pilot_entity(
+    pilot: SAXBatteryPilot,
+    coordinator: SAXBatteryCoordinator,
+    pilot_item: SAXItem,
+    battery_id: str,
+) -> SwitchEntity:
+    """Create appropriate pilot entity based on item name."""
+    match pilot_item.name:
+        case name if name == SOLAR_CHARGING_SWITCH:
+            return SAXBatterySolarChargingSwitch(
+                pilot, coordinator, pilot_item, battery_id
+            )
+        case name if name == MANUAL_CONTROL_SWITCH:
+            return SAXBatteryManualControlSwitch(
+                pilot, coordinator, pilot_item, battery_id
+            )
+        case _:
+            # Default fallback for unknown switch types
+            _LOGGER.warning("Unknown pilot switch type: %s", pilot_item.name)
+            return SAXBatteryGenericPilotSwitch(
+                pilot, coordinator, pilot_item, battery_id
+            )
 
 
 class SAXBatteryPilot:
@@ -87,6 +102,8 @@ class SAXBatteryPilot:
             )
 
             # Update the coordinator data for immediate UI feedback
+            if self.coordinator.data is None:
+                self.coordinator.data = {}
             self.coordinator.data[manual_item.name] = 1 if enabled else 0
 
             # Trigger coordinator update to notify entities
@@ -113,7 +130,7 @@ class SAXBatteryPilot:
 
             # Update the coordinator data for immediate UI feedback
             if self.coordinator.data is None:
-                self.coordinator.data = {}  # type: ignore[unreachable]
+                self.coordinator.data = {}
             self.coordinator.data[solar_item.name] = value
 
             # Trigger coordinator update to notify entities
@@ -200,7 +217,7 @@ class SAXBatteryPilot:
     @property
     def solar_charging_enabled(self) -> bool | None:
         """Return current solar charging state."""
-        if not self.coordinator.last_update_success:
+        if not self.coordinator.last_update_success or not self.coordinator.data:
             return None
 
         return self.coordinator.data.get(SOLAR_CHARGING_SWITCH) == 1
@@ -208,7 +225,7 @@ class SAXBatteryPilot:
     @property
     def manual_control_enabled(self) -> bool | None:
         """Return current manual control state."""
-        if not self.coordinator.last_update_success:
+        if not self.coordinator.last_update_success or not self.coordinator.data:
             return None
 
         return self.coordinator.data.get(MANUAL_CONTROL_SWITCH) == 1
@@ -216,7 +233,7 @@ class SAXBatteryPilot:
     @property
     def current_charge_power_limit(self) -> int | None:
         """Return current charge power limit."""
-        if not self.coordinator.last_update_success:
+        if not self.coordinator.last_update_success or not self.coordinator.data:
             return None
 
         return self.coordinator.data.get("sax_max_charge_power")
@@ -224,7 +241,7 @@ class SAXBatteryPilot:
     @property
     def current_discharge_power_limit(self) -> int | None:
         """Return current discharge power limit."""
-        if not self.coordinator.last_update_success:
+        if not self.coordinator.last_update_success or not self.coordinator.data:
             return None
 
         return self.coordinator.data.get("sax_max_discharge_power")
@@ -240,31 +257,64 @@ class SAXBatterySolarChargingSwitch(
         pilot: SAXBatteryPilot,
         coordinator: SAXBatteryCoordinator,
         pilot_item: SAXItem,
-        index: int,
+        battery_id: str,
     ) -> None:
         """Initialize the solar charging switch."""
         super().__init__(coordinator)
         self._pilot = pilot
         self._pilot_item = pilot_item
-        self._index = index
+        self._battery_id = battery_id
 
-        # Entity configuration
-        self._attr_unique_id = create_entity_unique_id(
-            coordinator.battery_id, pilot_item, index
-        )
-        self._attr_name = f"{coordinator.battery_id.title()} Solar Charging"
+        # Generate unique ID using class name pattern
+        item_name = self._pilot_item.name.removeprefix("sax_").replace("_switch", "")
+        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
+
+        # Set entity description from pilot item if available
+        if self._pilot_item.entitydescription is not None:
+            self.entity_description = self._pilot_item.entitydescription  # type: ignore[assignment]
+
+        # Set name from entity description or fallback
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            base_name = self.entity_description.name
+            # Remove "Sax " prefix if it exists
+            base_name = base_name.removeprefix("Sax ")
+        else:
+            # Fallback name generation
+            base_name = self._pilot_item.name.replace("_", " ").title()
+
+        # Format battery display name
+        battery_display = self._battery_id.replace("battery_", "Battery ").title()
+        self._attr_name = f"Sax {battery_display} {base_name}"
+
+        # Set icon and category
         self._attr_icon = "mdi:solar-power"
         self._attr_entity_category = determine_entity_category(pilot_item)
 
-        # Use description from pilot item if available
-        if hasattr(pilot_item, "description") and pilot_item.entitydescription:
-            if hasattr(pilot_item.entitydescription, "icon"):
-                self._attr_icon = pilot_item.entitydescription.icon
+        # Override with entity description properties if available
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "icon")
+            and self.entity_description.icon
+        ):
+            self._attr_icon = self.entity_description.icon
 
-        # Device info
-        self._attr_device_info = coordinator.sax_data.get_device_info(
-            coordinator.battery_id
-        )
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "entity_category")
+        ):
+            self._attr_entity_category = self.entity_description.entity_category
+
+    @property
+    def device_info(self) -> Any:
+        """Return device info."""
+        return self.coordinator.sax_data.get_device_info(self._battery_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on solar charging."""
@@ -290,7 +340,7 @@ class SAXBatterySolarChargingSwitch(
             return None
 
         return {
-            "battery_id": self.coordinator.battery_id,
+            "battery_id": self._battery_id,
             "manual_control_enabled": self._pilot.manual_control_enabled,
             "last_updated": self.coordinator.last_update_success_time,
         }
@@ -306,31 +356,64 @@ class SAXBatteryManualControlSwitch(
         pilot: SAXBatteryPilot,
         coordinator: SAXBatteryCoordinator,
         pilot_item: SAXItem,
-        index: int,
+        battery_id: str,
     ) -> None:
         """Initialize the manual control switch."""
         super().__init__(coordinator)
         self._pilot = pilot
         self._pilot_item = pilot_item
-        self._index = index
+        self._battery_id = battery_id
 
-        # Entity configuration
-        self._attr_unique_id = create_entity_unique_id(
-            coordinator.battery_id, pilot_item, index
-        )
-        self._attr_name = f"{coordinator.battery_id.title()} Manual Control"
+        # Generate unique ID using class name pattern
+        item_name = self._pilot_item.name.removeprefix("sax_").replace("_switch", "")
+        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
+
+        # Set entity description from pilot item if available
+        if self._pilot_item.entitydescription is not None:
+            self.entity_description = self._pilot_item.entitydescription  # type: ignore[assignment]
+
+        # Set name from entity description or fallback
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            base_name = self.entity_description.name
+            # Remove "Sax " prefix if it exists
+            base_name = base_name.removeprefix("Sax ")
+        else:
+            # Fallback name generation
+            base_name = self._pilot_item.name.replace("_", " ").title()
+
+        # Format battery display name
+        battery_display = self._battery_id.replace("battery_", "Battery ").title()
+        self._attr_name = f"Sax {battery_display} {base_name}"
+
+        # Set default icon and category
         self._attr_icon = "mdi:cog"
         self._attr_entity_category = EntityCategory.CONFIG
 
-        # Use description from pilot item if available
-        if hasattr(pilot_item, "description") and pilot_item.entitydescription:
-            if hasattr(pilot_item.entitydescription, "icon"):
-                self._attr_icon = pilot_item.entitydescription.icon
+        # Override with entity description properties if available
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "icon")
+            and self.entity_description.icon
+        ):
+            self._attr_icon = self.entity_description.icon
 
-        # Device info
-        self._attr_device_info = coordinator.sax_data.get_device_info(
-            coordinator.battery_id
-        )
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "entity_category")
+        ):
+            self._attr_entity_category = self.entity_description.entity_category
+
+    @property
+    def device_info(self) -> Any:
+        """Return device info."""
+        return self.coordinator.sax_data.get_device_info(self._battery_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable manual control functionality."""
@@ -356,9 +439,127 @@ class SAXBatteryManualControlSwitch(
             return None
 
         return {
-            "battery_id": self.coordinator.battery_id,
+            "battery_id": self._battery_id,
             "charge_power_limit": self._pilot.current_charge_power_limit,
             "discharge_power_limit": self._pilot.current_discharge_power_limit,
             "solar_charging_enabled": self._pilot.solar_charging_enabled,
+            "last_updated": self.coordinator.last_update_success_time,
+        }
+
+
+class SAXBatteryGenericPilotSwitch(
+    CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity
+):
+    """Generic pilot switch for unknown switch types."""
+
+    def __init__(
+        self,
+        pilot: SAXBatteryPilot,
+        coordinator: SAXBatteryCoordinator,
+        pilot_item: SAXItem,
+        battery_id: str,
+    ) -> None:
+        """Initialize the generic pilot switch."""
+        super().__init__(coordinator)
+        self._pilot = pilot
+        self._pilot_item = pilot_item
+        self._battery_id = battery_id
+
+        # Generate unique ID using class name pattern
+        item_name = self._pilot_item.name.removeprefix("sax_")
+        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
+
+        # Set entity description from pilot item if available
+        if self._pilot_item.entitydescription is not None:
+            self.entity_description = self._pilot_item.entitydescription  # type: ignore[assignment]
+
+        # Set name from entity description or fallback
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            base_name = self.entity_description.name
+            # Remove "Sax " prefix if it exists
+            base_name = base_name.removeprefix("Sax ")
+        else:
+            # Fallback name generation
+            base_name = self._pilot_item.name.replace("_", " ").title()
+
+        # Format battery display name
+        battery_display = self._battery_id.replace("battery_", "Battery ").title()
+        self._attr_name = f"Sax {battery_display} {base_name}"
+
+        # Set default properties
+        self._attr_icon = "mdi:toggle-switch"
+        self._attr_entity_category = EntityCategory.CONFIG
+
+        # Override with entity description properties if available
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "icon")
+            and self.entity_description.icon
+        ):
+            self._attr_icon = self.entity_description.icon
+
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "entity_category")
+        ):
+            self._attr_entity_category = self.entity_description.entity_category
+
+    @property
+    def device_info(self) -> Any:
+        """Return device info."""
+        return self.coordinator.sax_data.get_device_info(self._battery_id)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the generic switch."""
+        # Generic implementation - update coordinator data directly
+        if self.coordinator.data is None:
+            self.coordinator.data = {}
+        self.coordinator.data[self._pilot_item.name] = 1
+        self.coordinator.async_set_updated_data(self.coordinator.data)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the generic switch."""
+        # Generic implementation - update coordinator data directly
+        if self.coordinator.data is None:
+            self.coordinator.data = {}
+        self.coordinator.data[self._pilot_item.name] = 0
+        self.coordinator.async_set_updated_data(self.coordinator.data)
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if switch is enabled."""
+        if not self.coordinator.last_update_success or not self.coordinator.data:
+            return None
+
+        value = self.coordinator.data.get(self._pilot_item.name)
+        if value is None:
+            return None
+
+        # Handle different value types
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value > 0
+        if isinstance(value, str):
+            return value.lower() in ("1", "true", "on", "yes")
+
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra state attributes."""
+        if not self.coordinator.last_update_success:
+            return None
+
+        return {
+            "battery_id": self._battery_id,
+            "pilot_item_name": self._pilot_item.name,
             "last_updated": self.coordinator.last_update_success_time,
         }

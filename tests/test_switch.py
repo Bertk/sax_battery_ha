@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.sax_battery.const import DESCRIPTION_SAX_BATTERY_SWITCH
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.switch import SAXBatterySwitch
@@ -46,6 +47,7 @@ class TestSAXBatterySwitch:
             address=1000,  # Use valid Modbus address instead of 0
             battery_slave_id=1,
             factor=1.0,
+            entitydescription=DESCRIPTION_SAX_BATTERY_SWITCH,
         )
 
     def test_switch_initialization(
@@ -56,11 +58,10 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
-        assert switch.unique_id == "battery_1_test_switch_0"
-        assert switch.name == "Sax Battery 1 Test Switch"
+        assert switch.unique_id == "sax_battery_1_test_switch"
+        assert switch.name == "Sax Battery 1 On/Off"
         assert switch._battery_id == "battery_1"
         assert switch._modbus_item == modbus_item_switch
 
@@ -74,7 +75,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         assert switch.is_on is True
@@ -89,7 +89,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         assert switch.is_on is False
@@ -102,7 +101,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         await switch.async_turn_on()
@@ -122,11 +120,10 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         with pytest.raises(
-            HomeAssistantError, match="Failed to turn on Sax Battery 1 Test Switch"
+            HomeAssistantError, match="Failed to turn on Sax Battery 1 On/Off"
         ):
             await switch.async_turn_on()
 
@@ -141,11 +138,12 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         attrs = switch.extra_state_attributes
 
+        # Fixed: Handle None return value properly
+        assert attrs is not None
         assert attrs["battery_id"] == "battery_1"
         assert attrs["modbus_address"] == 1000
         assert "last_update" in attrs
@@ -161,7 +159,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         assert switch.available is False
@@ -176,7 +173,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         assert switch.is_on is None
@@ -192,7 +188,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         assert switch.is_on is None
@@ -219,7 +214,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         for string_value, expected_bool in test_cases:
@@ -234,7 +228,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         await switch.async_turn_off()
@@ -254,11 +247,10 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         with pytest.raises(
-            HomeAssistantError, match="Failed to turn off Sax Battery 1 Test Switch"
+            HomeAssistantError, match="Failed to turn off Sax Battery 1 On/Off"
         ):
             await switch.async_turn_off()
 
@@ -270,7 +262,6 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         device_info = switch.device_info
@@ -289,9 +280,8 @@ class TestSAXBatterySwitch:
             coordinator=mock_coordinator_switch,
             battery_id="battery_1",
             modbus_item=modbus_item_switch,
-            index=0,
         )
 
         # The implementation returns None for icon, meaning it uses the default
         # Home Assistant switch icon behavior
-        assert switch.icon is None
+        assert switch.icon == "mdi:battery"

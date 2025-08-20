@@ -126,6 +126,7 @@ SAX_STORAGE_STATUS = "storage_status"
 
 SOLAR_CHARGING_SWITCH = "solar_charging_switch"
 MANUAL_CONTROL_SWITCH = "manual_control_switch"
+PILOT_POWER_ENTITY = "pilot_power_entity"
 
 # Write-only register addresses that require configuration checks
 WRITE_ONLY_REGISTERS = {41, 42, 43, 44}
@@ -165,6 +166,16 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
     native_max_value=LIMIT_MAX_DISCHARGE_PER_BATTERY,
+    native_step=100,
+)
+
+DESCRIPTION_PILOT_POWER_ENTITY = NumberEntityDescription(
+    key=PILOT_POWER_ENTITY,
+    name="Pilot Power",
+    mode=NumberMode.SLIDER,
+    native_unit_of_measurement=UnitOfPower.WATT,
+    native_min_value=0,
+    native_max_value=LIMIT_MAX_CHARGE_PER_BATTERY,
     native_step=100,
 )
 
@@ -569,5 +580,6 @@ AGGREGATED_ITEMS: list[SAXItem] = [
 PILOT_ITEMS: list[SAXItem] = [
     SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH),
     SAXItem(name=MANUAL_CONTROL_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_MANUAL_CONTROL_SWITCH),
+    SAXItem(name=PILOT_POWER_ENTITY, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_PILOT_POWER_ENTITY),
 ]
 # fmt: on

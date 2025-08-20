@@ -9,72 +9,12 @@ import pytest
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.utils import (
-    create_entity_unique_id,
     determine_entity_category,
     should_include_entity,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 
-
-class TestCreateEntityUniqueId:
-    """Test create_entity_unique_id function."""
-
-    def test_create_unique_id_with_modbus_item(self) -> None:
-        """Test creating unique ID with ModbusItem."""
-        api_item = ModbusItem(
-            name="voltage",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR,
-            address=100,
-            battery_slave_id=1,
-            factor=10.0,
-        )
-
-        result = create_entity_unique_id("battery_a", api_item, 0)
-        assert result == "battery_a_voltage_0"
-
-    def test_create_unique_id_with_sax_item(self) -> None:
-        """Test creating unique ID with SAXItem."""
-        sax_item = SAXItem(
-            name="total_power",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR_CALC,
-        )
-
-        result = create_entity_unique_id("battery_b", sax_item, 1)
-        assert result == "battery_b_total_power_1"
-
-    def test_create_unique_id_with_different_indices(self) -> None:
-        """Test creating unique IDs with different indices."""
-        api_item = ModbusItem(
-            name="temperature",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR,
-            address=200,
-            battery_slave_id=1,
-            factor=1.0,
-        )
-
-        result_0 = create_entity_unique_id("battery_c", api_item, 0)
-        result_5 = create_entity_unique_id("battery_c", api_item, 5)
-
-        assert result_0 == "battery_c_temperature_0"
-        assert result_5 == "battery_c_temperature_5"
-
-    def test_create_unique_id_with_special_characters_in_name(self) -> None:
-        """Test creating unique ID with special characters in item name."""
-        api_item = ModbusItem(
-            name="max_charge_power",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.NUMBER,
-            address=300,
-            battery_slave_id=1,
-            factor=1.0,
-        )
-
-        result = create_entity_unique_id("battery_a", api_item, 2)
-        assert result == "battery_a_max_charge_power_2"
 
 class TestDetermineEntityCategory:
     """Test determine_entity_category function."""

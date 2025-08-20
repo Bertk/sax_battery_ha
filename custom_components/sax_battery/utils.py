@@ -23,52 +23,6 @@ from .const import (
 from .items import ModbusItem, SAXItem
 
 
-def create_entity_unique_id(
-    battery_id: str, modbus_item: ModbusItem | SAXItem, index: int
-) -> str:
-    """Create unique ID for an entity.
-
-    Args:
-        battery_id: Battery identifier (e.g., "battery_a")
-        modbus_item: Modbus item
-        index: Item index
-
-    Returns:
-        Unique entity ID without duplicate battery references
-
-    """
-    # Remove semantic suffixes like "(Calculated)" from SAXItem names
-    clean_name = modbus_item.name.replace(" (Calculated)", "")
-
-    # Normalize the clean name to lowercase for comparison
-    clean_name_lower = clean_name.lower()
-    battery_id_lower = battery_id.lower()
-
-    # Extract battery letter for more specific checking
-    battery_letter = battery_id.split("_")[-1] if "_" in battery_id else battery_id
-
-    # More comprehensive battery reference patterns to check
-    battery_patterns = [
-        battery_id_lower,  # "battery_a"
-        f"sax_{battery_id_lower}",  # "sax_battery_a"
-        f"{battery_letter}_",  # "a_" at start
-        f"_{battery_letter}_",  # "_a_" in middle
-        f"_{battery_letter}",  # "_a" at end
-    ]
-
-    # Check if any battery pattern is already in the name
-    contains_battery_ref = any(
-        pattern in clean_name_lower for pattern in battery_patterns
-    )
-
-    if contains_battery_ref:
-        # If battery reference is already in the name, use it as-is
-        return f"{clean_name}_{index}"
-    else:  # noqa: RET505
-        # If no battery reference, add battery_id prefix
-        return f"{battery_id}_{clean_name}_{index}"
-
-
 def format_battery_display_name(battery_id: str) -> str:
     """Format battery ID into a human-readable display name.
 
