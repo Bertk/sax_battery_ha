@@ -142,22 +142,12 @@ class SAXBatteryNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
         self._attr_mode = NumberMode.AUTO
         self._attr_entity_category = determine_entity_category(modbus_item)
 
-        # Override with entity description properties if available
-        if hasattr(self, "entity_description") and self.entity_description:
-            if hasattr(self.entity_description, "native_min_value"):
-                self._attr_native_min_value = self.entity_description.native_min_value
-            if hasattr(self.entity_description, "native_max_value"):
-                self._attr_native_max_value = self.entity_description.native_max_value
-            if hasattr(self.entity_description, "native_step"):
-                self._attr_native_step = self.entity_description.native_step
-            if hasattr(self.entity_description, "native_unit_of_measurement"):
-                self._attr_native_unit_of_measurement = (
-                    self.entity_description.native_unit_of_measurement
-                )
-            if hasattr(self.entity_description, "mode"):
-                self._attr_mode = self.entity_description.mode
-            if hasattr(self.entity_description, "entity_category"):
-                self._attr_entity_category = self.entity_description.entity_category
+        # Set entity description from modbus item if available
+        if self._modbus_item.entitydescription is not None:
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
+
+        if isinstance(self.entity_description.name, str):
+            item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
 
         # Apply dynamic limits based on battery count for charge/discharge entities
         self._apply_dynamic_limits()

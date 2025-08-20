@@ -12,7 +12,7 @@ from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.number import SAXBatteryNumber, async_setup_entry
 from homeassistant.components.number import NumberEntityDescription, NumberMode
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
@@ -122,33 +122,10 @@ class TestSAXBatteryNumber:
         )
 
         # Test that values come from entity description
-        assert number.native_min_value == 0
-        assert number.native_max_value == 10000
-        assert number.native_step == 100
-        assert number.native_unit_of_measurement == "W"
-
-    def test_number_init_without_entity_description(
-        self, mock_coordinator_number_test
-    ) -> None:
-        """Test number entity initialization without entity description."""
-        item_without_desc = ModbusItem(
-            name="sax_test_number",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.NUMBER_WO,
-        )
-
-        number = SAXBatteryNumber(
-            coordinator=mock_coordinator_number_test,
-            battery_id="battery_a",
-            modbus_item=item_without_desc,
-        )
-
-        # Test default values
-        assert number.native_min_value == 0.0
-        assert number.native_max_value == 100.0
-        assert number.native_step == 1.0
-        assert number.native_unit_of_measurement is None
-        assert number.name == "Sax Battery A Test Number"
+        assert number.entity_description.native_min_value == 0
+        assert number.entity_description.native_max_value == 10000
+        assert number.entity_description.native_step == 100
+        assert number.entity_description.native_unit_of_measurement == "W"
 
     def test_number_native_value(
         self, mock_coordinator_number_test, power_number_item_test
@@ -365,7 +342,7 @@ class TestNumberEntityConfiguration:
             modbus_item=percentage_number_item_test,
         )
 
-        assert number.native_unit_of_measurement == "%"
+        assert number.entity_description.native_unit_of_measurement == "%"
         assert number.name == "Sax Battery A Minimum State of Charge"
 
     def test_number_name_formatting(self, mock_coordinator_number_test) -> None:
@@ -374,6 +351,15 @@ class TestNumberEntityConfiguration:
             name="sax_test_underscore_name",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER,
+            entitydescription=NumberEntityDescription(
+                key="sax_test_underscore_name",
+                name="Sax Test Underscore Name",
+                mode=NumberMode.SLIDER,
+                native_unit_of_measurement=UnitOfPower.WATT,
+                native_min_value=0,
+                native_max_value=3500,
+                native_step=100,
+            ),
         )
 
         number = SAXBatteryNumber(
@@ -393,6 +379,15 @@ class TestNumberEntityConfiguration:
             address=200,
             battery_slave_id=1,
             factor=1.0,
+            entitydescription=NumberEntityDescription(
+                key="sax_test_underscore_name",
+                name="Sax Test Underscore Name",
+                mode=NumberMode.AUTO,
+                native_unit_of_measurement=UnitOfPower.WATT,
+                native_min_value=0,
+                native_max_value=3500,
+                native_step=100,
+            ),
         )
 
         box_number = SAXBatteryNumber(
@@ -425,7 +420,7 @@ class TestNumberEntityConfiguration:
             modbus_item=item_with_mode,
         )
 
-        assert number.mode == NumberMode.SLIDER
+        assert number.entity_description.mode == NumberMode.SLIDER
 
     def test_number_entity_category_config(self, mock_coordinator_number_test) -> None:
         """Test number entity category configuration."""
@@ -433,6 +428,15 @@ class TestNumberEntityConfiguration:
             name="sax_config_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER_WO,
+            entitydescription=NumberEntityDescription(
+                key="sax_test_underscore_name",
+                name="Sax Test Underscore Name",
+                mode=NumberMode.AUTO,
+                native_unit_of_measurement=UnitOfPower.WATT,
+                native_min_value=0,
+                native_max_value=3500,
+                native_step=100,
+            ),
         )
 
         number = SAXBatteryNumber(
@@ -456,6 +460,15 @@ class TestNumberEntityConfiguration:
             name="sax_diagnostic_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER_WO,
+            entitydescription=NumberEntityDescription(
+                key="sax_test_underscore_name",
+                name="Sax Test Underscore Name",
+                mode=NumberMode.AUTO,
+                native_unit_of_measurement=UnitOfPower.WATT,
+                native_min_value=0,
+                native_max_value=3500,
+                native_step=100,
+            ),
         )
 
         number = SAXBatteryNumber(
@@ -499,6 +512,15 @@ class TestNumberEntityConfiguration:
             name="sax_unitless_number",
             device=DeviceConstants.SYS,
             mtype=TypeConstants.NUMBER_WO,
+            entitydescription=NumberEntityDescription(
+                key="sax_test_underscore_name",
+                name="Sax Test Underscore Name",
+                mode=NumberMode.AUTO,
+                native_unit_of_measurement=UnitOfPower.WATT,
+                native_min_value=0,
+                native_max_value=3500,
+                native_step=100,
+            ),
         )
 
         number = SAXBatteryNumber(
@@ -507,4 +529,4 @@ class TestNumberEntityConfiguration:
             modbus_item=unitless_item,
         )
 
-        assert number.native_unit_of_measurement is None
+        assert number.entity_description.native_unit_of_measurement == UnitOfPower.WATT

@@ -88,6 +88,7 @@ class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEnt
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
             self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
+
         if isinstance(self.entity_description.name, str):
             item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
 
