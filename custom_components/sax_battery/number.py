@@ -23,7 +23,6 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem
-from .models import SAXBatteryData
 from .utils import (
     calculate_system_max_charge,
     calculate_system_max_discharge,
@@ -39,7 +38,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up SAX Battery number entities."""
     # Get data from hass.data
-    sax_data: SAXBatteryData = hass.data[DOMAIN][config_entry.entry_id]
+    integration_data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinators = integration_data["coordinators"]
+    sax_data = integration_data["sax_data"]
 
     # Get battery count from config
     battery_count = config_entry.data.get(CONF_BATTERY_COUNT, 1)
@@ -47,7 +48,7 @@ async def async_setup_entry(
     entities: list[SAXBatteryNumber] = []
 
     # Create numbers for each battery
-    for battery_id, coordinator in sax_data.coordinators.items():
+    for battery_id, coordinator in coordinators.items():
         # Regular writable number items
         number_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),

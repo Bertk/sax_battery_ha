@@ -49,13 +49,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SAX Battery pilot entities."""
-    sax_data: SAXBatteryData = hass.data[DOMAIN][config_entry.entry_id]
+    integration_data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinators = integration_data["coordinators"]
+    sax_data = integration_data["sax_data"]
 
     entities: list[SwitchEntity | NumberEntity] = []
 
     # Create pilot entities only for master battery
     master_battery_id = sax_data.master_battery_id
-    if master_battery_id and master_battery_id in sax_data.coordinators:
+    if master_battery_id and master_battery_id in coordinators:
         coordinator = sax_data.coordinators[master_battery_id]
         pilot = SAXBatteryPilot(hass, sax_data, coordinator)
 

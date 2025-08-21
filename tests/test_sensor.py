@@ -417,7 +417,12 @@ class TestSensorPlatformSetup:
         mock_sax_data.get_sax_items_for_battery.return_value = [mock_sax_item]
 
         # Store mock data in hass
-        hass.data["sax_battery"] = {mock_config_entry_sensor.entry_id: mock_sax_data}
+        hass.data["sax_battery"] = {
+            mock_config_entry_sensor.entry_id: {
+                "coordinators": {"battery_a": mock_coordinator},
+                "sax_data": mock_sax_data,
+            }
+        }
 
         entities = []
 
@@ -461,7 +466,12 @@ class TestSensorPlatformSetup:
         mock_sax_data.get_sax_items_for_battery.return_value = []
 
         # Store mock data in hass
-        hass.data["sax_battery"] = {mock_config_entry_sensor.entry_id: mock_sax_data}
+        hass.data["sax_battery"] = {
+            mock_config_entry_sensor.entry_id: {
+                "coordinators": {"battery_a": mock_coordinator},
+                "sax_data": mock_sax_data,
+            }
+        }
 
         entities = []
 
@@ -521,7 +531,12 @@ class TestSensorPlatformSetup:
         ]
 
         # Store mock data in hass
-        hass.data["sax_battery"] = {mock_config_entry_sensor.entry_id: mock_sax_data}
+        hass.data["sax_battery"] = {
+            mock_config_entry_sensor.entry_id: {
+                "coordinators": {"battery_a": mock_coordinator},
+                "sax_data": mock_sax_data,
+            }
+        }
 
         entities = []
 

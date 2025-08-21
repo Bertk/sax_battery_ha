@@ -18,7 +18,6 @@ from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .enums import TypeConstants
 from .items import ModbusItem
-from .models import SAXBatteryData
 from .utils import format_battery_display_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,12 +29,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SAX Battery switch platform."""
-    sax_data: SAXBatteryData = hass.data[DOMAIN][config_entry.entry_id]
+    integration_data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinators = integration_data["coordinators"]
+    sax_data = integration_data["sax_data"]
 
     entities: list[SAXBatterySwitch] = []
 
     # Create switch entities for each battery
-    for battery_id, coordinator in sax_data.coordinators.items():
+    for battery_id, coordinator in coordinators.items():
         if not isinstance(coordinator, SAXBatteryCoordinator):
             continue
 
