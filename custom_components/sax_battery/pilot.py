@@ -12,7 +12,6 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -147,9 +146,6 @@ class SAXBatteryPilot:
         self.min_soc = self.entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC)
         self.update_interval = self.entry.data.get(
             CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
-        )
-        self.solar_charging_enabled = self.entry.data.get(
-            CONF_ENABLE_SOLAR_CHARGING, True
         )
         _LOGGER.debug(
             "Updated config values - min_soc: %s%%, update_interval: %ss",
@@ -385,7 +381,7 @@ class SAXBatteryPilot:
             self.calculated_power = target_power
 
             # Send to battery if solar charging is enabled
-            if self.solar_charging_enabled:
+            if self.get_solar_charging_enabled():
                 await self.send_power_command(target_power, power_factor)
             else:
                 await self.send_power_command(0, power_factor)
@@ -489,65 +485,6 @@ class SAXBatteryPilot:
         except (OSError, ValueError, TypeError) as err:
             _LOGGER.error("Failed to send power command: %s", err)
 
-    async def set_manual_control(self, enabled: bool) -> bool:
-        """Enable or disable manual control mode."""
-        try:
-            manual_item = self._get_pilot_item(MANUAL_CONTROL_SWITCH)
-            if not manual_item:
-                _LOGGER.error("Manual control pilot item not found")
-                return False
-
-            # Handle SAXItem directly - update internal state
-            self.coordinator.update_sax_item_state(
-                manual_item.name, 1 if enabled else 0
-            )
-
-            # Update the coordinator data for immediate UI feedback
-            self.coordinator.data[manual_item.name] = 1 if enabled else 0
-
-            # Trigger coordinator update to notify entities
-            self.coordinator.async_set_updated_data(self.coordinator.data)
-
-            _LOGGER.debug("Manual control set to %s", enabled)
-            return True  # noqa: TRY300
-        except (OSError, ValueError, TypeError, AttributeError) as err:
-            _LOGGER.error("Error setting manual control: %s", err)
-            return False
-
-    async def set_solar_charging(self, enabled: bool) -> bool:
-        """Set solar charging mode for the battery system."""
-        try:
-            solar_item = self._get_pilot_item(SOLAR_CHARGING_SWITCH)
-            if not solar_item:
-                _LOGGER.error("Solar charging pilot item not found")
-                return False
-
-            # Handle SAXItem directly - update internal state
-            value = 1 if enabled else 0
-            self.coordinator.update_sax_item_state(solar_item.name, value)
-
-            # Update the coordinator data for immediate UI feedback
-            self.coordinator.data[solar_item.name] = value
-
-            # Update internal state for pilot calculations
-            self.solar_charging_enabled = enabled
-
-            # Trigger coordinator update to notify entities
-            self.coordinator.async_set_updated_data(self.coordinator.data)
-
-            if enabled:
-                # Recalculate and send current value
-                await self._async_update_pilot()
-            else:
-                # Send 0 to stop charging from solar
-                await self.send_power_command(0, 1.0)
-
-            _LOGGER.debug("Solar charging set to %s", enabled)
-            return True  # noqa: TRY300
-        except (OSError, ValueError, TypeError, AttributeError) as err:
-            _LOGGER.error("Error setting solar charging: %s", err)
-            return False
-
     async def set_manual_power(self, power_value: float) -> None:
         """Set a manual power value."""
         # Apply SOC constraints
@@ -627,13 +564,9 @@ class SAXBatteryPilot:
 
         return None
 
-    @property
-    def solar_charging_enabled_property(self) -> bool | None:
-        """Return current solar charging state."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
-
-        return self.coordinator.data.get(SOLAR_CHARGING_SWITCH) == 1
+    def get_solar_charging_enabled(self) -> bool:
+        """Get solar charging state."""
+        return self.entry.data.get(CONF_ENABLE_SOLAR_CHARGING, True)
 
     @property
     def manual_control_enabled(self) -> bool | None:
@@ -725,7 +658,7 @@ class SAXBatteryPilotPowerEntity(
 
         return {
             "battery_id": self._battery_id,
-            "solar_charging_enabled": self._pilot.solar_charging_enabled,
+            "solar_charging_enabled": self._pilot.get_solar_charging_enabled(),
             "manual_control_enabled": self._pilot.manual_control_enabled,
             "max_charge_power": self._pilot.max_charge_power,
             "max_discharge_power": self._pilot.max_discharge_power,
@@ -802,22 +735,10 @@ class SAXBatterySolarChargingSwitch(
         """Return device info."""
         return self.coordinator.sax_data.get_device_info(self._battery_id)
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on solar charging."""
-        success = await self._pilot.set_solar_charging(True)
-        if not success:
-            raise HomeAssistantError("Failed to enable solar charging")
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off solar charging."""
-        success = await self._pilot.set_solar_charging(False)
-        if not success:
-            raise HomeAssistantError("Failed to disable solar charging")
-
     @property
     def is_on(self) -> bool | None:
         """Return true if solar charging is enabled."""
-        return self._pilot.solar_charging_enabled_property
+        return self._pilot.get_solar_charging_enabled()
 
     @property
     def icon(self) -> str | None:
@@ -907,18 +828,6 @@ class SAXBatteryManualControlSwitch(
         """Return device info."""
         return self.coordinator.sax_data.get_device_info(self._battery_id)
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable manual control functionality."""
-        success = await self._pilot.set_manual_control(True)
-        if not success:
-            raise HomeAssistantError("Failed to enable manual control")
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable manual control functionality."""
-        success = await self._pilot.set_manual_control(False)
-        if not success:
-            raise HomeAssistantError("Failed to disable manual control")
-
     @property
     def is_on(self) -> bool | None:
         """Return true if manual control is enabled."""
@@ -934,7 +843,7 @@ class SAXBatteryManualControlSwitch(
             "battery_id": self._battery_id,
             "charge_power_limit": self._pilot.current_charge_power_limit,
             "discharge_power_limit": self._pilot.current_discharge_power_limit,
-            "solar_charging_enabled": self._pilot.solar_charging_enabled,
+            "solar_charging_enabled": self._pilot.get_solar_charging_enabled(),
             "calculated_power": self._pilot.calculated_power,
             "last_updated": self.coordinator.last_update_success_time,
         }
