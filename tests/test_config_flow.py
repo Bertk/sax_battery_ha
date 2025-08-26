@@ -346,14 +346,21 @@ class TestSAXBatteryConfigFlow:
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "init"
 
-        # Configure options - only limit_power should be available for non-pilot entry
+        # Configure options - both feature toggles should be available
         result2 = await hass.config_entries.options.async_configure(
             result["flow_id"],
-            {"limit_power": True},
+            {
+                "pilot_from_ha": False,  # Keep pilot disabled
+                "limit_power": True,  # Enable power limits
+            },
         )
 
         assert result2.get("type") == FlowResultType.CREATE_ENTRY
-        assert result2.get("data") == {"limit_power": True}
+        # Updated expectation - new implementation always includes both feature toggles
+        assert result2.get("data") == {
+            "pilot_from_ha": False,
+            "limit_power": True,
+        }
 
     async def test_options_flow_with_pilot_settings(
         self,
@@ -401,12 +408,14 @@ class TestSAXBatteryConfigFlow:
             assert "min_soc" in schema_keys
             assert "auto_pilot_interval" in schema_keys
             assert "enable_solar_charging" in schema_keys
+            assert "pilot_from_ha" in schema_keys
             assert "limit_power" in schema_keys
 
         # Configure options
         result2 = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
+                "pilot_from_ha": True,  # Keep pilot enabled
                 "min_soc": 25,
                 "auto_pilot_interval": 45,
                 "enable_solar_charging": False,
@@ -415,9 +424,122 @@ class TestSAXBatteryConfigFlow:
         )
 
         assert result2.get("type") == FlowResultType.CREATE_ENTRY
+        # Updated expectation - new implementation includes pilot_from_ha toggle
         assert result2.get("data") == {
+            "pilot_from_ha": True,
             "min_soc": 25,
             "auto_pilot_interval": 45,
             "enable_solar_charging": False,
             "limit_power": True,
+        }
+
+    async def test_options_flow_disable_pilot(
+        self,
+        hass: HomeAssistant,
+        enable_custom_integrations,
+        pilot_enabled_config_data,
+    ) -> None:
+        """Test disabling pilot mode through options flow."""
+        # Create unique entry ID
+        entry_id = str(uuid.uuid4())
+
+        # Create an existing entry with pilot enabled manually
+        entry = ConfigEntry(
+            version=1,
+            minor_version=1,
+            domain=DOMAIN,
+            title="SAX Battery",
+            data=pilot_enabled_config_data,
+            options={},
+            source=config_entries.SOURCE_USER,
+            entry_id=entry_id,
+            unique_id="test-disable-pilot-unique-id",
+            discovery_keys=MappingProxyType({}),
+            subentries_data=None,
+            disabled_by=None,
+            created_at=None,
+            modified_at=None,
+            pref_disable_new_entities=False,
+            pref_disable_polling=False,
+        )
+
+        # Add entry manually to the registry
+        hass.config_entries._entries[entry.entry_id] = entry
+
+        # Start options flow
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result.get("type") == FlowResultType.FORM
+        assert result.get("step_id") == "init"
+
+        # Disable pilot mode
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "pilot_from_ha": False,  # Disable pilot
+                "limit_power": True,  # Keep power limits enabled
+            },
+        )
+
+        assert result2.get("type") == FlowResultType.CREATE_ENTRY
+        # When pilot is disabled, pilot-specific options should not be in the result
+        assert result2.get("data") == {
+            "pilot_from_ha": False,
+            "limit_power": True,
+        }
+
+    async def test_options_flow_enable_pilot(
+        self,
+        hass: HomeAssistant,
+        enable_custom_integrations,
+        single_battery_config_data,
+    ) -> None:
+        """Test enabling pilot mode through options flow."""
+        # Create unique entry ID
+        entry_id = str(uuid.uuid4())
+
+        # Create an existing entry without pilot
+        entry = ConfigEntry(
+            version=1,
+            minor_version=1,
+            domain=DOMAIN,
+            title="SAX Battery",
+            data=single_battery_config_data,
+            options={},
+            source=config_entries.SOURCE_USER,
+            entry_id=entry_id,
+            unique_id="test-enable-pilot-unique-id",
+            discovery_keys=MappingProxyType({}),
+            subentries_data=None,
+            disabled_by=None,
+            created_at=None,
+            modified_at=None,
+            pref_disable_new_entities=False,
+            pref_disable_polling=False,
+        )
+
+        # Add entry manually to the registry
+        hass.config_entries._entries[entry.entry_id] = entry
+
+        # Start options flow
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result.get("type") == FlowResultType.FORM
+        assert result.get("step_id") == "init"
+
+        # Enable pilot mode
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "pilot_from_ha": True,  # Enable pilot
+                "limit_power": False,  # Keep power limits disabled
+            },
+        )
+
+        assert result2.get("type") == FlowResultType.CREATE_ENTRY
+        # When enabling pilot, only the feature toggles should be saved
+        # Pilot-specific settings will use defaults until configured
+        assert result2.get("data") == {
+            "pilot_from_ha": True,
+            "limit_power": False,
         }
