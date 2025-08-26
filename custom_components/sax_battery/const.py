@@ -243,7 +243,7 @@ DESCRIPTION_SAX_CAPACITY = SensorEntityDescription(
     key=SAX_CAPACITY,
     name="Sax Capacity",
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    state_class=SensorStateClass.TOTAL,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
@@ -363,7 +363,7 @@ DESCRIPTION_SAX_REACTIVE_POWER = SensorEntityDescription(
     name="Sax Reactive Power",
     device_class=SensorDeviceClass.REACTIVE_POWER,
     state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement="VAR",  # Volt-Ampere reactive
+    native_unit_of_measurement="var",  # Volt-Ampere reactive
 )
 
 DESCRIPTION_SAX_POWER_FACTOR = SensorEntityDescription(
@@ -532,7 +532,7 @@ MODBUS_BATTERY_SWITCH_ITEMS: list[ModbusItem] = [
 
 # Battery items - static/accumulated data (polled at lower frequency)
 MODBUS_BATTERY_STATIC_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=40, address=40117, name=SAX_TEMPERATURE, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.1, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_TEMPERATURE,),
+    ModbusItem(battery_slave_id=40, address=40117, name=SAX_TEMPERATURE, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_TEMPERATURE,),
     ModbusItem(battery_slave_id=40, address=40115, name=SAX_CAPACITY, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10 ,device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CAPACITY),
     ModbusItem(battery_slave_id=40, address=40116, name=SAX_CYCLES,  mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CYCLES),
     ModbusItem(battery_slave_id=40, address=40096, name=SAX_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_PRODUCED),

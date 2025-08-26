@@ -176,8 +176,10 @@ class ModbusAPI:
                     address = modbus_item.address
                     device_id = modbus_item.battery_slave_id
                 else:
-                    address = 41  # Default to valid SAX battery address
-                    device_id = 1
+                    _LOGGER.error(
+                        "ModbusItem is required for write_holding_registers operation"
+                    )
+                    return False
 
                 # Check for valid SAX battery address
                 if address != 41:
@@ -228,9 +230,10 @@ class ModbusAPI:
                     address = modbus_item.address
                     device_id = modbus_item.battery_slave_id
                 else:
-                    raw_value = int(value)
-                    address = 0
-                    device_id = 1
+                    _LOGGER.error(
+                        "ModbusItem is required for write_holding_registers operation"
+                    )
+                    return False
 
                 # Type guard to ensure _modbus_client is not None
                 if self._modbus_client is None:
