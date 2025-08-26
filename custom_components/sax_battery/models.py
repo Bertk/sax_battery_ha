@@ -18,7 +18,6 @@ from .const import (
     MODBUS_BATTERY_SWITCH_ITEMS,
     MODBUS_SMARTMETER_BASIC_ITEMS,
     MODBUS_SMARTMETER_PHASE_ITEMS,
-    PILOT_ITEMS,
     SAX_CURRENT_L1,
     SAX_POWER,
     SAX_SMARTMETER_TOTAL_POWER,
@@ -110,7 +109,6 @@ class BatteryModel(BaseModel):
         # Only master battery gets aggregated and pilot items
         if self.is_master:
             items.extend(AGGREGATED_ITEMS)
-            items.extend(PILOT_ITEMS)
 
         return items
 

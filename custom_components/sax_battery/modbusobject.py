@@ -67,7 +67,7 @@ class ModbusObject:
                     )
                     return False
                 case _:
-                    return await self._modbus_api.write_holding_register(
+                    return await self._modbus_api.write_holding_registers(
                         value=value, modbus_item=self._modbus_item
                     )
         except ModbusException:
@@ -152,7 +152,68 @@ class ModbusAPI:
             raise ModbusException(msg)  # type: ignore[no-untyped-call]
         return self._modbus_client
 
-    async def write_holding_register(
+    async def write_nominal_power(
+        self, value: float, power_factor: int, modbus_item: ModbusItem | None = None
+    ) -> bool:
+        """Write nominal power value to holding register with custom factor.
+
+        Args:
+            value: The nominal power value to write
+            power_factor: Power factor to apply (will be scaled by 10)
+            modbus_item: Optional modbus item for address and device_id info
+
+        Returns:
+            bool: True if write was successful, False otherwise
+
+        """
+        if self._modbus_client is None or not self._modbus_client.connected:
+            return False
+
+        def _write() -> bool:
+            try:
+                # Determine address and device_id
+                if modbus_item:
+                    address = modbus_item.address
+                    device_id = modbus_item.battery_slave_id
+                else:
+                    address = 41  # Default to valid SAX battery address
+                    device_id = 1
+
+                # Check for valid SAX battery address
+                if address != 41:
+                    _LOGGER.error(
+                        "Invalid address %s for nominal power write, only address 41 is supported",
+                        address,
+                    )
+                    return False
+
+                # Convert power to integer for Modbus
+                power_int = int(value) & 0xFFFF
+
+                # Convert PF to integer (assuming PF is a small decimal like 0.95)
+                # Scale PF by 10 to preserve precision
+                pf_int = int(power_factor * 10) & 0xFFFF
+
+                # Type guard to ensure _modbus_client is not None
+                if self._modbus_client is None:
+                    return False
+
+                result = self._modbus_client.write_registers(
+                    address=address, values=[power_int, pf_int], device_id=device_id
+                )
+                return not result.isError()
+            except ModbusException as exc:
+                _LOGGER.error("Modbus error during nominal power write: %s", exc)
+                return False
+            except (ValueError, TypeError) as exc:
+                _LOGGER.error(
+                    "Value conversion error during nominal power write: %s", exc
+                )
+                return False
+
+        return await asyncio.get_event_loop().run_in_executor(None, _write)
+
+    async def write_holding_registers(
         self, value: float, modbus_item: ModbusItem | None = None
     ) -> bool:
         """Write to holding register."""
@@ -175,12 +236,17 @@ class ModbusAPI:
                 if self._modbus_client is None:
                     return False
 
-                result = self._modbus_client.write_register(
-                    address=address, value=raw_value, device_id=device_id
+                # SAX Battery write requires specific handling
+                # modbus function: 10H PRESET MULTIPLE REGISTERS
+                result = self._modbus_client.write_registers(
+                    address=address, values=[raw_value], device_id=device_id
                 )
                 return not result.isError()
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.error("Write error: %s", exc)
+            except ModbusException as exc:
+                _LOGGER.error("Modbus error during write: %s", exc)
+                return False
+            except (ValueError, TypeError) as exc:
+                _LOGGER.error("Value conversion error: %s", exc)
                 return False
 
         return await asyncio.get_event_loop().run_in_executor(None, _write)

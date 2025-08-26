@@ -274,9 +274,7 @@ class TestSAXBatteryPilot:
     async def test_set_charge_power_limit_success(self, pilot_instance_test):
         """Test setting charge power limit successfully."""
         mock_item = MagicMock()
-        mock_item.name = (
-            "sax_max_charge_power"  # Use actual item name from implementation
-        )
+        mock_item.name = "sax_max_charge_power"
 
         with (
             patch.object(
@@ -286,17 +284,15 @@ class TestSAXBatteryPilot:
             ),
             patch.object(
                 pilot_instance_test.coordinator,
-                "async_write_int_value",  # Use correct method name
+                "async_write_number_value",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_write,
         ):
             result = await pilot_instance_test.set_charge_power_limit(3000)
 
             assert result is True
-            pilot_instance_test.coordinator.async_write_int_value.assert_called_once_with(
-                mock_item, 3000
-            )
+            mock_write.assert_called_once_with(mock_item, float(3000))
 
     async def test_set_charge_power_limit_no_item(self, pilot_instance_test):
         """Test setting charge power limit with no item."""

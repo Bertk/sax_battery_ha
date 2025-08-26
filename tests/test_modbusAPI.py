@@ -58,7 +58,7 @@ class TestModbusObject:
     @pytest.mark.asyncio
     async def test_async_write_value_success(self, mock_modbus_object, mock_modbus_api):
         """Test successful async_write_value."""
-        mock_modbus_api.write_holding_register = AsyncMock(return_value=True)
+        mock_modbus_api.write_holding_registers = AsyncMock(return_value=True)
         mock_modbus_object._modbus_item.mtype = TypeConstants.NUMBER
         result = await mock_modbus_object.async_write_value(1234)
         assert result is True
@@ -68,7 +68,7 @@ class TestModbusObject:
         self, mock_modbus_object, mock_modbus_api
     ):
         """Test async_write_value to read-only register."""
-        mock_modbus_api.write_holding_register = AsyncMock(return_value=True)
+        mock_modbus_api.write_holding_registers = AsyncMock(return_value=True)
         mock_modbus_object._modbus_item.mtype = TypeConstants.SENSOR
         result = await mock_modbus_object.async_write_value(1234)
         assert result is False
@@ -78,7 +78,7 @@ class TestModbusObject:
         self, mock_modbus_object, mock_modbus_api
     ):
         """Test async_write_value with ModbusException."""
-        mock_modbus_api.write_holding_register = AsyncMock(
+        mock_modbus_api.write_holding_registers = AsyncMock(
             side_effect=ModbusException("fail")
         )
         mock_modbus_object._modbus_item.mtype = TypeConstants.NUMBER

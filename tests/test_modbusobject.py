@@ -84,36 +84,45 @@ class TestModbusAPI:
         assert api.close() is False
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")
-    async def test_write_holding_register_success(self, mock_client_class):
-        """Test successful write_holding_register."""
+    async def test_write_holding_registers_success(self, mock_client_class):
+        """Test successful write_holding_registers."""
 
         mock_client = MagicMock()
         type(mock_client).connected = PropertyMock(return_value=True)
         mock_result = MagicMock()
         mock_result.isError.return_value = False
-        mock_client.write_register.return_value = mock_result
+        # Fix: Mock write_registers (plural) instead of write_register (singular)
+        mock_client.write_registers.return_value = mock_result
         mock_client_class.return_value = mock_client
 
         # Create a proper ModbusItem
         modbus_item = ModbusItem(
             name="test_item",
-            mtype=TypeConstants.NUMBER,
+            mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.SYS,
             address=123,
             factor=1.0,
-            battery_slave_id=1,  # Ensure slave ID is set
+            offset=0.0,  # Add missing offset field
+            battery_slave_id=1,
         )
 
         api = ModbusAPI(host="127.0.0.1", port=502, battery_id="bat")
         # Set the client manually since we're not calling connect
         api._modbus_client = mock_client
-        result = await api.write_holding_register(value=10, modbus_item=modbus_item)
+        result = await api.write_holding_registers(value=10, modbus_item=modbus_item)
+
         assert result is True
-        mock_client.write_register.assert_called_once()
+
+        # Verify the correct method was called with expected parameters
+        mock_client.write_registers.assert_called_once_with(
+            address=123,
+            values=[10],  # Raw value after factor/offset calculation
+            device_id=1,
+        )
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")
-    async def test_write_holding_register_error(self, mock_client_class):
-        """Test write_holding_register with error response."""
+    async def test_write_holding_registers_error(self, mock_client_class):
+        """Test write_holding_registers with error response."""
 
         mock_client = MagicMock()
         type(mock_client).connected = PropertyMock(return_value=True)
@@ -133,12 +142,12 @@ class TestModbusAPI:
         api = ModbusAPI(host="127.0.0.1", port=502, battery_id="bat")
         # Set the client manually since we're not calling connect
         api._modbus_client = mock_client
-        result = await api.write_holding_register(value=10, modbus_item=modbus_item)
+        result = await api.write_holding_registers(value=10, modbus_item=modbus_item)
         assert result is False
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")
-    async def test_write_holding_register_exception(self, mock_client_class):
-        """Test ModbusException during write_holding_register."""
+    async def test_write_holding_registers_exception(self, mock_client_class):
+        """Test ModbusException during write_holding_registers."""
 
         mock_client = MagicMock()
         type(mock_client).connected = PropertyMock(return_value=True)
@@ -156,7 +165,7 @@ class TestModbusAPI:
         api = ModbusAPI(host="127.0.0.1", port=502, battery_id="bat")
         # Set the client manually since we're not calling connect
         api._modbus_client = mock_client
-        result = await api.write_holding_register(value=10, modbus_item=modbus_item)
+        result = await api.write_holding_registers(value=10, modbus_item=modbus_item)
         assert result is False
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")

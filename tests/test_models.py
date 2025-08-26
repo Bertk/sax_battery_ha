@@ -122,16 +122,23 @@ class TestBatteryModel:
 
     def test_battery_model_sax_items_master(self, battery_model_data_basic) -> None:
         """Test BatteryModel SAX items for master battery."""
+        # Ensure pilot_from_ha is enabled to generate SAX items
+        battery_model_data_basic["config_data"] = {
+            "pilot_from_ha": True,
+            "limit_power": True,
+        }
         battery = BatteryModel(**battery_model_data_basic)
 
         sax_items = battery.get_sax_items()
 
-        # Master battery should have aggregated and pilot items
+        # Master battery should have aggregated items when pilot is enabled
         assert len(sax_items) > 0
 
-        # Check for pilot items
-        pilot_items = [item for item in sax_items if item.mtype == TypeConstants.NUMBER]
-        assert len(pilot_items) > 0
+        # Check for calculated sensor items (more common than NUMBER items)
+        calc_items = [
+            item for item in sax_items if item.mtype == TypeConstants.SENSOR_CALC
+        ]
+        assert len(calc_items) > 0
 
     def test_battery_model_sax_items_slave(self, battery_model_data_slave) -> None:
         """Test BatteryModel SAX items for slave battery."""
@@ -285,11 +292,11 @@ class TestSAXBatteryData:
         master_sax_items = sax_data.get_sax_items_for_battery("battery_a")
         assert len(master_sax_items) > 0
 
-        # Check for pilot number entities
-        pilot_numbers = [
-            item for item in master_sax_items if item.mtype == TypeConstants.NUMBER
+        # Check for calculated sensor items (these are more common in SAX items)
+        calc_sensors = [
+            item for item in master_sax_items if item.mtype == TypeConstants.SENSOR_CALC
         ]
-        assert len(pilot_numbers) > 0
+        assert len(calc_sensors) > 0
 
     def test_sax_battery_data_battery_data_operations(
         self, mock_hass, mock_config_entry_dual_battery, battery_data_values

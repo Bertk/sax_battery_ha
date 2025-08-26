@@ -12,7 +12,7 @@ from custom_components.sax_battery.const import (
     CONF_MIN_SOC,
     DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
-    DESCRIPTION_PILOT_POWER_ENTITY,
+    DESCRIPTION_SAX_NOMINAL_POWER,
     PILOT_POWER_ENTITY,
     SAX_COMBINED_SOC,
 )
@@ -49,7 +49,7 @@ def mock_modbus_api():
 
     # Async methods
     api.connect = AsyncMock(return_value=True)
-    api.write_holding_register = AsyncMock(return_value=True)
+    api.write_holding_registers = AsyncMock(return_value=True)
     api.read_holding_registers = AsyncMock(return_value=[100])
     api.read_input_registers = AsyncMock(return_value=[100])
 
@@ -117,7 +117,7 @@ def mock_coordinator(mock_sax_data, mock_modbus_api):
 
     coordinator.async_request_refresh = AsyncMock()
     coordinator.async_write_number_value = AsyncMock(return_value=True)
-    coordinator.async_write_int_value = AsyncMock(return_value=True)
+    coordinator.async_set_updated_data = MagicMock()
     coordinator.async_set_updated_data = MagicMock()
     coordinator.update_sax_item_state = MagicMock()
     coordinator._async_update_data = AsyncMock(return_value={"test_value": 42})
@@ -513,7 +513,7 @@ def pilot_items_mixed():
             name=PILOT_POWER_ENTITY,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
-            entitydescription=DESCRIPTION_PILOT_POWER_ENTITY,
+            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
         ),
         SAXItem(
             name="manual_control_switch",

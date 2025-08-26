@@ -152,14 +152,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         return await modbus_obj.async_write_value(write_value)
 
-    async def async_write_int_value(self, item: ModbusItem, value: int) -> bool:
-        """Write integer value to modbus register."""
-        if item.name not in self._modbus_objects:
-            self._modbus_objects[item.name] = ModbusObject(self.modbus_api, item)
-
-        modbus_obj = self._modbus_objects[item.name]
-        return await modbus_obj.async_write_value(float(value))
-
     def update_sax_item_state(self, item: SAXItem | str, value: Any) -> None:
         """Update SAX item state in the coordinator data."""
         if isinstance(item, str):

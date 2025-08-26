@@ -418,39 +418,33 @@ class SAXBatteryPilot:
         return power_value
 
     async def send_power_command(self, power: float, power_factor: float) -> None:
-        """Send power command to battery."""
+        """Send power command to battery using write_nominal_power."""
         try:
             _LOGGER.debug(
                 "Sending power command: power=%s, power_factor=%s", power, power_factor
             )
 
-            # Get the power and power factor setpoint items
-            power_item = self._get_modbus_item("sax_power_setpoint")
-            pf_item = self._get_modbus_item("sax_power_factor_setpoint")
+            # Get the nominal power setpoint item (address 41)
+            power_item = self._get_modbus_item("sax_nominal_power_setpoint")
 
-            if not power_item or not pf_item:
+            if not power_item:
                 _LOGGER.error(
-                    "Could not find power setpoint items for battery %s",
+                    "Could not find nominal power setpoint item for battery %s",
                     self.coordinator.battery_id,
                 )
                 return
 
-            # Send power setpoint
-            success = await self.coordinator.async_write_int_value(
-                power_item, int(power)
+            # Use write_nominal_power which handles both power and power_factor
+            # Convert power_factor to int as expected by write_nominal_power
+            success = await self.coordinator.modbus_api.write_nominal_power(
+                value=power, power_factor=int(power_factor), modbus_item=power_item
             )
+
             if not success:
-                _LOGGER.error("Failed to write power setpoint")
+                _LOGGER.error("Failed to write nominal power command")
                 return
 
-            # Send power factor setpoint (convert to integer, typically *1000)
-            pf_int = int(power_factor * 1000)
-            success = await self.coordinator.async_write_int_value(pf_item, pf_int)
-            if not success:
-                _LOGGER.error("Failed to write power factor setpoint")
-                return
-
-            _LOGGER.debug("Power command sent successfully")
+            _LOGGER.debug("Nominal power command sent successfully")
 
         except ModbusException as e:
             _LOGGER.error("Modbus error sending power command: %s", e)
@@ -488,8 +482,8 @@ class SAXBatteryPilot:
                 return False
 
             charge_item = charge_items[0]
-            success = await self.coordinator.async_write_int_value(
-                charge_item, power_limit
+            success = await self.coordinator.async_write_number_value(
+                charge_item, float(power_limit)
             )
 
             if success:
@@ -528,8 +522,8 @@ class SAXBatteryPilot:
                 return False
 
             discharge_item = discharge_items[0]
-            success = await self.coordinator.async_write_int_value(
-                discharge_item, power_limit
+            success = await self.coordinator.async_write_number_value(
+                discharge_item, float(power_limit)
             )
 
             if success:
