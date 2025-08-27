@@ -10,7 +10,6 @@ class DeviceConstants(Enum):
 
     SYS = "sys"  # One or more batteries [1..3]
     SM = "sm"  # always one smart meter
-    UNKNOWN = "unknown"
 
 
 # fmt: off
@@ -44,4 +43,3 @@ class TypeConstants(Enum):  # item types -> not home assistant types
     NUMBER_RO = "number_ro"  # holding read only
     NUMBER_WO = "number_wo"  # holding write only -> holding registers 41, 42, 43, 44
     SWITCH = "switch"  # holding  on (02),off (01) values for write, read battery status values off (01), on (02), connected (03), standby (04)
-    UNKNOWN = "unknown"  # Used for error scenarios which should not happen e.g. uninitialized items

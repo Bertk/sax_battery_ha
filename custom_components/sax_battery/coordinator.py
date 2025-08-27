@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import ast
-from collections.abc import Callable
 from datetime import datetime, timedelta
 import logging
-import operator
 from typing import Any
 
 from pymodbus import ModbusException
@@ -21,16 +18,6 @@ from .modbusobject import ModbusAPI, ModbusObject
 from .models import SAXBatteryData
 
 _LOGGER = logging.getLogger(__name__)
-
-# Safe operations for calculation evaluation
-SAFE_OPERATIONS: dict[type[ast.AST], Callable[..., float]] = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.USub: operator.neg,
-    ast.UAdd: operator.pos,
-}
 
 
 class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):

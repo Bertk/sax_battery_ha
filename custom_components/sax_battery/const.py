@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -29,8 +30,8 @@ DOMAIN = "sax_battery"
 # Configuration constants for write access control
 CONF_PILOT_FROM_HA = "pilot_from_ha"
 CONF_LIMIT_POWER = "limit_power"
-CONF_MAX_CHARGE = "max_charge"
-CONF_MAX_DISCHARGE = "max_discharge"
+# CONF_MAX_CHARGE = "max_charge"
+# CONF_MAX_DISCHARGE = "max_discharge"
 
 # Battery limits per individual battery unit
 LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts per battery
@@ -77,8 +78,8 @@ SAX_MAX_DISCHARGE = "sax_max_discharge"
 SAX_STATUS = "sax_status"
 SAX_BATTERY_SWITCH = "sax_battery_switch"
 SAX_SOC = "sax_soc"
+SAX_MIN_SOC = "sax_min_soc"
 SAX_POWER = "sax_power"
-SAX_SMARTMETER = "sax_smartmeter"
 SAX_CAPACITY = "sax_capacity"
 SAX_CYCLES = "sax_cycles"
 SAX_TEMPERATURE = "sax_temperature"
@@ -124,20 +125,8 @@ SAX_SMARTMETER_VOLTAGE_L3 = "smartmeter_voltage_l3"
 SAX_SMARTMETER_TOTAL_POWER = "smartmeter_total_power"
 SAX_STORAGE_STATUS = "storage_status"
 
-# SOLAR_CHARGING_SWITCH = "solar_charging_switch"
-# MANUAL_CONTROL_SWITCH = "manual_control_switch"
-PILOT_POWER_ENTITY = "pilot_power"
-
 # Write-only register addresses that require configuration checks
 WRITE_ONLY_REGISTERS = {41, 42, 43, 44}
-
-# Register access control mapping
-REGISTER_ACCESS_CONTROL = {
-    41: CONF_PILOT_FROM_HA,
-    42: CONF_PILOT_FROM_HA,
-    43: CONF_LIMIT_POWER,
-    44: CONF_LIMIT_POWER,
-}
 
 
 # fmt: off
@@ -149,7 +138,7 @@ DESCRIPTION_SAX_MAX_CHARGE = NumberEntityDescription(
     mode=NumberMode.SLIDER,
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
-    native_max_value=LIMIT_MAX_CHARGE_PER_BATTERY,
+    native_max_value=LIMIT_MAX_CHARGE, # default single battery limit
     native_step=100,
 )
 
@@ -159,7 +148,7 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
     mode=NumberMode.SLIDER,
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
-    native_max_value=LIMIT_MAX_DISCHARGE_PER_BATTERY,
+    native_max_value=LIMIT_MAX_DISCHARGE, # default single battery limit
     native_step=100,
 )
 
@@ -223,6 +212,15 @@ DESCRIPTION_SAX_SOC = SensorEntityDescription(
     native_unit_of_measurement=PERCENTAGE,
 )
 
+DESCRIPTION_SAX_MIN_SOC = SensorEntityDescription(
+    key=SAX_MIN_SOC,
+    name="Sax Min SOC",
+    device_class=SensorDeviceClass.BATTERY,
+    state_class=SensorStateClass.MEASUREMENT,
+    native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.CONFIG,
+)
+
 DESCRIPTION_SAX_POWER = SensorEntityDescription(
     key=SAX_POWER,
     name="Sax Power",
@@ -230,14 +228,6 @@ DESCRIPTION_SAX_POWER = SensorEntityDescription(
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
 )
-
-# DESCRIPTION_SAX_SMARTMETER = SensorEntityDescription(
-#     key=SAX_SMARTMETER,
-#     name="Sax Smartmeter",
-#     device_class=SensorDeviceClass.POWER,
-#     state_class=SensorStateClass.MEASUREMENT,
-#     native_unit_of_measurement=UnitOfPower.WATT,
-# )
 
 DESCRIPTION_SAX_CAPACITY = SensorEntityDescription(
     key=SAX_CAPACITY,
@@ -580,8 +570,9 @@ AGGREGATED_ITEMS: list[SAXItem] = [
 ]
 
 # Pilot items - switches for manual control and solar charging
-# PILOT_ITEMS: list[SAXItem] = [
+PILOT_ITEMS: list[SAXItem] = [
     # SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH),
     # SAXItem(name=MANUAL_CONTROL_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_MANUAL_CONTROL_SWITCH),
-# ]
+    SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC, translation_key="sax_min_soc")
+]
 # fmt: on

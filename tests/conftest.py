@@ -13,8 +13,8 @@ from custom_components.sax_battery.const import (
     DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DESCRIPTION_SAX_NOMINAL_POWER,
-    PILOT_POWER_ENTITY,
     SAX_COMBINED_SOC,
+    SAX_NOMINAL_POWER,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
@@ -510,7 +510,7 @@ def pilot_items_mixed():
     """Create mixed pilot items for testing."""
     return [
         SAXItem(
-            name=PILOT_POWER_ENTITY,
+            name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
             entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,

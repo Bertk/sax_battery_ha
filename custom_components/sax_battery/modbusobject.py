@@ -98,7 +98,6 @@ class ModbusAPI:
         self._battery_id = battery_id
         self._modbus_client: ModbusTcpClient | None = None
         self._connect_pending = False
-        self._failed_reconnect_counter = 0
 
     async def connect(self, startup: bool = False) -> bool:
         """Connect to the modbus device."""
@@ -113,18 +112,15 @@ class ModbusAPI:
                 None, self._modbus_client.connect
             ):
                 if self._modbus_client.connected:
-                    self._failed_reconnect_counter = 0
                     _LOGGER.debug("Connected to modbus device %s", self._battery_id)
                     return True
 
             # Connection failed
-            self._failed_reconnect_counter += 1
             self._close_connection()
             return False  # noqa: TRY300
 
         except ModbusException as exc:
             _LOGGER.error("ModbusException during connect: %s", exc)
-            self._failed_reconnect_counter += 1
             self._close_connection()
             return False
         finally:

@@ -39,7 +39,6 @@ class TestModbusAPI:
         api = ModbusAPI(host="127.0.0.1", port=502, battery_id="bat")
         result = await api.connect()
         assert result is False
-        assert api._failed_reconnect_counter == 1
         assert api._connect_pending is False
         mock_client.close.assert_called_once()
 
@@ -55,7 +54,6 @@ class TestModbusAPI:
         api = ModbusAPI(host="127.0.0.1", port=502, battery_id="bat")
         result = await api.connect()
         assert result is False
-        assert api._failed_reconnect_counter == 1
         mock_client.close.assert_called_once()
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")

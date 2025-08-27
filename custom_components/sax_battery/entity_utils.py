@@ -27,8 +27,6 @@ def filter_items_by_type(
 def filter_sax_items_by_type(
     sax_items: list[SAXItem],
     item_type: TypeConstants,
-    config_entry: ConfigEntry,
-    battery_id: str,
 ) -> list[SAXItem]:
     """Filter SAXItem objects by type."""
     return [item for item in sax_items if item.mtype == item_type]
