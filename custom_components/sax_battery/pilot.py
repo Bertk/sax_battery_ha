@@ -558,11 +558,11 @@ class SAXBatteryPilot:
 
     def get_solar_charging_enabled(self) -> bool:
         """Get solar charging state."""
-        return self.entry.data.get(CONF_ENABLE_SOLAR_CHARGING, True)
+        return bool(self.entry.data.get(CONF_ENABLE_SOLAR_CHARGING, True))
 
     def get_manual_control_enabled(self) -> bool:
         """Get manual control state."""
-        return self.entry.data.get(CONF_MANUAL_CONTROL, True)
+        return bool(self.entry.data.get(CONF_MANUAL_CONTROL, True))
 
 
 class SAXBatteryPilotPowerEntity(

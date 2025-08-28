@@ -15,9 +15,9 @@ from .const import (
     DEFAULT_DEVICE_INFO,
     MODBUS_BATTERY_SMARTMETER_ITEMS,
     MODBUS_BATTERY_STATIC_ITEMS,
-    MODBUS_BATTERY_SWITCH_ITEMS,
     MODBUS_SMARTMETER_BASIC_ITEMS,
     MODBUS_SMARTMETER_PHASE_ITEMS,
+    PILOT_ITEMS,
     SAX_CURRENT_L1,
     SAX_POWER,
     SAX_SMARTMETER_TOTAL_POWER,
@@ -71,6 +71,7 @@ class BaseModel(ABC):
 class BatteryModel(BaseModel):
     """Battery model using predefined items from const.py."""
 
+    slave_id: int = 1
     host: str = ""
     port: int = 502
     is_master: bool = False
@@ -94,7 +95,6 @@ class BatteryModel(BaseModel):
         # All batteries get realtime and static items
         items = list(get_battery_realtime_items(access_config))
         items.extend(MODBUS_BATTERY_STATIC_ITEMS)
-        items.extend(MODBUS_BATTERY_SWITCH_ITEMS)
 
         # Master battery also gets smart meter items
         if self.is_master:
@@ -109,6 +109,7 @@ class BatteryModel(BaseModel):
         # Only master battery gets aggregated and pilot items
         if self.is_master:
             items.extend(AGGREGATED_ITEMS)
+            items.extend(PILOT_ITEMS)
 
         return items
 
@@ -204,6 +205,7 @@ class SAXBatteryData:
             battery = BatteryModel(
                 device_id=battery_id,
                 name=f"SAX Battery {battery_id.split('_')[1].upper()}",
+                slave_id=1,
                 host=host,
                 port=port,
                 is_master=is_master,
@@ -215,6 +217,7 @@ class SAXBatteryData:
     async def async_initialize(self) -> None:
         """Initialize the SAX Battery data."""
         # Initialize modbus connections and data structures
+        pass  # noqa: PIE790
 
     def is_battery_connected(self, battery_id: str) -> bool:
         """Check if a battery is connected."""
@@ -245,6 +248,16 @@ class SAXBatteryData:
 
     def get_device_info(self, battery_id: str) -> DeviceInfo:
         """Get device info for a specific battery."""
+        if battery_id in {"system", "cluster"}:
+            # System/cluster device info for aggregated entities
+            return DeviceInfo(
+                identifiers={("sax_battery", "sax_battery_cluster")},
+                name="SAX Battery Cluster",
+                manufacturer=DEFAULT_DEVICE_INFO.manufacturer,
+                model="Battery Cluster",
+                sw_version=DEFAULT_DEVICE_INFO.sw_version,
+            )
+
         battery = self.batteries.get(battery_id)
         if battery:
             return battery.get_device_info()

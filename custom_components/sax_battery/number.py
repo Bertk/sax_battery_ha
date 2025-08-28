@@ -5,25 +5,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.number import (
-    NumberEntity,
-    NumberEntityDescription,
-    NumberMode,
-)
+from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    CONF_BATTERY_COUNT,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    PILOT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SAX_MIN_SOC,
 )
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
@@ -44,123 +38,117 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SAX Battery number entities."""
-    # Get data from hass.data
     integration_data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinators = integration_data.get("coordinators", {})
+    coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
-    # Get battery count from config
-    battery_count = config_entry.data.get(CONF_BATTERY_COUNT, 1)
+    entities: list[NumberEntity] = []
 
-    entities: list[SAXBatteryModbusNumber | SAXBatteryConfigNumber] = []
-
-    # Create modbus-based numbers for each battery
+    # Create numbers for each battery
     for battery_id, coordinator in coordinators.items():
-        # Regular writable number items (NUMBER_WO)
-        number_wo_items = filter_items_by_type(
+        # Regular writable number items (NUMBER)
+        number_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),
-            TypeConstants.NUMBER_WO,
-            config_entry,
-            battery_id,
-        )
-
-        entities.extend(
-            SAXBatteryModbusNumber(
-                coordinator=coordinator,
-                battery_id=battery_id,
-                modbus_item=modbus_item,
-                battery_count=battery_count,
-            )
-            for modbus_item in number_wo_items
-        )
-
-        # Read-only number items
-        number_ro_items = filter_items_by_type(
-            sax_data.get_modbus_items_for_battery(battery_id),
-            TypeConstants.NUMBER_RO,
-            config_entry,
-            battery_id,
-        )
-
-        entities.extend(
-            SAXBatteryModbusNumber(
-                coordinator=coordinator,
-                battery_id=battery_id,
-                modbus_item=modbus_item,
-                battery_count=battery_count,
-                read_only=True,
-            )
-            for modbus_item in number_ro_items
-        )
-
-    # Create configuration numbers (non-modbus items like SAX_MIN_SOC)
-    # Only create these once, not per battery
-    if coordinators:
-        # Get the first coordinator for configuration items
-        first_coordinator = next(iter(coordinators.values()))
-
-        config_number_items = filter_sax_items_by_type(
-            PILOT_ITEMS,
             TypeConstants.NUMBER,
+            config_entry,
+            battery_id,
         )
 
-        entities.extend(
-            SAXBatteryConfigNumber(
-                coordinator=first_coordinator,
-                sax_item=sax_item,
-                battery_count=battery_count,
-            )
-            for sax_item in config_number_items
+        for modbus_item in number_items:
+            if isinstance(modbus_item, ModbusItem):  # Type guard
+                entities.append(  # Fix: use append instead of extend
+                    SAXBatteryModbusNumber(
+                        coordinator=coordinator,
+                        battery_id=battery_id,
+                        modbus_item=modbus_item,
+                    )
+                )
+
+        _LOGGER.info(
+            "Added %d modbus number entities for %s", len(number_items), battery_id
         )
+
+    # Create system-wide configuration numbers (from SAX items)
+    system_number_items = filter_sax_items_by_type(
+        sax_data.get_sax_items_for_battery(
+            "battery_a"
+        ),  # Use first battery for system items
+        TypeConstants.NUMBER,
+    )
+
+    # Get first coordinator for config numbers
+    first_coordinator = next(iter(coordinators.values())) if coordinators else None
+    if first_coordinator:
+        for sax_item in system_number_items:
+            if isinstance(sax_item, SAXItem):  # Type guard
+                entities.append(  # Fix: use append instead of extend
+                    SAXBatteryConfigNumber(
+                        coordinator=first_coordinator,
+                        sax_item=sax_item,
+                    )
+                )
+
+    _LOGGER.info(
+        "Adding %d number entities: %s",
+        len(entities),
+        [type(entity).__name__ for entity in entities],
+    )
 
     if entities:
-        _LOGGER.info(
-            "Adding %d number entities: %s",
-            len(entities),
-            [e.__class__.__name__ for e in entities],
-        )
-        async_add_entities(entities, update_before_add=False)
-    else:
-        _LOGGER.info("No number entities to add")
+        async_add_entities(entities)
 
 
 class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
     """Implementation of a SAX Battery number entity backed by ModbusItem."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
         coordinator: SAXBatteryCoordinator,
         battery_id: str,
         modbus_item: ModbusItem,
-        battery_count: int = 1,
-        read_only: bool = False,
     ) -> None:
         """Initialize the modbus number entity."""
         super().__init__(coordinator)
         self._modbus_item = modbus_item
         self._battery_id = battery_id
-        self._battery_count = battery_count
-        self._read_only = read_only
+        self._read_only = False  # Fix: Add missing attribute
 
-        # Generate unique ID using class name pattern
-        item_name = self._modbus_item.name.removeprefix("sax_")
-        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
+        # Get battery count from config entry
+        self._battery_count = 1
+        if coordinator.config_entry:
+            self._battery_count = coordinator.config_entry.data.get("battery_count", 1)
+
+        # Generate unique ID using simple pattern
+        if self._modbus_item.name.startswith("sax_"):
+            item_name = self._modbus_item.name[4:]  # Remove "sax_" prefix
+        else:
+            item_name = self._modbus_item.name
+
+        self._attr_unique_id = f"sax_{battery_id}_{item_name}"
 
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
-            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
 
-        if isinstance(self.entity_description.name, str):
-            item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
+        # Fix name assignment with proper type checking
+        if (
+            isinstance(self.entity_description, NumberEntityDescription)
+            and hasattr(self.entity_description, "name")
+            and self.entity_description.name
+        ):
+            item_name = str(self.entity_description.name)[4:]  # eliminate 'Sax '
 
-        self.name = f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
+        self._attr_name = (
+            f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
+        )
 
         # Apply dynamic limits based on battery count for charge/discharge entities
         self._apply_dynamic_limits()
 
-        # Set read-only mode for NUMBER_RO items
-        if self._read_only:
-            self._attr_mode = NumberMode.BOX
+        # Set device info
+        self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
 
     def _apply_dynamic_limits(self) -> None:
         """Apply dynamic limits based on battery count for specific entities."""
@@ -181,25 +169,12 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                 pass
 
     @property
-    def device_info(self) -> Any:
-        """Return device info."""
-        return self.coordinator.sax_data.get_device_info(self._battery_id)
-
-    @property
     def native_value(self) -> float | None:
         """Return the current value."""
         if not self.coordinator.data:
             return None
-
-        raw_value = self.coordinator.data.get(self._modbus_item.name)
-        if raw_value is None:
-            return None
-
-        # Convert to float if needed
-        try:
-            return float(raw_value)
-        except (ValueError, TypeError):
-            return None
+        value = self.coordinator.data.get(self._modbus_item.name)
+        return float(value) if value is not None else None
 
     @property
     def available(self) -> bool:
@@ -243,37 +218,47 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        if self._read_only:
-            msg = f"Cannot set value on read-only number entity {self.name}"
-            raise HomeAssistantError(msg)
-
-        success = await self.coordinator.async_write_number_value(
-            self._modbus_item, value
-        )
-
-        if not success:
-            msg = f"Failed to set value {value} for {self.name}"
-            raise HomeAssistantError(msg)
-
-        # Request coordinator update after write
-        await self.coordinator.async_request_refresh()
+        # Check if config_entry exists before accessing it
+        if not self.coordinator.config_entry:
+            _LOGGER.error("Cannot set value: config entry is None")
+            return
+        try:
+            # Use modbus API to write value
+            if self.coordinator.modbus_api:
+                # Fix: use correct method name
+                await self.coordinator.modbus_api.write_holding_registers(
+                    value,
+                    self._modbus_item,
+                )
+                # Refresh coordinator data
+                await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set %s to %s: %s", self._modbus_item.name, value, err
+            )
+            raise
 
 
 class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
     """Implementation of a SAX Battery configuration number entity without ModbusItem."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         coordinator: SAXBatteryCoordinator,
         sax_item: SAXItem,
-        battery_count: int = 1,
     ) -> None:
         """Initialize the config number entity."""
         super().__init__(coordinator)
         self._sax_item = sax_item
-        self._battery_count = battery_count
 
-        # Generate unique ID using class name pattern
+        # Get battery count from config entry
+        self._battery_count = 1
+        if coordinator.config_entry:
+            self._battery_count = coordinator.config_entry.data.get("battery_count", 1)
+
+        # Generate unique ID using simple pattern
         if self._sax_item.name.startswith("sax_"):
             self._attr_unique_id = self._sax_item.name
         else:
@@ -288,28 +273,19 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
         # Set entity description from modbus item if available
         if self._sax_item.entitydescription is not None:
-            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
-    @property
-    def device_info(self) -> Any:
-        """Return device info."""
-        return self.coordinator.sax_data.get_device_info("system")
+        # Set system device info - this creates the "SAX Battery Cluster" device
+        self._attr_device_info = coordinator.sax_data.get_device_info("system")
 
     @property
     def native_value(self) -> float | None:
         """Return the current value."""
-        if not self.coordinator.data:
-            return None
-
-        raw_value = self.coordinator.data.get(self._sax_item.name)
-        if raw_value is None:
-            return None
-
-        # Convert to float if needed
-        try:
-            return float(raw_value)
-        except (ValueError, TypeError):
-            return None
+        # For SAX_MIN_SOC, get from config entry data
+        if self._sax_item.name == SAX_MIN_SOC and self.coordinator.config_entry:
+            config_value = self.coordinator.config_entry.data.get("min_soc", 15)
+            return float(config_value)
+        return None
 
     @property
     def available(self) -> bool:
@@ -334,12 +310,19 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        # For config items, we store the value in coordinator data
-        # and let the pilot system handle the actual usage
-        if self.coordinator.data is not None:
-            self.coordinator.data[self._sax_item.name] = value
-            # Trigger update to notify listeners
-            self.coordinator.async_update_listeners()
+        try:
+            if self._sax_item.name == SAX_MIN_SOC and self.coordinator.config_entry:
+                # Update config entry data
+                new_data = dict(self.coordinator.config_entry.data)
+                new_data["min_soc"] = int(value)
+                self.hass.config_entries.async_update_entry(
+                    self.coordinator.config_entry,
+                    data=new_data,
+                )
+                self.async_write_ha_state()
+        except Exception as err:
+            _LOGGER.error("Failed to set %s to %s: %s", self._sax_item.name, value, err)
+            raise
 
 
 # Backward compatibility alias
