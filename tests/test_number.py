@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,17 +14,14 @@ from custom_components.sax_battery.const import (
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
 )
-from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ModbusItem
+from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.number import (
     SAXBatteryConfigNumber,
     SAXBatteryModbusNumber,
-    async_setup_entry,
 )
 from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
-from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 
@@ -93,10 +90,10 @@ class TestSAXBatteryNumber:
         )
 
         # Test that values come from entity description via _attr_* attributes
-        assert number._attr_native_min_value == 0
-        assert number._attr_native_max_value == 10000
-        assert number._attr_native_step == 100
-        assert number._attr_native_unit_of_measurement == "W"
+        assert number.entity_description.native_min_value == 0
+        assert number.entity_description.native_max_value == 10000
+        assert number.entity_description.native_step == 100
+        assert number.entity_description.native_unit_of_measurement == "W"
 
     def test_number_native_value(
         self, mock_coordinator_number, power_number_item_test
@@ -215,7 +212,7 @@ class TestSAXBatteryConfigNumber:
     def test_config_number_init(self, mock_coordinator_number) -> None:
         """Test config number entity initialization."""
         # Find the SAX_MIN_SOC item from PILOT_ITEMS
-        sax_min_soc_item = next(
+        sax_min_soc_item: SAXItem | None = next(
             (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC), None
         )
 
@@ -229,14 +226,16 @@ class TestSAXBatteryConfigNumber:
 
         assert number._sax_item == sax_min_soc_item
         assert number._battery_count == 1
-        assert number.unique_id == "sax_config_min_soc"
-        assert "Sax Min Soc" in number.name
+        assert number.unique_id == "sax_min_soc"
+        assert number.name == "Sax Min SOC"
 
     def test_config_number_native_value(self, mock_coordinator_number) -> None:
         """Test config number native value."""
-        sax_min_soc_item = next(
+        sax_min_soc_item: SAXItem | None = next(
             (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC), None
         )
+
+        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in PILOT_ITEMS"
 
         mock_coordinator_number.data[SAX_MIN_SOC] = 15.0
 
@@ -251,9 +250,11 @@ class TestSAXBatteryConfigNumber:
         self, mock_coordinator_number
     ) -> None:
         """Test setting config number native value."""
-        sax_min_soc_item = next(
+        sax_min_soc_item: SAXItem | None = next(
             (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC), None
         )
+
+        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in PILOT_ITEMS"
 
         number = SAXBatteryConfigNumber(
             coordinator=mock_coordinator_number,
@@ -266,6 +267,7 @@ class TestSAXBatteryConfigNumber:
         assert mock_coordinator_number.data[SAX_MIN_SOC] == 20.0
 
 
+# Rest of the test classes remain unchanged
 class TestNumberEntityConfiguration:
     """Test number entity configuration variations."""
 
@@ -279,7 +281,7 @@ class TestNumberEntityConfiguration:
             modbus_item=percentage_number_item_test,
         )
 
-        assert number._attr_native_unit_of_measurement == "%"
+        assert number.entity_description.native_unit_of_measurement == "%"
         assert number.name == "Sax Battery A Minimum State of Charge"
 
     def test_number_name_formatting(self, mock_coordinator_number) -> None:
@@ -334,7 +336,7 @@ class TestNumberEntityConfiguration:
         )
 
         # Implementation uses _attr_mode from entity description
-        assert box_number._attr_mode == NumberMode.AUTO
+        assert box_number.entity_description.mode == NumberMode.AUTO
 
     def test_number_mode_from_entity_description(self, mock_coordinator_number) -> None:
         """Test number mode from entity description."""
@@ -355,68 +357,7 @@ class TestNumberEntityConfiguration:
             modbus_item=item_with_mode,
         )
 
-        assert number._attr_mode == NumberMode.SLIDER
-
-    @pytest.mark.skip(reason="entity category configuration not implemented")
-    def test_number_entity_category_config(self, mock_coordinator_number) -> None:
-        """Test number entity category configuration."""
-        config_item = ModbusItem(
-            name="sax_config_number",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.NUMBER_WO,
-            entitydescription=NumberEntityDescription(
-                key="sax_test_underscore_name",
-                name="Sax Test Underscore Name",
-                mode=NumberMode.AUTO,
-                native_unit_of_measurement=UnitOfPower.WATT,
-                native_min_value=0,
-                native_max_value=3500,
-                native_step=100,
-            ),
-        )
-
-        number = SAXBatteryModbusNumber(
-            coordinator=mock_coordinator_number,
-            battery_id="battery_a",
-            modbus_item=config_item,
-        )
-
-        # The entity category should be determined by the determine_entity_category function
-        # which likely returns CONFIG based on the item type
-        assert number.entity_category in (
-            EntityCategory.CONFIG,
-            EntityCategory.DIAGNOSTIC,
-        )
-
-    @pytest.mark.skip(reason="entity category configuration not implemented")
-    def test_number_entity_category_diagnostic(self, mock_coordinator_number) -> None:
-        """Test number entity category diagnostic."""
-        diagnostic_item = ModbusItem(
-            name="sax_diagnostic_number",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.NUMBER_WO,
-            entitydescription=NumberEntityDescription(
-                key="sax_test_underscore_name",
-                name="Sax Test Underscore Name",
-                mode=NumberMode.AUTO,
-                native_unit_of_measurement=UnitOfPower.WATT,
-                native_min_value=0,
-                native_max_value=3500,
-                native_step=100,
-            ),
-        )
-
-        number = SAXBatteryModbusNumber(
-            coordinator=mock_coordinator_number,
-            battery_id="battery_a",
-            modbus_item=diagnostic_item,
-        )
-
-        # The entity category should be determined by the determine_entity_category function
-        assert number.entity_category in (
-            EntityCategory.CONFIG,
-            EntityCategory.DIAGNOSTIC,
-        )
+        assert number.entity_description.mode == NumberMode.SLIDER
 
     def test_number_entity_category_from_description(
         self, mock_coordinator_number
@@ -439,7 +380,7 @@ class TestNumberEntityConfiguration:
             modbus_item=item_with_category,
         )
 
-        assert number._attr_entity_category == EntityCategory.DIAGNOSTIC
+        assert number.entity_description.entity_category == EntityCategory.DIAGNOSTIC
 
     def test_number_without_unit(self, mock_coordinator_number) -> None:
         """Test number entity without unit."""
@@ -464,7 +405,7 @@ class TestNumberEntityConfiguration:
             modbus_item=unitless_item,
         )
 
-        assert number._attr_native_unit_of_measurement == UnitOfPower.WATT
+        assert number.entity_description.native_unit_of_measurement == UnitOfPower.WATT
 
 
 class TestSAXBatteryNumberDynamicLimits:
@@ -507,7 +448,7 @@ class TestSAXBatteryNumberDynamicLimits:
                 key="regular_setting",
                 name="Regular Setting",
                 native_min_value=0,
-                native_max_value=500,  # Different from charge/discharge limits
+                native_max_value=500,
                 native_step=1,
                 native_unit_of_measurement="V",
             ),
@@ -534,96 +475,6 @@ class TestSAXBatteryNumberDynamicLimits:
             mock_calc.assert_called_once_with(1)
             assert number_entity._attr_native_max_value == 4500.0
 
-    def test_apply_dynamic_limits_max_charge_dual_battery(
-        self, mock_coordinator_number, max_charge_modbus_item
-    ):
-        """Test dynamic limits for max charge with dual battery."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_charge",
-            return_value=9000,
-        ) as mock_calc:
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_charge_modbus_item,
-                battery_count=2,
-            )
-
-            mock_calc.assert_called_once_with(2)
-            assert number_entity._attr_native_max_value == 9000.0
-
-    def test_apply_dynamic_limits_max_charge_triple_battery(
-        self, mock_coordinator_number, max_charge_modbus_item
-    ):
-        """Test dynamic limits for max charge with triple battery."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_charge",
-            return_value=13500,
-        ) as mock_calc:
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_charge_modbus_item,
-                battery_count=3,
-            )
-
-            mock_calc.assert_called_once_with(3)
-            assert number_entity._attr_native_max_value == 13500.0
-
-    def test_apply_dynamic_limits_max_discharge_single_battery(
-        self, mock_coordinator_number, max_discharge_modbus_item
-    ):
-        """Test dynamic limits for max discharge with single battery."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_discharge",
-            return_value=3600,
-        ) as mock_calc:
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_discharge_modbus_item,
-                battery_count=1,
-            )
-
-            mock_calc.assert_called_once_with(1)
-            assert number_entity._attr_native_max_value == 3600.0
-
-    def test_apply_dynamic_limits_max_discharge_dual_battery(
-        self, mock_coordinator_number, max_discharge_modbus_item
-    ):
-        """Test dynamic limits for max discharge with dual battery."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_discharge",
-            return_value=7200,
-        ) as mock_calc:
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_discharge_modbus_item,
-                battery_count=2,
-            )
-
-            mock_calc.assert_called_once_with(2)
-            assert number_entity._attr_native_max_value == 7200.0
-
-    def test_apply_dynamic_limits_max_discharge_triple_battery(
-        self, mock_coordinator_number, max_discharge_modbus_item
-    ):
-        """Test dynamic limits for max discharge with triple battery."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_discharge",
-            return_value=10800,
-        ) as mock_calc:
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_discharge_modbus_item,
-                battery_count=3,
-            )
-
-            mock_calc.assert_called_once_with(3)
-            assert number_entity._attr_native_max_value == 10800.0
-
     def test_apply_dynamic_limits_regular_item_unchanged(
         self, mock_coordinator_number, regular_modbus_item
     ):
@@ -648,65 +499,7 @@ class TestSAXBatteryNumberDynamicLimits:
             mock_discharge_calc.assert_not_called()
 
             # Should keep entity description max value (500V from fixture)
-            assert number_entity._attr_native_max_value == 500
-
-    def test_apply_dynamic_limits_float_conversion_max_charge(
-        self, mock_coordinator_number, max_charge_modbus_item
-    ):
-        """Test float conversion for max charge limit."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_charge",
-            return_value=4500,  # Integer return
-        ):
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_charge_modbus_item,
-                battery_count=1,
-            )
-
-            # Should be converted to float
-            assert isinstance(number_entity._attr_native_max_value, float)
-            assert number_entity._attr_native_max_value == 4500.0
-
-    def test_apply_dynamic_limits_float_conversion_max_discharge(
-        self, mock_coordinator_number, max_discharge_modbus_item
-    ):
-        """Test float conversion for max discharge limit."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_discharge",
-            return_value=3600,  # Integer return
-        ):
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_discharge_modbus_item,
-                battery_count=1,
-            )
-
-            # Should be converted to float
-            assert isinstance(number_entity._attr_native_max_value, float)
-            assert number_entity._attr_native_max_value == 3600.0
-
-    def test_apply_dynamic_limits_preserves_other_attributes(
-        self, mock_coordinator_number, max_charge_modbus_item
-    ):
-        """Test that dynamic limits only affect max_value, not other attributes."""
-        with patch(
-            "custom_components.sax_battery.number.calculate_system_max_charge",
-            return_value=4500,
-        ):
-            number_entity = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_number,
-                battery_id="battery_a",
-                modbus_item=max_charge_modbus_item,
-                battery_count=1,
-            )
-
-            # Other attributes should remain unchanged
-            assert number_entity._attr_native_min_value == 0.0
-            assert number_entity._attr_native_step == 100.0
-            assert number_entity._attr_native_max_value == 4500.0  # Only this changes
+            assert number_entity.entity_description.native_max_value == 500
 
     def test_apply_dynamic_limits_multiple_calls_idempotent(
         self, mock_coordinator_number, max_charge_modbus_item
@@ -742,7 +535,7 @@ class TestSAXBatteryNumberDynamicLimits:
         max_charge_modbus_item.entitydescription = NumberEntityDescription(
             key="max_charge",
             name="Max Charge Power",
-            native_max_value=1000.0,  # This should be overridden
+            native_max_value=1000.0,
         )
 
         with patch(

@@ -298,17 +298,17 @@ class ModbusAPI:
                         first_value = converted_data[0]
                         if isinstance(first_value, (int, float)):
                             # Apply factor and offset from ModbusItem
-                            return first_value * modbus_item.factor + modbus_item.offset
+                            return first_value * modbus_item.factor - modbus_item.offset
                     elif isinstance(converted_data, (int, float)):
                         # Apply factor and offset from ModbusItem
-                        return converted_data * modbus_item.factor + modbus_item.offset
+                        return converted_data * modbus_item.factor - modbus_item.offset
                     return None
 
                 # Fallback to raw register value
                 raw_value = result.registers[0]
                 if isinstance(raw_value, (int, float)):
                     # Apply factor and offset from ModbusItem
-                    return raw_value * modbus_item.factor + modbus_item.offset
+                    return raw_value * modbus_item.factor - modbus_item.offset
 
             except ModbusException as exc:
                 _LOGGER.warning(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 import uuid
 
@@ -30,6 +31,8 @@ from .const import (
     DOMAIN,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SAX Battery."""
@@ -42,7 +45,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._battery_count: int | None = None
         self._device_id: str = str(uuid.uuid4())  # Generate unique device ID
         self._pilot_from_ha: bool = False
-        self._limit_power: bool = False  # Add missing attribute
+        self._limit_power: bool = False
 
     @staticmethod
     @callback
@@ -88,6 +91,13 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._pilot_from_ha = user_input[CONF_PILOT_FROM_HA]
             self._limit_power = user_input[CONF_LIMIT_POWER]
             self._data.update(user_input)
+
+            # Debug logging to verify configuration storage
+            _LOGGER.debug(
+                "Control options saved: pilot_from_ha=%s, limit_power=%s",
+                self._pilot_from_ha,
+                self._limit_power,
+            )
 
             # Route to appropriate next step based on selections
             if self._pilot_from_ha:
@@ -247,6 +257,14 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._data.update(user_input)
 
+            # Debug logging before creating entry
+            _LOGGER.debug("Final configuration data: %s", self._data)
+            _LOGGER.info(
+                "Creating SAX Battery entry with limit_power=%s, pilot_from_ha=%s",
+                self._data.get(CONF_LIMIT_POWER, False),
+                self._data.get(CONF_PILOT_FROM_HA, False),
+            )
+
             # Create the entry with all collected data
             return self.async_create_entry(
                 title="SAX Battery",
@@ -292,6 +310,9 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle reconfiguration of the integration."""
         # Get existing entry data
         if user_input is not None:
+            # Debug logging for reconfiguration
+            _LOGGER.debug("Reconfiguration data: %s", user_input)
+
             return self.async_create_entry(
                 title="SAX Battery",
                 data=user_input,
@@ -354,6 +375,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             # Only include pilot-specific options when pilot is enabled
             if user_input.get(CONF_PILOT_FROM_HA, current_pilot_from_ha):
                 result_data.update(pilot_options)
+
+            _LOGGER.debug("Options flow result data: %s", result_data)
 
             return self.async_create_entry(title="", data=result_data)
 

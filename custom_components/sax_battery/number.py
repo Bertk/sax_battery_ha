@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Any
 
-from homeassistant.components.number import (
-    NumberEntity,
-    NumberEntityDescription,
-    NumberMode,
-)
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -17,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    AGGREGATED_ITEMS,
     CONF_BATTERY_COUNT,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
@@ -33,7 +28,6 @@ from .items import ModbusItem, SAXItem
 from .utils import (
     calculate_system_max_charge,
     calculate_system_max_discharge,
-    determine_entity_category,
     format_battery_display_name,
 )
 
@@ -102,7 +96,7 @@ async def async_setup_entry(
         first_coordinator = next(iter(coordinators.values()))
 
         config_number_items = filter_sax_items_by_type(
-            PILOT_ITEMS + AGGREGATED_ITEMS,
+            PILOT_ITEMS,
             TypeConstants.NUMBER,
         )
 
@@ -115,7 +109,15 @@ async def async_setup_entry(
             for sax_item in config_number_items
         )
 
-    async_add_entities(entities, update_before_add=False)
+    if entities:
+        _LOGGER.info(
+            "Adding %d number entities: %s",
+            len(entities),
+            [e.__class__.__name__ for e in entities],
+        )
+        async_add_entities(entities, update_before_add=False)
+    else:
+        _LOGGER.info("No number entities to add")
 
 
 class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
@@ -136,64 +138,18 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._battery_count = battery_count
         self._read_only = read_only
 
-        # Debug logging
-        _LOGGER.debug(
-            "ModbusNumber init - entitydescription: %s, type: %s",
-            self._modbus_item.entitydescription,
-            type(self._modbus_item.entitydescription),
-        )
+        # Generate unique ID using class name pattern
+        item_name = self._modbus_item.name.removeprefix("sax_")
+        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
 
-        # Prefer entitydescription from modbus_item if available and correct type
-        self.entity_description = cast(
-            NumberEntityDescription, self._modbus_item.entitydescription
-        )
-        _LOGGER.debug("ModbusNumber - entity_description set successfully")
+        # Set entity description from modbus item if available
+        if self._modbus_item.entitydescription is not None:
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
 
-        item_key = self._modbus_item.name.removeprefix("sax_")
-        self._attr_unique_id = f"sax_{self._battery_id}_{item_key}"
+        if isinstance(self.entity_description.name, str):
+            item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
 
-        # Name: use entitydescription name if available, else fallback
-        if (
-            hasattr(self, "entity_description")
-            and self.entity_description
-            and hasattr(self.entity_description, "name")
-            and isinstance(self.entity_description.name, str)
-        ):
-            base_name = self.entity_description.name.removeprefix("Sax ")
-        else:
-            base_name = item_key.replace("_", " ").title()
-
-        battery_display = format_battery_display_name(self._battery_id)
-        self._attr_name = f"Sax {battery_display} {base_name}"
-
-        # Set properties from entitydescription if available, else use fallbacks
-        if hasattr(self, "entity_description") and self.entity_description:
-            self._attr_native_min_value = getattr(
-                self.entity_description, "native_min_value", 0.0
-            )
-            self._attr_native_max_value = getattr(
-                self.entity_description, "native_max_value", 100.0
-            )
-            self._attr_native_step = getattr(
-                self.entity_description, "native_step", 1.0
-            )
-            self._attr_native_unit_of_measurement = getattr(
-                self.entity_description, "native_unit_of_measurement", None
-            )
-            self._attr_mode = getattr(self.entity_description, "mode", NumberMode.AUTO)
-            self._attr_entity_category = getattr(
-                self.entity_description,
-                "entity_category",
-                determine_entity_category(modbus_item),
-            )
-        else:
-            # Fallback defaults when no entity description
-            self._attr_native_min_value = 0.0
-            self._attr_native_max_value = 100.0
-            self._attr_native_step = 1.0
-            self._attr_native_unit_of_measurement = None
-            self._attr_mode = NumberMode.AUTO
-            self._attr_entity_category = determine_entity_category(modbus_item)
+        self.name = f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
 
         # Apply dynamic limits based on battery count for charge/discharge entities
         self._apply_dynamic_limits()
@@ -313,59 +269,15 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._sax_item = sax_item
         self._battery_count = battery_count
 
-        # Debug logging
-        _LOGGER.debug(
-            "ConfigNumber init - entitydescription: %s, type: %s",
-            self._sax_item.entitydescription,
-            type(self._sax_item.entitydescription),
-        )
-
-        # Use entitydescription from sax_item if available and correct type
-        if self._sax_item.entitydescription is not None and isinstance(
-            self._sax_item.entitydescription, NumberEntityDescription
-        ):
-            self.entity_description = self._sax_item.entitydescription
-
-        item_key = self._sax_item.name.removeprefix("sax_")
-        self._attr_unique_id = f"sax_config_{item_key}"
-
-        # Name: use entitydescription name if available, else fallback
-        if (
-            hasattr(self, "entity_description")
-            and self.entity_description
-            and hasattr(self.entity_description, "name")
-            and isinstance(self.entity_description.name, str)
-        ):
-            self._attr_name = self.entity_description.name
+        # Generate unique ID using class name pattern
+        if self._sax_item.name.startswith("sax_"):
+            self._attr_unique_id = self._sax_item.name
         else:
-            self._attr_name = f"Sax {item_key.replace('_', ' ').title()}"
+            self._attr_unique_id = f"sax_{self._sax_item.name}"
 
-        # Set properties from entitydescription if available, else use fallbacks
-        if hasattr(self, "entity_description") and self.entity_description:
-            self._attr_native_min_value = getattr(
-                self.entity_description, "native_min_value", 0.0
-            )
-            self._attr_native_max_value = getattr(
-                self.entity_description, "native_max_value", 100.0
-            )
-            self._attr_native_step = getattr(
-                self.entity_description, "native_step", 1.0
-            )
-            self._attr_native_unit_of_measurement = getattr(
-                self.entity_description, "native_unit_of_measurement", None
-            )
-            self._attr_mode = getattr(self.entity_description, "mode", NumberMode.AUTO)
-            self._attr_entity_category = getattr(
-                self.entity_description, "entity_category", None
-            )
-        else:
-            # Fallback defaults when no entity description
-            self._attr_native_min_value = 0.0
-            self._attr_native_max_value = 100.0
-            self._attr_native_step = 1.0
-            self._attr_native_unit_of_measurement = None
-            self._attr_mode = NumberMode.AUTO
-            self._attr_entity_category = None
+        # Set entity description from modbus item if available
+        if self._sax_item.entitydescription is not None:
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # fmt: skip
 
     @property
     def device_info(self) -> Any:
@@ -417,3 +329,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             self.coordinator.data[self._sax_item.name] = value
             # Trigger update to notify listeners
             self.coordinator.async_update_listeners()
+
+
+# Backward compatibility alias
+SAXBatteryNumber = SAXBatteryModbusNumber

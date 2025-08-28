@@ -351,3 +351,109 @@ def mock_modbus_api_obj(mock_modbus_api):
 
 - Unique fixture names prevent scope shadowing and PyLint errors.
 - Prefer descriptive names for clarity and maintainability.
+
+## Entity Initialization Pattern
+
+### Critical Rule: Follow Home Assistant Entity Initialization Patterns
+
+**Before creating any entity class initialization:**
+
+1. **Study existing entity patterns** in the Home Assistant codebase and this integration
+2. **Use Home Assistant's built-in attribute system** instead of manual attribute assignment
+3. **Follow the `_attr_*` pattern** for all entity attributes
+4. **Never assume entity description structure** without proper type checking
+
+### ✅ CORRECT Entity Initialization Pattern
+
+```python
+class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
+    """Implementation of a SAX Battery configuration number entity without ModbusItem."""
+
+    def __init__(
+        self,
+        coordinator: SAXBatteryCoordinator,
+        sax_item: SAXItem,
+        battery_count: int = 1,
+    ) -> None:
+        """Initialize the config number entity."""
+        super().__init__(coordinator)
+        self._sax_item = sax_item
+        self._battery_count = battery_count
+
+        # Generate unique ID using class name pattern
+        if self._sax_item.name.startswith("sax_"):
+            self._attr_unique_id = self._sax_item.name
+        else:
+            self._attr_unique_id = f"sax_{self._sax_item.name}"
+
+        # Set entity description from modbus item if available
+        if self._sax_item.entitydescription is not None:
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # fmt: skip
+```
+
+### ❌ WRONG Entity Initialization Patterns
+
+**DON'T manually set individual attributes:**
+
+```python
+# ❌ WRONG - Manual attribute assignment
+self._attr_native_min_value = entity_desc.native_min_value or 0.0
+self._attr_native_max_value = entity_desc.native_max_value or 100.0
+self._attr_native_step = entity_desc.native_step or 1.0
+```
+
+**DON'T assume entity description types:**
+
+```python
+# ❌ WRONG - Assuming specific types without checking
+if isinstance(self._modbus_item.entitydescription, NumberEntityDescription):
+    # This may fail due to union types
+```
+
+**DON'T use complex initialization logic:**
+
+```python
+# ❌ WRONG - Too much logic in __init__
+entity_desc = None
+if isinstance(self._sax_item.entitydescription, EntityDescription):
+    entity_desc = self._sax_item.entitydescription
+
+if entity_desc and isinstance(entity_desc, NumberEntityDescription):
+    # Complex nested conditions that often fail
+```
+
+### Key Principles:
+
+1. **Use `entity_description` assignment**: Let Home Assistant handle attribute extraction automatically
+2. **Keep initialization simple**: Minimal logic in `__init__`, defer complex operations to methods
+3. **Safe attribute access**: Always check for attribute existence before accessing
+4. **Consistent naming patterns**: Use established patterns for `unique_id` and `name`
+5. **Type safety**: Use `isinstance()` and `hasattr()` for safe type checking
+6. **Follow existing patterns**: Study working entities in the same integration
+
+### Entity Description Handling:
+
+```python
+# ✅ CORRECT - Simple assignment, let HA handle the rest
+if self._modbus_item.entitydescription is not None:
+    self.entity_description = self._modbus_item.entitydescription
+
+# ✅ CORRECT - Safe attribute access
+if (hasattr(self, 'entity_description')
+    and hasattr(self.entity_description, 'name')):
+    # Use the attribute safely
+```
+
+### Verification Checklist:
+
+Before submitting entity initialization code:
+
+- [ ] Uses `self.entity_description = ...` assignment pattern
+- [ ] Minimal logic in `__init__` method
+- [ ] Safe attribute access with `hasattr()` checks
+- [ ] Consistent `unique_id` and naming patterns
+- [ ] No manual `_attr_*` assignments for entity description attributes
+- [ ] Follows existing working patterns in the integration
+- [ ] Type checking uses `isinstance()` and `hasattr()`
+
+**Remember**: Home Assistant's entity system is designed to automatically handle entity descriptions. Work with the framework, not against it.
