@@ -227,7 +227,7 @@ class TestSAXBatteryConfigNumber:
         assert number._sax_item == sax_min_soc_item
         assert number._battery_count == 1
         assert number.unique_id == "sax_min_soc"
-        assert number.name == "Sax Min SOC"
+        assert number.name == "Sax Minimum SOC"
 
     def test_config_number_native_value(self, mock_coordinator_number) -> None:
         """Test config number native value."""

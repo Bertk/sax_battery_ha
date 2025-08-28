@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 from pymodbus.client.mixin import ModbusClientMixin  # For DATATYPE
 
-from homeassistant.components.number import NumberEntityDescription, NumberMode
+from homeassistant.components.number import (
+    NumberDeviceClass,
+    NumberEntityDescription,
+    NumberMode,
+)
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -139,8 +143,9 @@ DESCRIPTION_SAX_MAX_CHARGE = NumberEntityDescription(
     mode=NumberMode.SLIDER,
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
-    native_max_value=LIMIT_MAX_CHARGE, # default single battery limit
+    native_max_value=10000,
     native_step=100,
+    device_class=NumberDeviceClass.POWER,
 )
 
 DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
@@ -151,6 +156,7 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
     native_min_value=0,
     native_max_value=LIMIT_MAX_DISCHARGE, # default single battery limit
     native_step=100,
+    device_class=NumberDeviceClass.POWER,
 )
 
 DESCRIPTION_SAX_NOMINAL_POWER = NumberEntityDescription(
@@ -161,6 +167,7 @@ DESCRIPTION_SAX_NOMINAL_POWER = NumberEntityDescription(
     native_min_value=0,
     native_max_value=LIMIT_MAX_CHARGE_PER_BATTERY,
     native_step=100,
+    device_class=NumberDeviceClass.POWER,
 )
 
 DESCRIPTION_SAX_NOMINAL_FACTOR = NumberEntityDescription(
@@ -168,6 +175,9 @@ DESCRIPTION_SAX_NOMINAL_FACTOR = NumberEntityDescription(
     name="Power cos(Phi)",
     mode=NumberMode.BOX,
     native_unit_of_measurement="",
+    native_min_value=0,
+    native_max_value=10000,
+
 )
 
 # Number Entity descriptions - Battery switches
@@ -197,12 +207,14 @@ DESCRIPTION_SAX_SOC = SensorEntityDescription(
     native_unit_of_measurement=PERCENTAGE,
 )
 
-DESCRIPTION_SAX_MIN_SOC = SensorEntityDescription(
+DESCRIPTION_SAX_MIN_SOC = NumberEntityDescription(
     key=SAX_MIN_SOC,
-    name="Sax Min SOC",
-    device_class=SensorDeviceClass.BATTERY,
-    state_class=SensorStateClass.TOTAL,
+    name="Sax Minimum SOC",
+    mode=NumberMode.BOX,
+    device_class=NumberDeviceClass.BATTERY,
     native_unit_of_measurement=PERCENTAGE,
+    native_min_value=0,
+    native_max_value=100,
     entity_category=EntityCategory.CONFIG,
 )
 
