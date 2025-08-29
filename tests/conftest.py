@@ -373,14 +373,15 @@ def battery_data_values():
 
 # Number-specific fixtures
 @pytest.fixture
-def mock_coordinator_number(mock_sax_data):
-    """Create mock coordinator for number tests."""
+def mock_coordinator_number():
+    """Create a mock coordinator for number tests."""
     coordinator = MagicMock(spec=SAXBatteryCoordinator)
-    coordinator.last_update_success = True
-    coordinator.last_update_success_time = 1234567890.0
-    coordinator.data = {"sax_test_number": 50}
-    coordinator.battery_id = "battery_a"
-    coordinator.sax_data = mock_sax_data
+    coordinator.data = {}
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.data = {"battery_count": 1}
+    coordinator.sax_data = MagicMock()
+    coordinator.sax_data.get_device_info.return_value = {"name": "Test Battery"}
+    coordinator.async_write_number_value = AsyncMock(return_value=True)
     return coordinator
 
 

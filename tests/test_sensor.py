@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import cast
 from unittest.mock import MagicMock
 
+import pytest
+
 from custom_components.sax_battery.const import (
-    SAX_AC_POWER_TOTAL,
     SAX_COMBINED_SOC,
     SAX_CUMULATIVE_ENERGY_CONSUMED,
     SAX_CUMULATIVE_ENERGY_PRODUCED,
@@ -18,32 +20,110 @@ from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.sensor import (
-    SAXBatteryCalcSensor,
+    SAXBatteryCalculatedSensor,
     SAXBatteryModbusSensor,
     async_setup_entry,
     calculate_combined_soc,
     calculate_cumulative_energy_consumed,
     calculate_cumulative_energy_produced,
-    get_ac_power_total,
 )
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def create_mock_coordinator(data: dict[str, float | None]) -> MagicMock:
     """Create properly typed mock coordinator for tests."""
     mock_coordinator = MagicMock()
     mock_coordinator.data = data
+    mock_coordinator.battery_id = "battery_a"
     # Create sax_data mock with get_device_info method
     mock_sax_data = MagicMock()
-    mock_sax_data.get_device_info.return_value = MagicMock()
+    mock_sax_data.get_device_info.return_value = {"name": "Test Battery"}
     mock_coordinator.sax_data = mock_sax_data
+    mock_coordinator.last_update_success_time = MagicMock()
     return mock_coordinator
+
+
+@pytest.fixture
+def mock_coordinator():
+    """Create mock coordinator for sensor tests."""
+    return create_mock_coordinator({"sax_temperature": 25.5})
+
+
+@pytest.fixture
+def temperature_modbus_item():
+    """Create temperature modbus item for testing."""
+    return ModbusItem(
+        name="sax_temperature",
+        device=DeviceConstants.SYS,
+        mtype=TypeConstants.SENSOR,
+        address=40117,
+        entitydescription=SensorEntityDescription(
+            key="temperature",
+            name="Sax Temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=1,
+        ),
+    )
+
+
+@pytest.fixture
+def power_modbus_item():
+    """Create power modbus item for testing."""
+    return ModbusItem(
+        name="sax_power",
+        device=DeviceConstants.SYS,
+        mtype=TypeConstants.SENSOR,
+        address=40001,
+        entitydescription=SensorEntityDescription(
+            key="power",
+            name="Sax Power",
+            device_class=SensorDeviceClass.POWER,
+            native_unit_of_measurement=UnitOfPower.WATT,
+            state_class=SensorStateClass.MEASUREMENT,
+        ),
+    )
+
+
+@pytest.fixture
+def percentage_modbus_item():
+    """Create percentage modbus item for testing."""
+    return ModbusItem(
+        name="sax_soc",
+        device=DeviceConstants.SYS,
+        mtype=TypeConstants.SENSOR,
+        address=40010,
+        entitydescription=SensorEntityDescription(
+            key="soc",
+            name="Sax SOC",
+            device_class=SensorDeviceClass.BATTERY,
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+        ),
+    )
+
+
+@pytest.fixture
+def mock_config_entry():
+    """Create mock config entry."""
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry_id"
+    return mock_entry
+
+
+@pytest.fixture
+def mock_sax_data():
+    """Create mock SAX data."""
+    return MagicMock()
 
 
 class TestCalculationFunctions:
@@ -139,37 +219,6 @@ class TestCalculationFunctions:
 
         assert result == 16000.0
 
-    def test_get_ac_power_total_single_battery(self) -> None:
-        """Test AC power total retrieval with single battery."""
-        mock_coordinator = create_mock_coordinator({SAX_AC_POWER_TOTAL: 2500.0})
-
-        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
-        result = get_ac_power_total(coordinators)
-
-        assert result == 2500.0
-
-    def test_get_ac_power_total_multiple_batteries(self) -> None:
-        """Test AC power total retrieval with multiple batteries (should use first with data)."""
-        mock_coord_a = create_mock_coordinator({})
-        mock_coord_b = create_mock_coordinator({SAX_AC_POWER_TOTAL: 3000.0})
-
-        coordinators = {
-            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
-            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
-        }
-        result = get_ac_power_total(coordinators)
-
-        assert result == 3000.0
-
-    def test_get_ac_power_total_no_data(self) -> None:
-        """Test AC power total retrieval with no data."""
-        mock_coordinator = create_mock_coordinator({})
-
-        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
-        result = get_ac_power_total(coordinators)
-
-        assert result is None
-
 
 class TestSAXBatteryModbusSensor:
     """Test SAX Battery modbus sensor."""
@@ -187,6 +236,7 @@ class TestSAXBatteryModbusSensor:
         assert sensor._battery_id == "battery_a"
         assert sensor._modbus_item == temperature_modbus_item
         assert sensor.unique_id == "sax_battery_a_temperature"
+        # Name format: Sax Battery A Temperature
         assert sensor.name == "Sax Battery A Temperature"
 
     def test_modbus_sensor_init_with_entity_description(
@@ -247,6 +297,7 @@ class TestSAXBatteryModbusSensor:
         assert attributes["battery_id"] == "battery_a"
         assert attributes["modbus_address"] == 40117
         assert "last_update" in attributes
+        assert "raw_value" in attributes
 
     def test_modbus_sensor_device_info(
         self, mock_coordinator, temperature_modbus_item
@@ -293,8 +344,22 @@ class TestSAXBatteryModbusSensor:
         assert sensor.unique_id == "sax_battery_b_power"
         assert sensor.name == "Sax Battery B Power"
 
+    def test_modbus_sensor_no_coordinator_data(
+        self, mock_coordinator, temperature_modbus_item
+    ) -> None:
+        """Test modbus sensor with no coordinator data."""
+        mock_coordinator.data = None
 
-class TestSAXBatteryCalcSensor:
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_a",
+            modbus_item=temperature_modbus_item,
+        )
+
+        assert sensor.native_value is None
+
+
+class TestSAXBatteryCalculatedSensor:
     """Test SAX Battery calculated sensor."""
 
     def test_calc_sensor_init(self) -> None:
@@ -315,20 +380,18 @@ class TestSAXBatteryCalcSensor:
 
         coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coordinator,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
 
-        assert sensor._battery_id == "battery_a"
         assert sensor._sax_item == calc_item
         assert sensor._coordinators == coordinators
-        # Unique ID should NOT include "(Calculated)" suffix
-        assert sensor.unique_id == "sax_battery_a_combined_soc"
-        # Display name SHOULD include "(Calculated)" suffix
-        assert sensor.name == "Sax Battery A Combined SOC (Calculated)"
+        # Unique ID should match sax_combined_soc (as per actual implementation)
+        assert sensor.unique_id == "sax_combined_soc"
+        # Name format: Sax Combined SOC
+        assert sensor.name == "Sax Combined SOC"
 
     def test_calc_sensor_combined_soc_calculation(self) -> None:
         """Test calculated sensor SOC calculation."""
@@ -351,9 +414,8 @@ class TestSAXBatteryCalcSensor:
             "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
         }
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coord_a,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
@@ -382,9 +444,8 @@ class TestSAXBatteryCalcSensor:
             "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
         }
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coord_a,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
@@ -413,9 +474,8 @@ class TestSAXBatteryCalcSensor:
             "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
         }
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coord_a,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
@@ -438,39 +498,13 @@ class TestSAXBatteryCalcSensor:
 
         coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coordinator,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
 
         assert sensor.native_value == 42.0
-
-    def test_calc_sensor_native_value_missing_data(self) -> None:
-        """Test calculated sensor native value when calculation function returns None."""
-        mock_coordinator = create_mock_coordinator({})
-
-        calc_item = SAXItem(
-            name=SAX_COMBINED_SOC,
-            mtype=TypeConstants.SENSOR_CALC,
-            device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="combined_soc",
-                name="Sax Combined SOC",
-            ),
-        )
-
-        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
-
-        sensor = SAXBatteryCalcSensor(
-            coordinator=mock_coordinator,
-            battery_id="battery_a",
-            sax_item=calc_item,
-            coordinators=coordinators,
-        )
-
-        assert sensor.native_value is None
 
     def test_calc_sensor_extra_state_attributes(self) -> None:
         """Test calculated sensor extra state attributes."""
@@ -491,9 +525,8 @@ class TestSAXBatteryCalcSensor:
             "battery_b": cast(SAXBatteryCoordinator, create_mock_coordinator({})),
         }
 
-        sensor = SAXBatteryCalcSensor(
+        sensor = SAXBatteryCalculatedSensor(
             coordinator=mock_coordinator,
-            battery_id="battery_a",
             sax_item=calc_item,
             coordinators=coordinators,
         )
@@ -506,6 +539,164 @@ class TestSAXBatteryCalcSensor:
         assert attributes["battery_count"] == 2
         assert "last_update" in attributes
 
+    def test_calc_sensor_native_value_missing_data(self) -> None:
+        """Test calculated sensor native value when calculation function returns None."""
+        mock_coordinator = create_mock_coordinator({})
+
+        calc_item = SAXItem(
+            name=SAX_COMBINED_SOC,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=SensorEntityDescription(
+                key="combined_soc",
+                name="Sax Combined SOC",
+            ),
+        )
+
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
+
+        sensor = SAXBatteryCalculatedSensor(
+            coordinator=mock_coordinator,
+            sax_item=calc_item,
+            coordinators=coordinators,
+        )
+
+        assert sensor.native_value is None
+
+
+class TestSensorEntityConfiguration:
+    """Test sensor entity configuration variations."""
+
+    def test_sensor_name_formatting_different_batteries(
+        self, mock_coordinator, temperature_modbus_item
+    ) -> None:
+        """Test sensor name formatting for different battery IDs."""
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_c",
+            modbus_item=temperature_modbus_item,
+        )
+
+        assert sensor.name == "Sax Battery C Temperature"
+        assert sensor.unique_id == "sax_battery_c_temperature"
+
+    def test_sensor_name_handles_entity_description_prefix(
+        self, mock_coordinator
+    ) -> None:
+        """Test sensor name handling when entity description has Sax prefix."""
+        item_with_sax_prefix = ModbusItem(
+            name="sax_custom_sensor",
+            device=DeviceConstants.SYS,
+            mtype=TypeConstants.SENSOR,
+            entitydescription=SensorEntityDescription(
+                key="custom_sensor",
+                name="Sax Custom Power Sensor",  # Has "Sax " prefix
+            ),
+        )
+
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_a",
+            modbus_item=item_with_sax_prefix,
+        )
+
+        # Should remove "Sax " from entity description name and add battery info
+        assert sensor.name == "Sax Battery A Custom Power Sensor"
+
+    def test_sensor_extra_state_attributes_no_data(
+        self, mock_coordinator, temperature_modbus_item
+    ) -> None:
+        """Test extra state attributes when no coordinator data."""
+        mock_coordinator.data = None
+
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_a",
+            modbus_item=temperature_modbus_item,
+        )
+
+        attributes = sensor.extra_state_attributes
+        assert attributes is not None
+        assert attributes["battery_id"] == "battery_a"
+        assert attributes["raw_value"] is None
+
+    def test_sensor_with_no_coordinator_data(
+        self, mock_coordinator, temperature_modbus_item
+    ) -> None:
+        """Test sensor behavior with no coordinator data."""
+        mock_coordinator.data = None
+
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_a",
+            modbus_item=temperature_modbus_item,
+        )
+
+        assert sensor.native_value is None
+
+
+class TestSensorErrorHandling:
+    """Test sensor error handling and edge cases."""
+
+    def test_modbus_sensor_handles_missing_entity_description(
+        self, mock_coordinator
+    ) -> None:
+        """Test modbus sensor with missing entity description."""
+        item_no_desc = ModbusItem(
+            name="sax_no_desc",
+            device=DeviceConstants.SYS,
+            mtype=TypeConstants.SENSOR,
+            # No entitydescription set
+        )
+
+        sensor = SAXBatteryModbusSensor(
+            coordinator=mock_coordinator,
+            battery_id="battery_a",
+            modbus_item=item_no_desc,
+        )
+
+        # Should handle missing entity description gracefully
+        assert sensor.unique_id == "sax_battery_a_no_desc"
+        assert sensor.name == "Sax Battery A no_desc"
+
+    def test_calculated_sensor_system_device_info(self) -> None:
+        """Test calculated sensor uses system device info."""
+        mock_coordinator = create_mock_coordinator({})
+
+        calc_item = SAXItem(
+            name=SAX_COMBINED_SOC,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=SensorEntityDescription(
+                key="combined_soc",
+                name="Sax Combined SOC",
+            ),
+        )
+
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
+
+        sensor = SAXBatteryCalculatedSensor(  # noqa: F841
+            coordinator=mock_coordinator,
+            sax_item=calc_item,
+            coordinators=coordinators,
+        )
+
+        # Verify it calls get_device_info with "system"
+        mock_coordinator.sax_data.get_device_info.assert_called_once_with("system")
+
+    def test_calculation_functions_handle_empty_coordinators(self) -> None:
+        """Test calculation functions with empty coordinator dict."""
+        assert calculate_combined_soc({}) is None
+        assert calculate_cumulative_energy_produced({}) is None
+        assert calculate_cumulative_energy_consumed({}) is None
+
+    def test_calculation_functions_handle_none_values(self) -> None:
+        """Test calculation functions with None data values."""
+        mock_coordinator = create_mock_coordinator({SAX_SOC: None})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
+
+        assert calculate_combined_soc(coordinators) is None
+
 
 class TestSensorPlatformSetup:
     """Test sensor platform setup."""
@@ -516,7 +707,10 @@ class TestSensorPlatformSetup:
         """Test successful setup of sensor entries."""
         # Mock coordinators
         mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
-        mock_sax_data.coordinators = {"battery_a": mock_coordinator}
+        mock_coordinator.sax_data = MagicMock()
+        mock_coordinator.sax_data.get_device_info.return_value = {
+            "name": "Test Battery"
+        }
 
         # Mock sensor items for battery with proper entity descriptions
         mock_modbus_item = ModbusItem(
@@ -561,16 +755,19 @@ class TestSensorPlatformSetup:
         # Should have created two entities - one modbus, one calculated
         assert len(entities) == 2
         assert isinstance(entities[0], SAXBatteryModbusSensor)
-        assert isinstance(entities[1], SAXBatteryCalcSensor)
+        assert isinstance(entities[1], SAXBatteryCalculatedSensor)
 
     async def test_async_setup_entry_no_coordinators(
         self, hass: HomeAssistant, mock_config_entry, mock_sax_data
     ) -> None:
         """Test setup with no coordinators."""
-        mock_sax_data.coordinators = {}
-
-        # Store mock data in hass
-        hass.data["sax_battery"] = {mock_config_entry.entry_id: mock_sax_data}
+        # Store mock data in hass with no coordinators structure
+        hass.data["sax_battery"] = {
+            mock_config_entry.entry_id: {
+                "coordinators": {},
+                "sax_data": mock_sax_data,
+            }
+        }
 
         entities = []
 
@@ -588,7 +785,11 @@ class TestSensorPlatformSetup:
         """Test setup with no sensor items."""
         # Mock coordinator but no sensor items
         mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
-        mock_sax_data.coordinators = {"battery_a": mock_coordinator}
+        mock_coordinator.sax_data = MagicMock()
+        mock_coordinator.sax_data.get_device_info.return_value = {
+            "name": "Test Battery"
+        }
+
         mock_sax_data.get_modbus_items_for_battery.return_value = []
         mock_sax_data.get_sax_items_for_battery.return_value = []
 
@@ -616,7 +817,10 @@ class TestSensorPlatformSetup:
         """Test setup with mixed item types - only sensor items should be created."""
         # Mock coordinator
         mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
-        mock_sax_data.coordinators = {"battery_a": mock_coordinator}
+        mock_coordinator.sax_data = MagicMock()
+        mock_coordinator.sax_data.get_device_info.return_value = {
+            "name": "Test Battery"
+        }
 
         # Mock mixed items - only sensors should be created
         sensor_item = ModbusItem(
@@ -675,78 +879,6 @@ class TestSensorPlatformSetup:
         # Should have created only sensor entities
         assert len(entities) == 2
         assert isinstance(entities[0], SAXBatteryModbusSensor)
-        assert isinstance(entities[1], SAXBatteryCalcSensor)
+        assert isinstance(entities[1], SAXBatteryCalculatedSensor)
         assert entities[0]._modbus_item == sensor_item
         assert entities[1]._sax_item == calc_item
-
-
-class TestSensorEntityConfiguration:
-    """Test sensor entity configuration variations."""
-
-    def test_sensor_name_formatting_different_batteries(
-        self, mock_coordinator, temperature_modbus_item
-    ) -> None:
-        """Test sensor name formatting for different battery IDs."""
-        sensor = SAXBatteryModbusSensor(
-            coordinator=mock_coordinator,
-            battery_id="battery_c",
-            modbus_item=temperature_modbus_item,
-        )
-
-        assert sensor.name == "Sax Battery C Temperature"
-        assert sensor.unique_id == "sax_battery_c_temperature"
-
-    def test_sensor_name_handles_entity_description_prefix(
-        self, mock_coordinator
-    ) -> None:
-        """Test sensor name handling when entity description has Sax prefix."""
-        item_with_sax_prefix = ModbusItem(
-            name="sax_custom_sensor",
-            device=DeviceConstants.SYS,
-            mtype=TypeConstants.SENSOR,
-            entitydescription=SensorEntityDescription(
-                key="custom_sensor",
-                name="Sax Custom Power Sensor",  # Has "Sax " prefix
-            ),
-        )
-
-        sensor = SAXBatteryModbusSensor(
-            coordinator=mock_coordinator,
-            battery_id="battery_a",
-            modbus_item=item_with_sax_prefix,
-        )
-
-        # Should remove "Sax " from entity description name and add battery info
-        assert sensor.name == "Sax Battery A Custom Power Sensor"
-
-    def test_sensor_with_no_coordinator_data(
-        self, mock_coordinator, temperature_modbus_item
-    ) -> None:
-        """Test sensor behavior with no coordinator data."""
-        mock_coordinator.data = None
-
-        sensor = SAXBatteryModbusSensor(
-            coordinator=mock_coordinator,
-            battery_id="battery_a",
-            modbus_item=temperature_modbus_item,
-        )
-
-        assert sensor.native_value is None
-
-    def test_sensor_extra_state_attributes_no_data(
-        self, mock_coordinator, temperature_modbus_item
-    ) -> None:
-        """Test extra state attributes when no coordinator data."""
-        mock_coordinator.data = None
-
-        sensor = SAXBatteryModbusSensor(
-            coordinator=mock_coordinator,
-            battery_id="battery_a",
-            modbus_item=temperature_modbus_item,
-        )
-
-        attributes = sensor.extra_state_attributes
-        assert attributes is not None
-        assert attributes["battery_id"] == "battery_a"
-        assert attributes["modbus_address"] == 40117
-        assert "last_update" in attributes

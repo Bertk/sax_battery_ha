@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.number import NumberEntityDescription
-from homeassistant.components.sensor import SensorEntityDescription
-from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 
 from .enums import TypeConstants
@@ -48,7 +45,7 @@ def filter_items_by_type(
 
             if target_type == TypeConstants.NUMBER:
                 # Accept both NumberEntityDescription and frozen variants
-                if not ("NumberEntityDescription" in desc_type_name):
+                if "NumberEntityDescription" not in desc_type_name:
                     _LOGGER.warning(
                         "Item %s has wrong entity description type for number platform: %s",
                         item.name,
@@ -58,7 +55,7 @@ def filter_items_by_type(
 
             elif target_type == TypeConstants.SENSOR:
                 # Accept both SensorEntityDescription and frozen variants
-                if not ("SensorEntityDescription" in desc_type_name):
+                if "SensorEntityDescription" not in desc_type_name:
                     _LOGGER.warning(
                         "Item %s has wrong entity description type for sensor platform: %s",
                         item.name,
@@ -68,7 +65,7 @@ def filter_items_by_type(
 
             elif target_type == TypeConstants.SWITCH:
                 # Accept both SwitchEntityDescription and frozen variants
-                if not ("SwitchEntityDescription" in desc_type_name):
+                if "SwitchEntityDescription" not in desc_type_name:
                     _LOGGER.warning(
                         "Item %s has wrong entity description type for switch platform: %s",
                         item.name,
@@ -112,7 +109,7 @@ def filter_sax_items_by_type(
             desc_type_name = type(item.entitydescription).__name__
 
             if target_type == TypeConstants.NUMBER:
-                if not ("NumberEntityDescription" in desc_type_name):
+                if "NumberEntityDescription" not in desc_type_name:
                     _LOGGER.debug(
                         "SAX Item %s has entity description type %s for number platform",
                         item.name,
@@ -121,7 +118,7 @@ def filter_sax_items_by_type(
                     # Don't continue - allow it through for SAX items
 
             elif target_type == TypeConstants.SENSOR:
-                if not ("SensorEntityDescription" in desc_type_name):
+                if "SensorEntityDescription" not in desc_type_name:
                     _LOGGER.debug(
                         "SAX Item %s has entity description type %s for sensor platform",
                         item.name,

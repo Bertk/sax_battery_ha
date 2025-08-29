@@ -221,7 +221,6 @@ class TestSAXBatteryConfigNumber:
         number = SAXBatteryConfigNumber(
             coordinator=mock_coordinator_number,
             sax_item=sax_min_soc_item,
-            battery_count=1,
         )
 
         assert number._sax_item == sax_min_soc_item

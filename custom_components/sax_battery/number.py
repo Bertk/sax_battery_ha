@@ -56,7 +56,7 @@ async def async_setup_entry(
 
         for modbus_item in number_items:
             if isinstance(modbus_item, ModbusItem):  # Type guard
-                entities.append(  # Fix: use append instead of extend
+                entities.append(  # noqa: PERF401
                     SAXBatteryModbusNumber(
                         coordinator=coordinator,
                         battery_id=battery_id,
@@ -81,7 +81,7 @@ async def async_setup_entry(
     if first_coordinator:
         for sax_item in system_number_items:
             if isinstance(sax_item, SAXItem):  # Type guard
-                entities.append(  # Fix: use append instead of extend
+                entities.append(  # noqa: PERF401
                     SAXBatteryConfigNumber(
                         coordinator=first_coordinator,
                         sax_item=sax_item,

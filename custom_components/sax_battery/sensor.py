@@ -11,7 +11,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SAX_ENERGY_CONSUMED, SAX_ENERGY_PRODUCED, SAX_SOC
+from .const import (
+    DOMAIN,
+    SAX_COMBINED_SOC,
+    SAX_CUMULATIVE_ENERGY_CONSUMED,
+    SAX_CUMULATIVE_ENERGY_PRODUCED,
+    SAX_ENERGY_CONSUMED,
+    SAX_ENERGY_PRODUCED,
+    SAX_SOC,
+)
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
@@ -42,9 +50,9 @@ async def async_setup_entry(
             battery_id,
         )
 
-        for index, modbus_item in enumerate(sensor_items):  # noqa: B007
+        for modbus_item in sensor_items:
             if isinstance(modbus_item, ModbusItem):  # Type guard
-                entities.append(
+                entities.append(  # noqa: PERF401
                     SAXBatteryModbusSensor(
                         coordinator=coordinator,
                         battery_id=battery_id,
@@ -64,12 +72,12 @@ async def async_setup_entry(
         TypeConstants.SENSOR,
     )
 
-    # Get first coordinator for calculated sensors
-    first_coordinator = next(iter(coordinators.values())) if coordinators else None
-    if first_coordinator:
-        for index, sax_item in enumerate(system_sensor_items):  # noqa: B007
+    # Get first coordinator for calculated sensors - fix StopIteration error
+    if coordinators:
+        first_coordinator = next(iter(coordinators.values()))
+        for sax_item in system_sensor_items:
             if isinstance(sax_item, SAXItem):  # Type guard
-                entities.append(
+                entities.append(  # noqa: PERF401
                     SAXBatteryCalculatedSensor(
                         coordinator=first_coordinator,
                         sax_item=sax_item,
@@ -105,12 +113,19 @@ class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEnt
 
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
-            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
 
-        if isinstance(self.entity_description.name, str):
-            item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            item_name = self.entity_description.name[4:]  # eliminate 'Sax '
 
-        self.name = f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
+        self._attr_name = (
+            f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
+        )
 
         # Set device info
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
@@ -122,6 +137,18 @@ class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEnt
             return None
         return self.coordinator.data.get(self._modbus_item.name)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra state attributes."""
+        return {
+            "battery_id": self._battery_id,
+            "modbus_address": getattr(self._modbus_item, "address", None),
+            "last_update": getattr(self.coordinator, "last_update_success_time", None),
+            "raw_value": self.coordinator.data.get(self._modbus_item.name)
+            if self.coordinator.data
+            else None,
+        }
+
 
 class SAXBatteryCalculatedSensor(
     CoordinatorEntity[SAXBatteryCoordinator], SensorEntity
@@ -132,7 +159,7 @@ class SAXBatteryCalculatedSensor(
 
     def __init__(
         self,
-        coordinator: SAXBatteryCoordinator,  # Remove | None - require valid coordinator
+        coordinator: SAXBatteryCoordinator,
         sax_item: SAXItem,
         coordinators: dict[str, SAXBatteryCoordinator],
     ) -> None:
@@ -149,12 +176,17 @@ class SAXBatteryCalculatedSensor(
 
         # Set entity description from sax item if available
         if self._sax_item.entitydescription is not None:
-            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
-        if isinstance(self.entity_description.name, str):
-            item_name = self.entity_description.name[4:]  # eliminate 'Sax ' # type: ignore[index] # fmt: skip
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            item_name = self.entity_description.name[4:]  # eliminate 'Sax '
 
-        self.name = f"Sax {item_name}"
+        self._attr_name = f"Sax {item_name}"
 
         # Set system device info
         self._attr_device_info = coordinator.sax_data.get_device_info("system")
@@ -162,10 +194,30 @@ class SAXBatteryCalculatedSensor(
     @property
     def native_value(self) -> Any:
         """Return the calculated sensor value."""
-        # Use the calculation function from SAXItem
-        if hasattr(self._sax_item, "calculation_fn") and self._sax_item.calculation_fn:
-            return self._sax_item.calculation_fn(self._coordinators)
-        return None
+        # Use specific calculation functions based on sensor name
+        if self._sax_item.name == SAX_COMBINED_SOC:
+            return calculate_combined_soc(self._coordinators)
+        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
+            return calculate_cumulative_energy_produced(self._coordinators)
+        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
+            return calculate_cumulative_energy_consumed(self._coordinators)
+        # Fallback to coordinator data
+        return (
+            self.coordinator.data.get(self._sax_item.name)
+            if self.coordinator.data
+            else None
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra state attributes."""
+        return {
+            "battery_id": self.coordinator.battery_id,
+            "calculation_type": "function_based",
+            "calculation_function": self._sax_item.name,
+            "battery_count": len(self._coordinators),
+            "last_update": getattr(self.coordinator, "last_update_success_time", None),
+        }
 
 
 # Calculation functions for SAXItem values
