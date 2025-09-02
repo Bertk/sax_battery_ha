@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,11 +16,13 @@ from .const import (
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
     MAX_SUPPORTED_BATTERIES,
-    MODBUS_BATTERY_PILOT_ITEMS,
+    MODBUS_BATTERY_PILOT_CONTROL_ITEMS,
+    MODBUS_BATTERY_POWER_LIMIT_ITEMS,
     MODBUS_BATTERY_REALTIME_ITEMS,
-    WRITE_ONLY_REGISTERS,
 )
 from .items import ModbusItem, SAXItem
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def format_battery_display_name(battery_id: str) -> str:
@@ -86,52 +89,42 @@ def determine_entity_category(
 
 
 def should_include_entity(
-    modbus_item: ModbusItem,
+    item: ModbusItem | SAXItem,
     config_entry: ConfigEntry,
     battery_id: str,
 ) -> bool:
-    """Determine if entity should be included based on configuration.
+    """Determine if entity should be included based on configuration."""
+    # For ModbusItem, check additional constraints
+    if isinstance(item, ModbusItem):
+        # Check write-only registers against configuration
+        if hasattr(item, "address") and item.address in {41, 42, 43, 44}:
+            # Pilot registers (41, 42) require pilot_from_ha
+            if item.address in {41, 42}:
+                return config_entry.data.get(CONF_PILOT_FROM_HA, False)
+            # Power limit registers (43, 44) require limit_power
+            elif item.address in {43, 44}:  # noqa: RET505
+                return config_entry.data.get(CONF_LIMIT_POWER, False)
+            else:
+                return False
 
-    Args:
-        modbus_item: Modbus item
-        config_entry: Config entry
-        battery_id: Battery identifier
+        device_type = getattr(item, "device", None)
+        if device_type:
+            config_device = config_entry.data.get("device_type")
+            if config_device and device_type != config_device:
+                return False
 
-    Returns:
-        True if entity should be included
+        master_only = getattr(item, "master_only", False)
+        if master_only:
+            battery_configs = config_entry.data.get("batteries", {})
+            battery_config = battery_configs.get(battery_id, {})
+            return bool(battery_config.get("role") == "master")
 
-    """
-    # Filter out write-only registers that cannot be read
-    if hasattr(modbus_item, "address") and modbus_item.address in WRITE_ONLY_REGISTERS:
-        return False
-
-    # Check device type compatibility
-    device_type = getattr(modbus_item, "device", None)
-    if device_type:
-        config_device = config_entry.data.get("device_type")
-        if config_device and device_type != config_device:
-            return False
-
-    # Check master-only items
-    master_only = getattr(modbus_item, "master_only", False)
-    if master_only:
-        # Check if this battery is configured as master
-        master_battery_id: str = config_entry.data.get("master_battery", "battery_a")
-        is_master: bool = battery_id == master_battery_id
-
-        # Also check batteries configuration if available
-        batteries_config = config_entry.data.get("batteries", {})
-        if batteries_config and battery_id in batteries_config:
-            battery_config = batteries_config[battery_id]
-            is_master = battery_config.get("role") == "master"
-
-        return is_master
-
-    # Check required features
-    required_features = getattr(modbus_item, "required_features", None)
-    if required_features:
-        available_features = config_entry.data.get("features", [])
-        return all(feature in available_features for feature in required_features)
+        required_features = getattr(item, "required_features", None)
+        if required_features:
+            available_features = config_entry.data.get("features", [])
+            return bool(
+                all(feature in available_features for feature in required_features)
+            )
 
     return True
 
@@ -263,10 +256,14 @@ class RegisterAccessConfig:
 # Entity descriptions for read-only versions
 def get_battery_realtime_items(access_config: RegisterAccessConfig) -> list[ModbusItem]:
     """Get battery realtime items based on access configuration."""
-    items = MODBUS_BATTERY_REALTIME_ITEMS
+    items = list(MODBUS_BATTERY_REALTIME_ITEMS)  # Make a copy
 
-    # Add writable items based on configuration
+    # Add pilot control items (registers 41, 42) when pilot is enabled
     if access_config.pilot_from_ha:
-        items.extend(MODBUS_BATTERY_PILOT_ITEMS)
+        items.extend(MODBUS_BATTERY_PILOT_CONTROL_ITEMS)
+
+    # Add power limit items (registers 43, 44) when power limits are enabled
+    if access_config.limit_power:
+        items.extend(MODBUS_BATTERY_POWER_LIMIT_ITEMS)
 
     return items
