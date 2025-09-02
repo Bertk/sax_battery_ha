@@ -40,6 +40,13 @@ class ModbusObject:
         if self._modbus_item.is_invalid:
             return None
 
+        # Skip reading for write-only items
+        if self._modbus_item.mtype == TypeConstants.NUMBER_WO:
+            _LOGGER.debug(
+                "Skipping read for write-only item %s", self._modbus_item.name
+            )
+            return None
+
         try:
             result = await self._modbus_api.read_holding_registers(
                 count=1, modbus_item=self._modbus_item

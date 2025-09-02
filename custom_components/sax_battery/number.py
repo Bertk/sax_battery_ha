@@ -148,7 +148,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # Apply dynamic limits based on battery count for charge/discharge entities
         self._apply_dynamic_limits()
 
-        # Set device info
+        # Set device info for the specific battery
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
 
     def _apply_dynamic_limits(self) -> None:
@@ -277,7 +277,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
         # Set system device info - this creates the "SAX Battery Cluster" device
-        self._attr_device_info = coordinator.sax_data.get_device_info("system")
+        self._attr_device_info = coordinator.sax_data.get_device_info("cluster")
 
     @property
     def native_value(self) -> float | None:

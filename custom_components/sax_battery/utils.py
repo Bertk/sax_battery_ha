@@ -12,6 +12,7 @@ from homeassistant.const import EntityCategory
 from .const import (
     CONF_BATTERY_COUNT,
     CONF_LIMIT_POWER,
+    CONF_MASTER_BATTERY,
     CONF_PILOT_FROM_HA,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
@@ -19,6 +20,7 @@ from .const import (
     MODBUS_BATTERY_PILOT_CONTROL_ITEMS,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
     MODBUS_BATTERY_REALTIME_ITEMS,
+    WRITE_ONLY_REGISTERS,
 )
 from .items import ModbusItem, SAXItem
 
@@ -94,19 +96,24 @@ def should_include_entity(
     battery_id: str,
 ) -> bool:
     """Determine if entity should be included based on configuration."""
-    # For ModbusItem, check additional constraints
-    if isinstance(item, ModbusItem):
-        # Check write-only registers against configuration
-        if hasattr(item, "address") and item.address in {41, 42, 43, 44}:
-            # Pilot registers (41, 42) require pilot_from_ha
-            if item.address in {41, 42}:
-                return config_entry.data.get(CONF_PILOT_FROM_HA, False)
-            # Power limit registers (43, 44) require limit_power
-            elif item.address in {43, 44}:  # noqa: RET505
-                return config_entry.data.get(CONF_LIMIT_POWER, False)
-            else:
-                return False
+    # Handle write-only registers first (specific case)
+    if hasattr(item, "address") and item.address in WRITE_ONLY_REGISTERS:
+        # Get master battery ID from configuration
+        master_battery_id = config_entry.data.get(CONF_MASTER_BATTERY, "battery_a")
+        is_master = battery_id == master_battery_id
 
+        # Pilot registers (41, 42) require pilot_from_ha AND master battery
+        if item.address in {41, 42}:
+            return config_entry.data.get(CONF_PILOT_FROM_HA, False) and is_master
+        # Power limit registers (43, 44) require limit_power AND master battery
+        elif item.address in {43, 44}:  # noqa: RET505
+            return config_entry.data.get(CONF_LIMIT_POWER, False) and is_master
+        else:
+            # Unknown write-only register
+            return False
+
+    # For ModbusItem, check additional constraints (general case)
+    if isinstance(item, ModbusItem):
         device_type = getattr(item, "device", None)
         if device_type:
             config_device = config_entry.data.get("device_type")
@@ -126,6 +133,7 @@ def should_include_entity(
                 all(feature in available_features for feature in required_features)
             )
 
+    # Default: include the entity
     return True
 
 
@@ -219,35 +227,16 @@ class RegisterAccessConfig:
     is_master_battery: bool = False
     battery_count: int = 1
 
-    # def can_write_register(self, address: int) -> bool:
-    #     """Check if a register can be written to."""
-    #     # Pilot registers (41, 42) require pilot_from_ha
-    #     if address in {41, 42}:
-    #         return self.pilot_from_ha and self.is_master_battery
-
-    #     # Power limit registers (43, 44) require limit_power
-    #     if address in {43, 44}:
-    #         return self.limit_power
-
-    #     # Other registers are generally writable
-    #     return True
-
-    # def get_system_max_charge(self) -> int:
-    #     """Get system maximum charge power."""
-    #     return calculate_system_max_charge(self.battery_count)
-
-    # def get_system_max_discharge(self) -> int:
-    #     """Get system maximum discharge power."""
-    #     return calculate_system_max_discharge(self.battery_count)
-
     def get_writable_registers(self) -> set[int]:
         """Get set of writable register addresses."""
         writable = set()
 
+        # Pilot control registers require both pilot_from_ha AND master battery
         if self.pilot_from_ha and self.is_master_battery:
             writable.update({41, 42})
 
-        if self.limit_power:
+        # Power limit registers require both limit_power AND master battery
+        if self.limit_power and self.is_master_battery:
             writable.update({43, 44})
 
         return writable

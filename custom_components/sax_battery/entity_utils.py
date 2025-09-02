@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
+from .utils import should_include_entity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def filter_items_by_type(
                     )
                     continue
 
-        # Generic should_include_entity check - handle both types
+        # Use centralized should_include_entity function from utils
         if should_include_entity(item, config_entry, battery_id):
             filtered_items.append(item)
 
@@ -129,37 +130,3 @@ def filter_sax_items_by_type(
         filtered_items.append(item)
 
     return filtered_items
-
-
-def should_include_entity(
-    item: ModbusItem | SAXItem,
-    config_entry: ConfigEntry,
-    battery_id: str,
-) -> bool:
-    """Determine if entity should be included based on configuration."""
-    # For ModbusItem, check additional constraints
-    if isinstance(item, ModbusItem):
-        # Filter out write-only registers that cannot be read
-        if hasattr(item, "address") and item.address in {41, 42, 43, 44}:
-            return False
-
-        device_type = getattr(item, "device", None)
-        if device_type:
-            config_device = config_entry.data.get("device_type")
-            if config_device and device_type != config_device:
-                return False
-
-        master_only = getattr(item, "master_only", False)
-        if master_only:
-            battery_configs = config_entry.data.get("batteries", {})
-            battery_config = battery_configs.get(battery_id, {})
-            return bool(battery_config.get("role") == "master")
-
-        required_features = getattr(item, "required_features", None)
-        if required_features:
-            available_features = config_entry.data.get("features", [])
-            return bool(
-                all(feature in available_features for feature in required_features)
-            )
-
-    return True
