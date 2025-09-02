@@ -93,7 +93,7 @@ SAX_ENERGY_CONSUMED = "sax_energy_consumed"
 # Cumulative energy statistics (multiple batteries)
 SAX_CUMULATIVE_ENERGY_PRODUCED = "sax_cumulative_energy_produced"
 SAX_CUMULATIVE_ENERGY_CONSUMED = "sax_cumulative_energy_consumed"
-SAX_COMBINED_SOC = "combined_soc"
+SAX_COMBINED_SOC = "sax_combined_soc"
 
 CONF_MIN_SOC = "min_soc"
 CONF_PRIORITY_DEVICES = "priority_devices"

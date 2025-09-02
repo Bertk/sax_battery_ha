@@ -134,9 +134,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
         # Fix name assignment with proper type checking
         if (
-            isinstance(self.entity_description, NumberEntityDescription)
+            hasattr(self, "entity_description")
+            and self.entity_description
             and hasattr(self.entity_description, "name")
-            and self.entity_description.name
+            and isinstance(self.entity_description.name, str)
         ):
             item_name = str(self.entity_description.name)[4:]  # eliminate 'Sax '
 
