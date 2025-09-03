@@ -19,7 +19,7 @@
     "*.yaml": "home-assistant",
     "*.chatmode.md": "markdown",
     "*.instructions.md": "markdown",
-    "*.prompt.md": "markdown"
+    "*.prompt.md": "markdown",
   },
   "editor.formatOnSave": true,
   "python.testing.pytestArgs": [
@@ -32,6 +32,15 @@
   "python.analysis.diagnosticSeverityOverrides": {
     "reportIncompatibleMethodOverride": false
   },
+  "python.linting.enabled": true,
+  "python.linting.ruffEnabled": true,
+  "python.formatting.provider": "ruff",
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
   "cSpell.words": [
     "entitydescription",
     "mformat",
@@ -43,5 +52,8 @@
   ],
   "workbench.editor.restoreViewState": false,
   "workbench.editor.enablePreview": true,
-  "workbench.editor.enablePreviewFromQuickOpen": false
+  "workbench.editor.enablePreviewFromQuickOpen": false,
+  "awesome-copilot.mcp.enabled": true,
+  "awesome-copilot.mcp.configFile": "${workspaceFolder}/.github/mcp-config.json",
+  "awesome-copilot.mcp.timeout": 30000,
 }

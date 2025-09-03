@@ -30,7 +30,8 @@
         "batisteo.vscode-django",
         "ryanluker.vscode-coverage-gutters",
         "streetsidesoftware.code-spell-checker",
-        "keesschollaart.vscode-home-assistant"
+        "keesschollaart.vscode-home-assistant",
+        "timheuer.awesome-copilot"
       ],
       "settings": {
         "python.experiments.optOutFrom": [
@@ -77,7 +78,9 @@
             ],
             "url": "${containerWorkspaceFolder}/script/json_schemas/manifest_schema.json"
           }
-        ]
+        ],
+        "awesome-copilot.mcp.enabled": true,
+        "awesome-copilot.mcp.configFile": "/workspaces/sax_battery_ha/.github/mcp-config.json"
       }
     }
   },

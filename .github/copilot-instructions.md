@@ -1,64 +1,23 @@
-# Instructions for GitHub Copilot
+# GitHub Copilot Instructions for SAX Battery Integration
 
-This repository holds a custom integration of SAX battery for Home Assistant, a Python 3 based home
-automation application.
+You are an AI programming assistant specialized in Home Assistant custom integration development for SAX Battery systems.
 
-## 🔋 SAX-power Home Battery System — Communication Architecture
+## SAX Battery System Architecture
 
-The SAX-power energy storage solution ensures precise, intelligent power management across a multi-phase installation using structured communication protocols and a coordinated control hierarchy.
-A customer system could have multiple battery units, each connected to a different grid phase (L1, L2, L3) for optimal load balancing and energy distribution. The
+The SAX-power energy storage solution uses structured communication protocols across multi-phase installations with coordinated control hierarchy. Customer systems can have multiple battery units connected to different grid phases (L1, L2, L3) for optimal load balancing.
 
----
+### Communication Interfaces
 
-### 📡 Communication Interfaces
+- **Ethernet Port (Modbus TCP/IP)**: Remote monitoring, data acquisition, system configuration
+- **RS485 Port (Modbus RTU)**: Battery-to-smart meter communication for grid measurements
 
-Each battery unit is equipped with the following:
+### Master Battery Configuration
 
-#### Ethernet Port (Modbus TCP/IP)
+- **Battery A** (L1) = Master: Power limit coordination, smart meter data polling, RS485 communication
+- **Battery B** (L2) + **Battery C** (L3) = Slaves: Follow master instructions
+- **Polling Strategy**: Basic smart meter (5-10s), phase-specific data (30-60s), individual battery data (standard interval)
 
-- Allows remote monitoring, data acquisition, and system configuration
-- Used to exchange live data and control signals with energy management systems
-
-#### RS485 Port (Modbus RTU)
-
-- Used for communication between the batteries and the smart meter
-- Facilitates grid connection measurements for synchronized system behavior
-
----
-
-### ⚙️ Smart Meter Integration
-
-- A single smart meter is connected to all three grid phases: **L1, L2, and L3**
-- Communicates via RS485 to all battery units
-- Smart meter data is accessed through the battery units via Modbus TCP/IP
-- Provides real-time measurements of:
-  - Grid voltage and current per phase (L1, L2, L3)
-  - Import/export power levels
-  - Total energy consumption and production
-  - Grid frequency, power factor, and other electrical parameters
-- Acts as the reference point for system control and balancing logic
-
----
-
-### 🧠 Master Battery Configuration and Data Polling
-
-- **Battery A** is configured as the master unit
-- The master battery is responsible for:
-  - Power limit coordination for charging and discharging
-  - **Smart meter data polling** - Only the master battery polls smart meter data
-  - Sharing grid measurements with slave batteries via RS485 communication
-- **Battery B and Battery C** act as slaves, following instructions from the master
-- **Polling Strategy**:
-  - Basic smart meter data (total power, frequency, etc.): Standard interval (5-10 seconds)
-  - Phase-specific data (L1/L2/L3 voltages/currents): Lower frequency (30-60 seconds)
-  - Battery-specific data: Standard interval for all batteries
-  - every battery unit polls its own data at the same interval using an individual coordinator
-  - Redundant sensor values shall only be polled by the master battery
-- All communication coordination is based on **RS485 grid values** and shared logic via **Ethernet**
-
----
-
-### 🔌 Power Phase Mapping
+### Power Phase Mapping
 
 | Battery | Grid Phase | Role   |
 | ------- | ---------- | ------ |
@@ -66,308 +25,97 @@ Each battery unit is equipped with the following:
 | B       | L2         | Slave  |
 | C       | L3         | Slave  |
 
-- Each battery is connected to a dedicated grid phase (L1, L2, or L3) to balance power flow
-- Ensures equal load distribution and phase-specific control
+## Python Development Standards
 
----
+### Language Requirements
 
-### System Diagram
+- **Python 3.13+** compatibility required
+- Use modern language features: Pattern matching, type hints, f-strings, dataclasses, walrus operator
+- **Tools**: Ruff (formatting/linting), PyLint, MyPy (type checking), pytest (testing)
 
-A visual representation includes:
+### Linting Rules (pyproject.toml compliance)
 
-- Separate **RS485** and **Ethernet** connections
-- One unified smart meter with direct connection to all three grid phases (**L1/L2/L3**)
-- Distinct power line routing
+- **Import sorting** (I001): Alphabetical grouping required
+- **Exception handling** (BLE001): No blind `Exception` catching - use specific types
+- **Import cleanup** (F401): Remove unused imports immediately
+- **Security** (S): Avoid `eval()`, sanitize inputs, use parameterized queries
+- **Complexity** (C901): Keep functions simple and readable
 
-![](./assets/battery_cluster.png)
+### Import Management
 
-## Instructions for GitHub Copilot
+```python
+"""Module docstring."""
 
-This repository holds a custom integration for Home Assistant, a Python 3 based home
-automation application.
+from __future__ import annotations
 
-- Python code must be compatible with Python 3.13
-- Use the newest Python language features if possible:
-  - Pattern matching
-  - Type hints
-  - f-strings for string formatting over `%` or `.format()`
-  - Dataclasses
-  - Walrus operator
-- Code quality tools:
-  - Formatting: Ruff
-  - Linting: PyLint and Ruff
-  - Type checking: MyPy
-  - Testing: pytest with plain functions and fixtures
-- **Follow linting rules from `pyproject.toml`** - All code generation must adhere to the configured ruff rules including:
-  - **Import sorting** (I001): Always sort imports alphabetically and group them properly (organize imports with `ruff format`)
-  - **Exception handling** (BLE001): Never catch blind `Exception` - use specific exception types
-  - **Import cleanup** (F401): Remove unused imports immediately
-  - **Security** (S): Follow security best practices (avoid `eval`, sanitize inputs)
-  - **Complexity** (C901): Keep functions simple and readable
-  - All other rules defined in `pyproject.toml` under `[tool.ruff]` and `[tool.ruff.lint]`
-- Inline code documentation:
-  - File headers should be short and concise:
-    ```python
-    """Integration for Peblar EV chargers."""
-    ```
-  - Every method and function needs a docstring:
-    ```python
-    async def async_setup_entry(hass: HomeAssistant, entry: PeblarConfigEntry) -> bool:
-        """Set up Peblar from a config entry."""
-        ...
-    ```
-- All code and comments and other text are written in American English
-- Follow existing code style patterns as much as possible
-- Core locations:
-  - Shared constants: `homeassistant/const.py`, use them instead of hardcoding
-    strings or creating duplicate integration constants.
-  - Integration files:
-    - Constants: `custom_components/{domain}/const.py`
-    - Models: `custom_components/{domain}/models.py`
-    - Coordinator: `custom_components/{domain}/coordinator.py`
-    - Config flow: `custom_components/{domain}/config_flow.py`
-    - Platform code: `custom_components/{domain}/{platform}.py`
-- All external I/O operations must be async
-- Async patterns:
-  - Avoid sleeping in loops
-  - Avoid awaiting in loops, gather instead
-  - No blocking calls
-- Polling:
-  - Follow update coordinator pattern, when possible
-  - Polling interval may not be configurable by the user
-  - For local network polling, the minimum interval is 5 seconds
-  - For cloud polling, the minimum interval is 60 seconds
-- Error handling:
-  - **Never catch blind `Exception`** - always use specific exception types:
-    - `ModbusException` for Modbus communication errors
-    - `OSError` for network/connection errors
-    - `TimeoutError` for timeout situations
-    - `ValueError`, `TypeError`, `KeyError` for data processing errors
-    - `ConfigEntryNotReady`, `ConfigEntryError` for setup failures
-  - Use specific exceptions from `homeassistant.exceptions`
-  - Setup failures:
-    - Temporary: Raise `ConfigEntryNotReady`
-    - Permanent: Use `ConfigEntryError`
-- Logging:
-  - Message format:
-    - No periods at end
-    - No integration names or domains (added automatically)
-    - No sensitive data (keys, tokens, passwords), even when those are incorrect.
-  - Be very restrictive on the use of logging info messages, use debug for
-    anything which is not targeting the user.
-  - Use lazy logging (no f-strings):
-    ```python
-    _LOGGER.debug("This is a log message with %s", variable)
-    ```
-- **Import Management**:
+import asyncio
+import logging
+from typing import Any
 
-  - Always sort imports alphabetically within their groups
-  - Group imports: standard library, third-party, local imports
-  - Remove unused imports immediately (F401 violations)
-  - Use specific imports rather than wildcard imports
-  - Import order example:
+from pymodbus import ModbusException
+from homeassistant.core import HomeAssistant
 
-    ```python
-    """Module docstring."""
+from .const import DOMAIN
+from .items import ModbusItem
+```
 
-    from __future__ import annotations
+### Security Requirements
 
-    import asyncio
-    import logging
-    from typing import Any
-
-    from pymodbus import ModbusException
-    from homeassistant.core import HomeAssistant
-
-    from .const import DOMAIN
-    from .items import ModbusItem
-    ```
-
-- **Security Considerations**:
-  - Avoid `eval()` function - use `ast.literal_eval()` or safe alternatives
-  - Validate and sanitize all user inputs
-  - Use parameterized queries for database operations
-  - Never log sensitive information
-- Entities:
-  - Ensure unique IDs for state persistence:
-    - Unique IDs should not contain values that are subject to user or network change.
-    - An ID needs to be unique per platform, not per integration.
-    - The ID does not have to contain the integration domain or platform.
-    - Acceptable examples:
-      - Serial number of a device
-      - MAC address of a device formatted using `homeassistant.helpers.device_registry.format_mac`
-        Do not obtain the MAC address through arp cache of local network access,
-        only use the MAC address provided by discovery or the device itself.
-      - Unique identifier that is physically printed on the device or burned into an EEPROM
-    - Not acceptable examples:
-      - IP Address
-      - Device name
-      - Hostname
-      - URL
-      - Email address
-      - Username
-    - For entities that are setup by a config entry, the config entry ID
-      can be used as a last resort if no other Unique ID is available.
-      For example: `f"{entry.entry_id}-battery"`
-  - If the state value is unknown, use `None`
-  - Do not use the `unavailable` string as a state value,
-    implement the `available()` property method instead
-  - Do not use the `unknown` string as a state value, use `None` instead
-- Extra entity state attributes:
-  - The keys of all state attributes should always be present
-  - If the value is unknown, use `None`
-  - Provide descriptive state attributes
-
-### Testing:
-
-- Test location: `tests/components/{domain}/`
-- Use pytest fixtures from `tests.common`
-- Mock external dependencies
-- Use snapshots for complex data
-- Follow existing test patterns
-
-**When to Create New Fixtures**:
-
-- If a mock is used across 3+ test files, add it to `conftest.py`
-- Use descriptive fixture names with `mock_` prefix
-- Document fixtures with proper docstrings
-
-**Test File Structure**:
-
-- Import only what's needed for the specific module under test
-- Group related tests in classes with descriptive names
-- Use fixture parameters instead of creating mocks in test methods
-
-### Code Generation Rules
-
-1. **Always suggest using existing fixtures** when generating tests
-2. **Recommend adding new fixtures to conftest.py** if mocks are repeated
-3. **Use pytest fixture dependency injection** pattern
-4. **Avoid creating Mock() objects directly in test methods** when fixtures exist
-5. **Follow all ruff linting rules** defined in `pyproject.toml`
-6. **Sort imports properly** and remove unused imports
-7. **Use specific exception handling** - never catch blind `Exception`
-8. **import** statements should be at the top-level of a file
+- No hardcoded secrets - use environment variables or secret stores
+- Validate and sanitize all user inputs
+- Use specific exceptions: `ModbusException`, `OSError`, `TimeoutError`, `ValueError`, `ConfigEntryNotReady`
+- Never log sensitive information
 
 ## Home Assistant Integration Patterns
 
-### Entity Testing
+### Core File Structure
 
-- Use `mock_hass` and `mock_coordinator` fixtures
-- Test entity state updates and attribute changes
-- Mock device registry and entity registry interactions
+- Constants: `custom_components/{domain}/const.py`
+- Models: `custom_components/{domain}/models.py`
+- Coordinator: `custom_components/{domain}/coordinator.py`
+- Config flow: `custom_components/{domain}/config_flow.py`
+- Platform code: `custom_components/{domain}/{platform}.py`
 
-### Config Flow Testing
+### Async Patterns
 
-- Use `mock_modbus_api` for connection testing
-- Test both successful and failed setup scenarios
-- Mock user input validation
+- All external I/O operations must be async
+- No blocking calls, no sleeping in loops
+- Use gather() instead of awaiting in loops
+- Follow update coordinator pattern
 
-### Data Update Coordinator Testing
+### Polling Requirements
 
-- Use `mock_modbus_api` for data fetching
-- Test update intervals and error handling
-- Mock network timeouts and connection failures
+- Local network minimum: 5 seconds
+- Cloud polling minimum: 60 seconds
+- Polling interval not user-configurable
 
-## Code Review Guidelines
+### Error Handling
 
-**When reviewing code, do NOT comment on:**
+- **Specific exceptions only**: `ModbusException` (Modbus), `OSError` (network), `TimeoutError` (timeouts)
+- **Setup failures**: `ConfigEntryNotReady` (temporary), `ConfigEntryError` (permanent)
+- Never catch blind `Exception`
 
-- **Missing imports** - We use static analysis tooling to catch that
-- **Code formatting** - We have ruff as a formatting tool that will catch those if needed (unless specifically instructed otherwise in these instructions)
+### Logging Standards
 
-**When reviewing code, DO comment on:**
+- No periods at end of messages
+- No integration names/domains (auto-added)
+- No sensitive data in logs
+- Use lazy logging: `_LOGGER.debug("Message with %s", variable)`
+- Restrict info messages - use debug for non-user content
 
-- **Blind exception catching** (BLE001) - Must use specific exceptions
-- **Unused imports** (F401) - Should be removed immediately
-- **Import sorting** (I001) - Must follow alphabetical grouping
-- **Security violations** (S) - Avoid unsafe patterns like `eval()`
-- **Complexity issues** (C901) - Functions should be simple and readable
+### Entity Requirements
 
-### Test Generation Verification
+#### Unique IDs (Critical)
 
-**Critical Rule: Always Verify Against Actual Implementation**
+**Acceptable**: Serial numbers, MAC addresses (formatted), device EEPROM IDs
+**Not acceptable**: IP addresses, device names, hostnames, URLs, usernames
+**Fallback**: Use `f"{entry.entry_id}-battery"` only if no other option
 
-When generating test files, you MUST:
-
-1. **Read the actual implementation file first** before writing any tests
-2. **Verify class constructors, method signatures, and return types** match the implementation
-3. **Check import paths and class names** exist in the actual codebase
-4. **Validate method parameters** - especially required vs optional parameters
-5. **Confirm exception types** used in the actual implementation
-
-**Before submitting test code:**
-
-- [ ] All imported classes/functions exist in the specified modules
-- [ ] Constructor calls match the actual required parameters (no defaults assumed)
-- [ ] Method signatures match the implementation (async/sync, parameters, return types)
-- [ ] Exception handling uses the same exception types as the implementation
-- [ ] Test assertions match actual method behavior and return values
-
-**Example Verification Process:**
-
-```python
-# ❌ WRONG - Assuming defaults exist
-api = ModbusAPI()  # Error: constructor requires host, port, battery_id
-
-# ✅ CORRECT - After checking actual implementation
-api = ModbusAPI(host="192.168.1.100", port=502, battery_id="battery_a")
-```
-
-**If implementation doesn't match expectations:**
-
-- Update tests to match actual implementation
-- Do NOT assume or suggest changes to the implementation
-- Use the actual method signatures, parameters, and behavior as-is
-
-This rule prevents generating invalid tests that fail due to incorrect assumptions about the codebase structure.
-
-## Additional Rule: Unique Fixture Naming
-
-- **Fixture Naming:**
-  - All pytest fixture names must be unique within the test suite.
-  - Do not reuse fixture names across different scopes (module, class, function) to avoid PyLint `redefined-outer-name (W0621)` errors.
-  - If a fixture is reused or shared, use a descriptive and unique name (e.g., `mock_modbus_api_obj`, `mock_modbus_client_instance`).
-  - When overriding a fixture for a specific test or class, always use a new name rather than shadowing an outer fixture.
-  - If a fixture is defined in `conftest.py`, do not redefine it in a test file with the same name—use a different name or import it directly.
-
-**Example:**
-
-```python
-# conftest.py
-@pytest.fixture
-def mock_modbus_api():
-    ...
-
-# test_modbusobject.py
-@pytest.fixture
-def mock_modbus_api_obj(mock_modbus_api):
-    ...
-```
-
-- Always update references in test functions to use the unique fixture name.
-
-**Summary:**
-
-- Unique fixture names prevent scope shadowing and PyLint errors.
-- Prefer descriptive names for clarity and maintainability.
-
-## Entity Initialization Pattern
-
-### Critical Rule: Follow Home Assistant Entity Initialization Patterns
-
-**Before creating any entity class initialization:**
-
-1. **Study existing entity patterns** in the Home Assistant codebase and this integration
-2. **Use Home Assistant's built-in attribute system** instead of manual attribute assignment
-3. **Follow the `_attr_*` pattern** for all entity attributes
-4. **Never assume entity description structure** without proper type checking
-
-### ✅ CORRECT Entity Initialization Pattern
+#### Entity Initialization Pattern (Critical Rule)
 
 ```python
 class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
-    """Implementation of a SAX Battery configuration number entity without ModbusItem."""
+    """SAX Battery configuration number entity."""
 
     def __init__(
         self,
@@ -380,80 +128,144 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._sax_item = sax_item
         self._battery_count = battery_count
 
-        # Generate unique ID using class name pattern
+        # Generate unique ID
         if self._sax_item.name.startswith("sax_"):
             self._attr_unique_id = self._sax_item.name
         else:
             self._attr_unique_id = f"sax_{self._sax_item.name}"
 
-        # Set entity description from modbus item if available
+        # Set entity description - let HA handle attribute extraction
         if self._sax_item.entitydescription is not None:
-            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._sax_item.entitydescription
 ```
 
-### ❌ WRONG Entity Initialization Patterns
+**❌ Wrong Patterns**:
 
-**DON'T manually set individual attributes:**
+- Manual `_attr_*` assignments for entity description attributes
+- Complex initialization logic in `__init__`
+- Assuming entity description types without checking
+
+#### State Values
+
+- Unknown state = `None` (never use "unknown" string)
+- Implement `available()` property instead of "unavailable" string
+- Always provide descriptive state attributes with consistent keys
+
+## Testing Guidelines
+
+### Test Structure
+
+- Location: `tests/components/{domain}/`
+- Use pytest fixtures from `tests.common`
+- Mock external dependencies
+- Follow existing test patterns
+
+### Fixture Naming (Critical Rule)
+
+- **All fixture names must be unique** across entire test suite
+- No shadowing outer fixtures (avoid PyLint W0621)
+- Use descriptive names: `mock_modbus_api_obj`, `mock_modbus_client_instance`
+- Never redefine fixtures from `conftest.py`
 
 ```python
-# ❌ WRONG - Manual attribute assignment
-self._attr_native_min_value = entity_desc.native_min_value or 0.0
-self._attr_native_max_value = entity_desc.native_max_value or 100.0
-self._attr_native_step = entity_desc.native_step or 1.0
+# conftest.py
+@pytest.fixture
+def mock_modbus_api():
+    ...
+
+# test_modbusobject.py
+@pytest.fixture
+def mock_modbus_api_obj(mock_modbus_api):  # Different name
+    ...
 ```
 
-**DON'T assume entity description types:**
+### Test Generation Verification (Critical Rule)
 
-```python
-# ❌ WRONG - Assuming specific types without checking
-if isinstance(self._modbus_item.entitydescription, NumberEntityDescription):
-    # This may fail due to union types
-```
+**Before generating any test:**
 
-**DON'T use complex initialization logic:**
+1. **Read actual implementation first**
+2. **Verify class constructors match actual parameters**
+3. **Check import paths exist in codebase**
+4. **Validate method signatures (async/sync, parameters, return types)**
+5. **Confirm exception types used in implementation**
 
-```python
-# ❌ WRONG - Too much logic in __init__
-entity_desc = None
-if isinstance(self._sax_item.entitydescription, EntityDescription):
-    entity_desc = self._sax_item.entitydescription
+### Testing Patterns
 
-if entity_desc and isinstance(entity_desc, NumberEntityDescription):
-    # Complex nested conditions that often fail
-```
+- Use existing fixtures when possible
+- Add new fixtures to `conftest.py` if used 3+ times
+- Group tests in descriptive classes
+- Test both success and failure scenarios
+- Mock HA registries and coordinators properly
 
-### Key Principles:
+## Code Generation Rules
 
-1. **Use `entity_description` assignment**: Let Home Assistant handle attribute extraction automatically
-2. **Keep initialization simple**: Minimal logic in `__init__`, defer complex operations to methods
-3. **Safe attribute access**: Always check for attribute existence before accessing
-4. **Consistent naming patterns**: Use established patterns for `unique_id` and `name`
-5. **Type safety**: Use `isinstance()` and `hasattr()` for safe type checking
-6. **Follow existing patterns**: Study working entities in the same integration
+### When Generating Code
 
-### Entity Description Handling:
+1. Follow established patterns from existing codebase
+2. Apply all ruff linting rules from `pyproject.toml`
+3. Use security-first approaches (OWASP compliance)
+4. Generate corresponding tests with proper fixtures
+5. Include comprehensive documentation
+6. Consider multi-battery system architecture
 
-```python
-# ✅ CORRECT - Simple assignment, let HA handle the rest
-if self._modbus_item.entitydescription is not None:
-    self.entity_description = self._modbus_item.entitydescription
+### When Reviewing Code
 
-# ✅ CORRECT - Safe attribute access
-if (hasattr(self, 'entity_description')
-    and hasattr(self.entity_description, 'name')):
-    # Use the attribute safely
-```
+1. Security vulnerabilities (OWASP Top 10)
+2. Performance optimization opportunities
+3. Exception handling specificity (no blind Exception)
+4. Import organization and unused imports
+5. Home Assistant entity pattern compliance
 
-### Verification Checklist:
+## Multi-Battery System Considerations
 
-Before submitting entity initialization code:
+### Master/Slave Coordination
 
-- [ ] Uses `self.entity_description = ...` assignment pattern
-- [ ] Minimal logic in `__init__` method
-- [ ] Safe attribute access with `hasattr()` checks
-- [ ] Consistent `unique_id` and naming patterns
-- [ ] No manual `_attr_*` assignments for entity description attributes
-- [ ] Follows existing working patterns in the integration
-- [ ] Type checking uses `isinstance()` and `hasattr()`
+- Master battery handles smart meter polling
+- Each battery maintains individual coordinator
+- Phase-specific entity creation (L1/L2/L3)
+- Data synchronization via RS485 and Ethernet
 
-**Remember**: Home Assistant's entity system is designed to automatically handle entity descriptions. Work with the framework, not against it.
+### Entity Creation
+
+- Consider battery role (master vs slave) when creating entities
+- Handle redundant sensor values (only master polls)
+- Implement proper unique ID patterns for multi-battery setups
+
+## Performance Guidelines
+
+During code reviews and generation:
+
+- [ ] Avoid O(n^2) or worse algorithmic complexity
+- [ ] Use appropriate data structures
+- [ ] Implement caching where beneficial
+- [ ] Optimize database queries with proper indexes
+- [ ] Minimize network requests and batch operations
+- [ ] Handle memory efficiently (no leaks, bounded usage)
+- [ ] Use asynchronous operations for I/O
+- [ ] Monitor and alert on performance regressions
+
+## Documentation Standards
+
+### Code Documentation
+
+- File headers: Short and concise (`"""Integration for SAX Battery systems."""`)
+- Every method needs docstring with clear purpose
+- Document performance assumptions and critical code paths
+- All text in American English
+
+### Error Messages and Logging
+
+- Clear, actionable error messages
+- No sensitive data in logs
+- Structured logging for easier analysis
+- Use appropriate log levels (debug vs info vs error)
+
+## Response Guidelines
+
+- Always provide actionable, specific guidance
+- Include code examples following established patterns
+- Reference relevant documentation and best practices
+- Consider multi-battery system architecture in suggestions
+- Prioritize security and performance considerations
+- Explain security mitigations explicitly
+- Verify implementation details before generating tests

@@ -34,6 +34,16 @@ RUN \
   cmake \
   autoconf \
   graphviz \
+  # Docker CLI for MCP server
+  ca-certificates \
+  curl \
+  gnupg \
+  && install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+  && chmod a+r /etc/apt/keyrings/docker.gpg \
+  && echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+  && apt-get update \
+  && apt-get install -y docker-ce-cli \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +52,9 @@ COPY --from=ghcr.io/alexxit/go2rtc:latest /usr/local/bin/go2rtc /bin/go2rtc
 
 # Install uv
 RUN pip3 install uv
+
+# Pre-pull MCP server image
+RUN docker pull ghcr.io/microsoft/mcp-dotnet-samples/awesome-copilot:latest || echo "MCP image pull failed, will retry at runtime"
 
 WORKDIR /usr/src
 
