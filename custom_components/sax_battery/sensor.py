@@ -191,7 +191,7 @@ class SAXBatteryCalculatedSensor(
         self._attr_name = f"Sax {item_name}"
 
         # Set system device info
-        self._attr_device_info = coordinator.sax_data.get_device_info("system")
+        self._attr_device_info = coordinator.sax_data.get_device_info("cluster")
 
     @property
     def native_value(self) -> Any:

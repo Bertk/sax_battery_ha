@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.number import NumberEntity, NumberEntityDescription
+from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -262,14 +262,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         else:
             self._attr_unique_id = f"sax_{self._sax_item.name}"
 
-        if not isinstance(self._sax_item.entitydescription, NumberEntityDescription):
-            _LOGGER.warning(
-                "Item %s has wrong entity description type for number platform: %s",
-                self._sax_item.name,
-                type(self._sax_item.entitydescription),
-            )
-
-        # Set entity description from modbus item if available
         if self._sax_item.entitydescription is not None:
             self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 

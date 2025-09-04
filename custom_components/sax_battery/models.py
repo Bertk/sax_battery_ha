@@ -249,7 +249,7 @@ class SAXBatteryData:
     def get_device_info(self, battery_id: str) -> DeviceInfo:
         """Get device info for a specific battery."""
         if battery_id == "cluster":
-            # System/cluster device info for aggregated entities
+            # Cluster device info for aggregated entities
             return DeviceInfo(
                 identifiers={("sax_battery", "sax_battery_cluster")},
                 name="SAX Battery Cluster",

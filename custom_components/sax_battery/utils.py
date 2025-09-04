@@ -32,11 +32,20 @@ def format_battery_display_name(battery_id: str) -> str:
 
     This function is primarily used for device names, not entity names.
     Entity names should not include battery prefix when _attr_has_entity_name = True.
+
+    Args:
+        battery_id: Battery identifier (e.g., "battery_a", "battery_b", "cluster")
+
+    Returns:
+        Formatted display name (e.g., "Battery A", "Battery B", "Cluster")
+
     """
     if battery_id.lower().startswith("battery_"):
         # Remove "battery_" prefix and capitalize the letter
         battery_letter = battery_id[8:].upper()
         return f"Battery {battery_letter}"
+    if battery_id == "cluster":
+        return "Cluster"
     return battery_id.replace("_", " ").title()
 
 
@@ -155,22 +164,6 @@ def calculate_system_max_discharge(battery_count: int) -> int:
     return battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
 
 
-# def get_battery_limits_for_count(battery_count: int) -> tuple[int, int]:
-#     """Get both charge and discharge limits for a given battery count.
-
-#     Args:
-#         battery_count: Number of batteries in the system (1-3)
-
-#     Returns:
-#         Tuple of (max_charge, max_discharge) in watts
-
-#     """
-#     return (
-#         calculate_system_max_charge(battery_count),
-#         calculate_system_max_discharge(battery_count),
-#     )
-
-
 def create_register_access_config(
     config_data: dict[str, Any], is_master: bool = False
 ) -> RegisterAccessConfig:
@@ -226,7 +219,6 @@ class RegisterAccessConfig:
         return writable
 
 
-# Entity descriptions for read-only versions
 def get_battery_realtime_items(access_config: RegisterAccessConfig) -> list[ModbusItem]:
     """Get battery realtime items based on access configuration."""
     items = list(MODBUS_BATTERY_REALTIME_ITEMS)  # Make a copy

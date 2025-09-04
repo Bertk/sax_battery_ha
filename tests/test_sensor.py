@@ -726,8 +726,8 @@ class TestSensorErrorHandling:
             coordinators=coordinators,
         )
 
-        # Verify it calls get_device_info with "system"
-        mock_coordinator.sax_data.get_device_info.assert_called_once_with("system")
+        # Verify it calls get_device_info with "cluster"
+        mock_coordinator.sax_data.get_device_info.assert_called_once_with("cluster")
 
     def test_calculation_functions_handle_empty_coordinators(self) -> None:
         """Test calculation functions with empty coordinator dict."""

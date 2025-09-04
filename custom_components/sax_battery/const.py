@@ -515,8 +515,8 @@ MODBUS_BATTERY_REALTIME_ITEMS: list[ModbusItem] = [
 
 # Battery items write-only versions: Power control
 MODBUS_BATTERY_POWER_LIMIT_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=64, address=43, name=SAX_MAX_CHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, offset=16384, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_CHARGE,),
-    ModbusItem(battery_slave_id=64, address=44, name=SAX_MAX_DISCHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, offset=16384, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_DISCHARGE,),
+    ModbusItem(battery_slave_id=64, address=43, name=SAX_MAX_CHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_CHARGE,),
+    ModbusItem(battery_slave_id=64, address=44, name=SAX_MAX_DISCHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_DISCHARGE,),
 ]
 
 # Battery items write-only versions: Power limits
