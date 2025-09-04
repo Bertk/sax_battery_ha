@@ -28,32 +28,16 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def format_battery_display_name(battery_id: str) -> str:
-    """Format battery ID into a human-readable display name.
+    """Format battery ID for display purposes.
 
-    Args:
-        battery_id: The battery identifier (e.g., "battery_a", "battery_b")
-
-    Returns:
-        Formatted display name (e.g., "Battery A", "Battery B")
-
-    Examples:
-        >>> format_battery_display_name("battery_a")
-        "Battery A"
-        >>> format_battery_display_name("battery_b")
-        "Battery B"
-        >>> format_battery_display_name("custom_battery_c")
-        "Custom Battery C"
-
+    This function is primarily used for device names, not entity names.
+    Entity names should not include battery prefix when _attr_has_entity_name = True.
     """
-    # Remove common prefixes and convert to title case
-    display_name = battery_id.replace("battery_", "Battery ").title()
-
-    # Handle edge cases where battery_id doesn't follow expected pattern
-    if not display_name.startswith("Battery"):
-        # If it doesn't start with "Battery", format it nicely
-        display_name = display_name.replace("_", " ").title()
-
-    return display_name
+    if battery_id.lower().startswith("battery_"):
+        # Remove "battery_" prefix and capitalize the letter
+        battery_letter = battery_id[8:].upper()
+        return f"Battery {battery_letter}"
+    return battery_id.replace("_", " ").title()
 
 
 def determine_entity_category(

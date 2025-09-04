@@ -6,11 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.sax_battery.const import DESCRIPTION_SAX_BATTERY_SWITCH
+from custom_components.sax_battery.const import DESCRIPTION_SAX_BATTERY_SWITCH, DOMAIN
+from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem
-from custom_components.sax_battery.switch import SAXBatterySwitch
+from custom_components.sax_battery.switch import SAXBatterySwitch, async_setup_entry
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity import async_generate_entity_id
 
 
 class TestSAXBatterySwitch:
@@ -50,8 +53,62 @@ class TestSAXBatterySwitch:
             entitydescription=DESCRIPTION_SAX_BATTERY_SWITCH,
         )
 
+    @pytest.fixture
+    def mock_config_entry_switch(self):
+        """Create mock config entry for switch tests."""
+        config_entry = MagicMock()
+        config_entry.entry_id = "test_entry_switch"
+        config_entry.data = {
+            "host": "192.168.1.100",
+            "port": 502,
+            "batteries": {"battery_a": {"role": "master"}},
+        }
+        config_entry.options = {}
+        return config_entry
+
+    @pytest.fixture
+    def mock_sax_data_switch(self):
+        """Create mock SAX data for switch tests."""
+        return MagicMock()
+
+    async def test_async_setup_entry_with_entity_id_generation(
+        self, hass: HomeAssistant, mock_config_entry_switch, mock_sax_data_switch
+    ) -> None:
+        """Test setup entry with proper entity_id generation."""
+
+        # Mock coordinator
+        mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
+        mock_coordinator.hass = hass  # Ensure hass is available
+
+        # Create test entities with entity_id generation
+        entities_created = []
+
+        def mock_add_entities(new_entities, update_before_add=False):
+            # Apply entity_id generation as Home Assistant would
+            for entity in new_entities:
+                if hasattr(entity, "_attr_unique_id"):
+                    entity.entity_id = async_generate_entity_id(
+                        f"{entity.domain}.{{}}", entity._attr_unique_id, hass=hass
+                    )
+            entities_created.extend(new_entities)
+
+        # Store data and run setup
+        hass.data[DOMAIN] = {
+            mock_config_entry_switch.entry_id: {
+                "coordinators": {"battery_a": mock_coordinator},
+                "sax_data": mock_sax_data_switch,
+            }
+        }
+
+        await async_setup_entry(hass, mock_config_entry_switch, mock_add_entities)
+
+        # Verify entities have proper entity_ids
+        for entity in entities_created:
+            assert hasattr(entity, "entity_id")
+            assert entity.entity_id.startswith(f"{entity.domain}.")
+
     def test_switch_initialization(
-        self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
+        self, mock_coordinator_switch, modbus_item_switch
     ) -> None:
         """Test switch entity initialization."""
         switch = SAXBatterySwitch(
@@ -61,7 +118,8 @@ class TestSAXBatterySwitch:
         )
 
         assert switch.unique_id == "sax_battery_1_test_switch"
-        assert switch.name == "Sax Battery 1 On/Off"
+        assert switch.name == "On/Off"
+
         assert switch._battery_id == "battery_1"
         assert switch._modbus_item == modbus_item_switch
 
@@ -122,9 +180,7 @@ class TestSAXBatterySwitch:
             modbus_item=modbus_item_switch,
         )
 
-        with pytest.raises(
-            HomeAssistantError, match="Failed to turn on Sax Battery 1 On/Off"
-        ):
+        with pytest.raises(HomeAssistantError, match="Failed to turn on On/Off"):
             await switch.async_turn_on()
 
     def test_switch_extra_state_attributes(
@@ -249,9 +305,7 @@ class TestSAXBatterySwitch:
             modbus_item=modbus_item_switch,
         )
 
-        with pytest.raises(
-            HomeAssistantError, match="Failed to turn off Sax Battery 1 On/Off"
-        ):
+        with pytest.raises(HomeAssistantError, match="Failed to turn off On/Off"):
             await switch.async_turn_off()
 
     def test_switch_device_info(

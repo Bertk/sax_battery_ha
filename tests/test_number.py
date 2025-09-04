@@ -24,6 +24,7 @@ from custom_components.sax_battery.number import (
 from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import async_generate_entity_id
 
 
 @pytest.fixture
@@ -120,7 +121,7 @@ class TestSAXBatteryNumber:
         assert number._battery_id == "battery_a"
         assert number._modbus_item == power_number_item_fixture
         assert number.unique_id == "sax_battery_a_max_charge_power"
-        assert number.name == "Sax Battery A Maximum Charge Power"
+        assert number.name == "Maximum Charge Power"
 
     def test_number_init_with_entity_description(
         self, mock_coordinator_number_instance, power_number_item_fixture
@@ -334,6 +335,58 @@ class TestSAXBatteryConfigNumber:
 class TestNumberEntityConfiguration:
     """Test number entity configuration variations."""
 
+    async def test_dynamic_entity_creation_with_generator(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_number_instance,
+        power_number_item_fixture,
+    ) -> None:
+        """Test dynamic entity creation using async_generate_entity_id."""
+
+        def create_number_entity(
+            battery_id: str, item_suffix: str
+        ) -> SAXBatteryModbusNumber:
+            """Create number entity with proper entity_id generation."""
+            modbus_item = ModbusItem(
+                name=f"sax_test_{item_suffix}",
+                device=DeviceConstants.SYS,
+                mtype=TypeConstants.NUMBER,
+                address=100 + hash(item_suffix) % 100,  # Unique addresses
+                entitydescription=NumberEntityDescription(
+                    key=f"test_{item_suffix}",
+                    name=f"Test {item_suffix.title()}",
+                    native_min_value=0,
+                    native_max_value=1000,
+                ),
+            )
+
+            entity = SAXBatteryModbusNumber(
+                coordinator=mock_coordinator_number_instance,
+                battery_id=battery_id,
+                modbus_item=modbus_item,
+            )
+
+            # Apply entity_id generation like in real Home Assistant
+            entity.entity_id = async_generate_entity_id(
+                "number.{}", f"sax_{battery_id}_{item_suffix}", hass=hass
+            )
+
+            return entity
+
+        # Create entities using generator pattern
+        entities = [
+            create_number_entity("battery_a", suffix)
+            for suffix in ["power", "voltage", "current"]
+        ]
+
+        # Verify entity_ids were generated correctly
+        assert entities[0].entity_id == "number.sax_battery_a_power"
+        assert entities[1].entity_id == "number.sax_battery_a_voltage"
+        assert entities[2].entity_id == "number.sax_battery_a_current"
+
+        # Verify unique_ids remain separate
+        assert entities[0].unique_id == "sax_battery_a_test_power"
+
     def test_number_with_percentage_format(
         self, mock_coordinator_number_instance, percentage_number_item_fixture
     ) -> None:
@@ -345,7 +398,8 @@ class TestNumberEntityConfiguration:
         )
 
         assert number.entity_description.native_unit_of_measurement == "%"
-        assert number.name == "Sax Battery A Minimum State of Charge"
+        assert number.unique_id == "sax_battery_a_min_soc"
+        assert number.name == "Minimum State of Charge"
 
     def test_number_name_formatting(self, mock_coordinator_number_instance) -> None:
         """Test number name formatting."""
@@ -370,7 +424,8 @@ class TestNumberEntityConfiguration:
             modbus_item=item_with_underscores,
         )
 
-        assert number.name == "Sax Battery B Test Underscore Name"
+        assert number.unique_id == "sax_battery_b_test_underscore_name"
+        assert number.name == "Test Underscore Name"
 
     def test_number_mode_property(self, mock_coordinator_number_instance) -> None:
         """Test number mode property with different mode values."""

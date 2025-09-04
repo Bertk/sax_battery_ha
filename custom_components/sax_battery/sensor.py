@@ -24,7 +24,6 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
-from .utils import format_battery_display_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,11 +120,14 @@ class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEnt
             and hasattr(self.entity_description, "name")
             and isinstance(self.entity_description.name, str)
         ):
-            item_name = self.entity_description.name[4:]  # eliminate 'Sax '
-
-        self._attr_name = (
-            f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
-        )
+            # Remove "Sax " prefix from entity description name
+            entity_name = str(self.entity_description.name)
+            entity_name = entity_name.removeprefix("Sax ")  # Remove "Sax " prefix
+            self._attr_name = entity_name
+        else:
+            # Fallback: use clean item name without prefixes
+            clean_name = item_name.replace("_", " ").title()
+            self._attr_name = clean_name
 
         # Set device info
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)

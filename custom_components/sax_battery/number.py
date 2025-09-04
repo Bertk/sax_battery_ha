@@ -23,11 +23,7 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
-from .utils import (
-    calculate_system_max_charge,
-    calculate_system_max_discharge,
-    format_battery_display_name,
-)
+from .utils import calculate_system_max_charge, calculate_system_max_discharge
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,7 +109,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         super().__init__(coordinator)
         self._modbus_item = modbus_item
         self._battery_id = battery_id
-        self._read_only = False  # Fix: Add missing attribute
 
         # Get battery count from config entry
         self._battery_count = 1
@@ -139,11 +134,14 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             and hasattr(self.entity_description, "name")
             and isinstance(self.entity_description.name, str)
         ):
-            item_name = str(self.entity_description.name)[4:]  # eliminate 'Sax '
-
-        self._attr_name = (
-            f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
-        )
+            # Remove "Sax " prefix from entity description name
+            entity_name = str(self.entity_description.name)
+            entity_name = entity_name.removeprefix("Sax ")  # Remove "Sax " prefix
+            self._attr_name = entity_name
+        else:
+            # Fallback: use clean item name without prefixes
+            clean_name = item_name.replace("_", " ").title()
+            self._attr_name = clean_name
 
         # Apply dynamic limits based on battery count for charge/discharge entities
         self._apply_dynamic_limits()
@@ -200,7 +198,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             "modbus_address": getattr(self._modbus_item, "address", None),
             "last_update": getattr(self.coordinator, "last_update_success_time", None),
             "raw_value": raw_value,
-            "read_only": self._read_only,
             "battery_count": self._battery_count,
             "entity_type": "modbus",
         }

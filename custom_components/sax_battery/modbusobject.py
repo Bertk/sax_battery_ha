@@ -53,7 +53,9 @@ class ModbusObject:
             )
             # Ensure we return a proper numeric type
             if isinstance(result, (int, float)):
-                return result
+                # apply offset and factor
+                result = (result - self._modbus_item.offset) * self._modbus_item.factor
+                return result  # noqa: RET504
             return None  # noqa: TRY300
         except ModbusException:
             _LOGGER.exception("Failed to read value for %s", self._modbus_item.name)

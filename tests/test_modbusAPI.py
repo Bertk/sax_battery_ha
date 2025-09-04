@@ -25,7 +25,7 @@ class TestModbusObject:
         """Test successful async_read_value."""
         mock_modbus_api.read_holding_registers = AsyncMock(return_value=1500)
         result = await mock_modbus_object.async_read_value()
-        assert result == 1500
+        assert result == 15000  # _modbus_item.factor = 10
 
     @pytest.mark.asyncio
     async def test_async_read_value_no_data(self, mock_modbus_object, mock_modbus_api):

@@ -35,6 +35,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import async_generate_entity_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,11 +116,16 @@ def percentage_modbus_item_sensor():
 
 @pytest.fixture
 def mock_config_entry_sensor():
-    """Create mock config entry."""
-    mock_entry = MagicMock()
-    mock_entry.entry_id = "test_entry_id"
-    mock_entry.data = {"battery_count": 1}
-    return mock_entry
+    """Create mock config entry for sensor tests."""
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry_sensor"
+    config_entry.data = {
+        "host": "192.168.1.100",
+        "port": 502,
+        "batteries": {"battery_a": {"role": "master"}},
+    }
+    config_entry.options = {}
+    return config_entry
 
 
 @pytest.fixture
@@ -225,6 +231,42 @@ class TestCalculationFunctions:
 class TestSAXBatteryModbusSensor:
     """Test SAX Battery modbus sensor."""
 
+    async def test_async_setup_entry_with_entity_id_generation(
+        self, hass: HomeAssistant, mock_config_entry_sensor, mock_sax_data_sensor
+    ) -> None:
+        """Test setup entry with proper entity_id generation."""
+
+        # Mock coordinator
+        mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
+        mock_coordinator.hass = hass  # Ensure hass is available
+
+        # Create test entities with entity_id generation
+        entities_created = []
+
+        def mock_add_entities(new_entities, update_before_add=False):
+            # Apply entity_id generation as Home Assistant would
+            for entity in new_entities:
+                if hasattr(entity, "_attr_unique_id"):
+                    entity.entity_id = async_generate_entity_id(
+                        f"{entity.domain}.{{}}", entity._attr_unique_id, hass=hass
+                    )
+            entities_created.extend(new_entities)
+
+        # Store data and run setup
+        hass.data[DOMAIN] = {
+            mock_config_entry_sensor.entry_id: {
+                "coordinators": {"battery_a": mock_coordinator},
+                "sax_data": mock_sax_data_sensor,
+            }
+        }
+
+        await async_setup_entry(hass, mock_config_entry_sensor, mock_add_entities)
+
+        # Verify entities have proper entity_ids
+        for entity in entities_created:
+            assert hasattr(entity, "entity_id")
+            assert entity.entity_id.startswith(f"{entity.domain}.")
+
     def test_modbus_sensor_init(
         self, mock_coordinator_sensor, temperature_modbus_item_sensor
     ) -> None:
@@ -238,8 +280,7 @@ class TestSAXBatteryModbusSensor:
         assert sensor._battery_id == "battery_a"
         assert sensor._modbus_item == temperature_modbus_item_sensor
         assert sensor.unique_id == "sax_battery_a_temperature"
-        # Name format: Sax Battery A Temperature
-        assert sensor.name == "Sax Battery A Temperature"
+        assert sensor.name == "Temperature"
 
     def test_modbus_sensor_init_with_entity_description(
         self, mock_coordinator_sensor, temperature_modbus_item_sensor
@@ -332,7 +373,7 @@ class TestSAXBatteryModbusSensor:
         assert sensor.native_value == 85
         assert sensor.native_unit_of_measurement == PERCENTAGE
         assert sensor.device_class == SensorDeviceClass.BATTERY
-        assert sensor.name == "Sax Battery A SOC"
+        assert sensor.name == "SOC"
 
     def test_modbus_sensor_unique_id_removes_sax_prefix(
         self, mock_coordinator_sensor, power_modbus_item_sensor
@@ -346,7 +387,7 @@ class TestSAXBatteryModbusSensor:
 
         # Should remove "sax_" from "sax_power" leaving "power"
         assert sensor.unique_id == "sax_battery_b_power"
-        assert sensor.name == "Sax Battery B Power"
+        assert sensor.name == "Power"
 
     def test_modbus_sensor_no_coordinator_data(
         self, mock_coordinator_sensor, temperature_modbus_item_sensor
@@ -581,8 +622,8 @@ class TestSensorEntityConfiguration:
             modbus_item=temperature_modbus_item_sensor,
         )
 
-        assert sensor.name == "Sax Battery C Temperature"
         assert sensor.unique_id == "sax_battery_c_temperature"
+        assert sensor.name == "Temperature"
 
     def test_sensor_name_handles_entity_description_prefix(
         self, mock_coordinator_sensor
@@ -605,7 +646,7 @@ class TestSensorEntityConfiguration:
         )
 
         # Should remove "Sax " from entity description name and add battery info
-        assert sensor.name == "Sax Battery A Custom Power Sensor"
+        assert sensor.name == "Custom Power Sensor"
 
     def test_sensor_extra_state_attributes_no_data(
         self, mock_coordinator_sensor, temperature_modbus_item_sensor
@@ -661,7 +702,7 @@ class TestSensorErrorHandling:
 
         # Should handle missing entity description gracefully
         assert sensor.unique_id == "sax_battery_a_no_desc"
-        assert sensor.name == "Sax Battery A no_desc"
+        assert sensor.name == "No Desc"
 
     def test_calculated_sensor_system_device_info(self) -> None:
         """Test calculated sensor uses system device info."""

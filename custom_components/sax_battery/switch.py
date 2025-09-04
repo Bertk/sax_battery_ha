@@ -10,15 +10,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
+from .entity_utils import filter_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem
-from .utils import format_battery_display_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,18 +39,25 @@ async def async_setup_entry(
         if not isinstance(coordinator, SAXBatteryCoordinator):
             continue
 
-        modbus_items = sax_data.get_modbus_items_for_battery(battery_id)
-
-        # Add switch entities using extend
-        entities.extend(
-            SAXBatterySwitch(
-                coordinator=coordinator,
-                battery_id=battery_id,
-                modbus_item=item,
-            )
-            for item in modbus_items
-            if item.mtype == TypeConstants.SWITCH
+        # Use filter_items_by_type for consistent entity filtering
+        switch_items = filter_items_by_type(
+            sax_data.get_modbus_items_for_battery(battery_id),
+            TypeConstants.SWITCH,
+            config_entry,
+            battery_id,
         )
+
+        for modbus_item in switch_items:
+            if isinstance(modbus_item, ModbusItem):  # Type guard
+                entities.append(  # noqa: PERF401
+                    SAXBatterySwitch(
+                        coordinator=coordinator,
+                        battery_id=battery_id,
+                        modbus_item=modbus_item,
+                    )
+                )
+
+    _LOGGER.info("Added %d switch entities", len(entities))
 
     if entities:
         async_add_entities(entities, update_before_add=True)
@@ -59,6 +65,8 @@ async def async_setup_entry(
 
 class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
     """SAX Battery switch entity."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -72,24 +80,37 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         self._battery_id = battery_id
         self._modbus_item = modbus_item
 
-        # Generate unique ID using class name pattern
-        item_name = self._modbus_item.name.removeprefix("sax_")
-        self._attr_unique_id = f"sax_{self._battery_id}_{item_name}"
+        # Generate unique ID using simple pattern - no battery prefix needed
+        if self._modbus_item.name.startswith("sax_"):
+            item_name = self._modbus_item.name[4:]  # Remove "sax_" prefix
+        else:
+            item_name = self._modbus_item.name
+
+        self._attr_unique_id = f"sax_{battery_id}_{item_name}"
 
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
-            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # fmt: skip
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
 
-        # Set name using entity description or fallback
-        if isinstance(self.entity_description.name, str):
-            item_name = self.entity_description.name[4:]
+        # Set entity name - let HA combine with device name automatically
+        # Don't add battery prefix since device already provides it
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
+        ):
+            # Remove "Sax " prefix from entity description name
+            entity_name = str(self.entity_description.name)
+            entity_name = entity_name.removeprefix("Sax ")  # Remove "Sax " prefix
+            self._attr_name = entity_name
+        else:
+            # Fallback: use clean item name without prefixes
+            clean_name = item_name.replace("_", " ").title()
+            self._attr_name = clean_name
 
-        self.name = f"Sax {format_battery_display_name(self._battery_id)} {item_name}"
-
-    @property
-    def device_info(self) -> DeviceInfo | None:
-        """Return device info."""
-        return self.coordinator.sax_data.get_device_info(self._battery_id)
+        # Set device info for the specific battery
+        self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
 
     @property
     def is_on(self) -> bool | None:
