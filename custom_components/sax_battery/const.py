@@ -72,7 +72,7 @@ CONF_DEVICE_ID = "device_id"
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 10  # Standard battery data polling (SOC, Power, Status)
 BATTERY_STATIC_POLL_INTERVAL = 300  # Static/accumulated data polling (5 minutes)
-SMARTMETER_POLL_INTERVAL = 10  # Basic smart meter data polling
+SMARTMETER_POLL_INTERVAL = 10  # Basic Smartmeter data polling
 SMARTMETER_PHASE_POLL_INTERVAL = 60  # L1/L2/L3 phase-specific data polling
 
 # SAX entity keys
@@ -106,7 +106,7 @@ DEFAULT_PORT = 502  # Default Modbus port
 DEFAULT_MIN_SOC = 15
 DEFAULT_AUTO_PILOT_INTERVAL = 60  # seconds
 
-# Phase and smart meter constants
+# Phase and Smartmeter constants
 SAX_PHASE_CURRENTS_SUM = "phase_currents_sum"
 SAX_CURRENT_L1 = "current_l1"
 SAX_CURRENT_L2 = "current_l2"
@@ -122,9 +122,9 @@ SAX_POWER_FACTOR = "power_factor"
 SAX_SMARTMETER_CURRENT_L1 = "smartmeter_current_l1"
 SAX_SMARTMETER_CURRENT_L2 = "smartmeter_current_l2"
 SAX_SMARTMETER_CURRENT_L3 = "smartmeter_current_l3"
-SAX_ACTIVE_POWER_L1 = "active_power_l1"
-SAX_ACTIVE_POWER_L2 = "active_power_l2"
-SAX_ACTIVE_POWER_L3 = "active_power_l3"
+SAX_SMARTMETER_POWER_L1 = "smartmeter_power_l1"
+SAX_SMARTMETER_POWER_L2 = "smartmeter_power_l2"
+SAX_SMARTMETER_POWER_L3 = "smartmeter_power_l3"
 SAX_SMARTMETER_VOLTAGE_L1 = "smartmeter_voltage_l1"
 SAX_SMARTMETER_VOLTAGE_L2 = "smartmeter_voltage_l2"
 SAX_SMARTMETER_VOLTAGE_L3 = "smartmeter_voltage_l3"
@@ -265,7 +265,7 @@ DESCRIPTION_SAX_ENERGY_PRODUCED = SensorEntityDescription(
     name="Sax Energy Produced",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL,
-    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
 )
 
 DESCRIPTION_SAX_ENERGY_CONSUMED = SensorEntityDescription(
@@ -273,7 +273,7 @@ DESCRIPTION_SAX_ENERGY_CONSUMED = SensorEntityDescription(
     name="Sax Energy Consumed",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL,
-    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
 )
 
 DESCRIPTION_SAX_PHASE_CURRENTS_SUM = SensorEntityDescription(
@@ -374,10 +374,10 @@ DESCRIPTION_SAX_STORAGE_STATUS = SensorEntityDescription(
     name="Sax Storage Status",
     state_class=SensorStateClass.MEASUREMENT,
 )
-# Smart meter specific sensors
+# Smartmeter specific sensors
 DESCRIPTION_SAX_SMARTMETER_CURRENT_L1 = SensorEntityDescription(
     key=SAX_SMARTMETER_CURRENT_L1,
-    name="Sax Smart Meter Current L1",
+    name="Sax Smartmeter Current L1",
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
@@ -386,7 +386,7 @@ DESCRIPTION_SAX_SMARTMETER_CURRENT_L1 = SensorEntityDescription(
 
 DESCRIPTION_SAX_SMARTMETER_CURRENT_L2 = SensorEntityDescription(
     key=SAX_SMARTMETER_CURRENT_L2,
-    name="Sax Smart Meter Current L2",
+    name="Sax Smartmeter Current L2",
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
@@ -395,37 +395,39 @@ DESCRIPTION_SAX_SMARTMETER_CURRENT_L2 = SensorEntityDescription(
 
 DESCRIPTION_SAX_SMARTMETER_CURRENT_L3 = SensorEntityDescription(
     key=SAX_SMARTMETER_CURRENT_L3,
-    name="Sax Smart Meter Current L3",
+    name="Sax Smartmeter Current L3",
     device_class=SensorDeviceClass.CURRENT,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
     entity_registry_enabled_default=False,  # Disable by default
 )
 
-DESCRIPTION_SAX_ACTIVE_POWER_L1 = SensorEntityDescription(
-    key=SAX_ACTIVE_POWER_L1,
-    name="Sax Active Power L1",
+DESCRIPTION_SAX_SMARTMETER_POWER_L1 = SensorEntityDescription(
+    key=SAX_SMARTMETER_POWER_L1,
+    name="Sax Smartmeter Active Power L1",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
 )
-DESCRIPTION_SAX_ACTIVE_POWER_L2 = SensorEntityDescription(
-    key=SAX_ACTIVE_POWER_L2,
-    name="Sax Active Power L2",
+
+DESCRIPTION_SAX_SMARTMETER_POWER_L2 = SensorEntityDescription(
+    key=SAX_SMARTMETER_POWER_L2,
+    name="Sax Smartmeter Active Power L2",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
 )
-DESCRIPTION_SAX_ACTIVE_POWER_L3 = SensorEntityDescription(
-    key=SAX_ACTIVE_POWER_L3,
-    name="Sax Active Power L3",
+
+DESCRIPTION_SAX_SMARTMETER_POWER_L3 = SensorEntityDescription(
+    key=SAX_SMARTMETER_POWER_L3,
+    name="Sax Smartmeter Active Power L3",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
 )
 DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L1 = SensorEntityDescription(
     key=SAX_SMARTMETER_VOLTAGE_L1,
-    name="Sax Smart Meter Voltage L1",
+    name="Sax Smartmeter Voltage L1",
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -433,7 +435,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L1 = SensorEntityDescription(
 )
 DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L2 = SensorEntityDescription(
     key=SAX_SMARTMETER_VOLTAGE_L2,
-    name="Sax Smart Meter Voltage L2",
+    name="Sax Smartmeter Voltage L2",
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -442,7 +444,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L2 = SensorEntityDescription(
 
 DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L3 = SensorEntityDescription(
     key=SAX_SMARTMETER_VOLTAGE_L3,
-    name="Sax Smart Meter Voltage L3",
+    name="Sax Smartmeter Voltage L3",
     device_class=SensorDeviceClass.VOLTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -451,7 +453,7 @@ DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L3 = SensorEntityDescription(
 
 DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER = SensorEntityDescription(
     key=SAX_SMARTMETER_TOTAL_POWER,
-    name="Sax Smart Meter Total Power",
+    name="Sax Smartmeter Total Power",
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfPower.WATT,
@@ -507,66 +509,54 @@ DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED = SensorEntityDescription(
 #                  language specific files in the subfolder "translations" have to be up-to-date
 ##############################################################################################################################
 
+# Battery items write-only versions: Power limits
+MODBUS_BATTERY_PILOT_CONTROL_ITEMS: list[ModbusItem] = [
+    ModbusItem(battery_slave_id=64, address=41, name=SAX_NOMINAL_POWER, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,),
+    ModbusItem(battery_slave_id=64, address=42, name=SAX_NOMINAL_FACTOR, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_FACTOR,),
+]
+# Battery items write-only versions: Power control
+MODBUS_BATTERY_POWER_LIMIT_ITEMS: list[ModbusItem] = [
+    ModbusItem(battery_slave_id=64, address=43, name=SAX_MAX_CHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_CHARGE,),
+    ModbusItem(battery_slave_id=64, address=44, name=SAX_MAX_DISCHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_DISCHARGE,),
+]
+# Battery items - switch
+MODBUS_BATTERY_SWITCH_ITEMS: list[ModbusItem] = [
+    ModbusItem(battery_slave_id=64, address=45, name=SAX_STATUS, mtype=TypeConstants.SWITCH, data_type=ModbusClientMixin.DATATYPE.UINT16, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_BATTERY_SWITCH,),
+]
 # Battery items read-only versions
 MODBUS_BATTERY_REALTIME_ITEMS: list[ModbusItem] = [
         ModbusItem(battery_slave_id=64, address=46, name=SAX_SOC, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_SOC,),
         ModbusItem(battery_slave_id=64, address=47, name=SAX_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER,),
         ModbusItem(battery_slave_id=64, address=48, name=SAX_POWER_SM, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER_SM,),
 ]
-
-# Battery items write-only versions: Power control
-MODBUS_BATTERY_POWER_LIMIT_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=64, address=43, name=SAX_MAX_CHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_CHARGE,),
-    ModbusItem(battery_slave_id=64, address=44, name=SAX_MAX_DISCHARGE, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_DISCHARGE,),
-]
-
-# Battery items write-only versions: Power limits
-MODBUS_BATTERY_PILOT_CONTROL_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=64, address=41, name=SAX_NOMINAL_POWER, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,),
-    ModbusItem(battery_slave_id=64, address=42, name=SAX_NOMINAL_FACTOR, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_FACTOR,),
-]
-
-# Keep the original for backward compatibility, but combine the new lists
-MODBUS_BATTERY_PILOT_ITEMS: list[ModbusItem] = MODBUS_BATTERY_PILOT_CONTROL_ITEMS + MODBUS_BATTERY_POWER_LIMIT_ITEMS
-
-# Battery items - switch
-MODBUS_BATTERY_SWITCH_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=64, address=45, name=SAX_STATUS, mtype=TypeConstants.SWITCH, data_type=ModbusClientMixin.DATATYPE.INT16, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_BATTERY_SWITCH,),
-]
-
 # Battery items - static/accumulated data (polled at lower frequency)
 MODBUS_BATTERY_STATIC_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=40, address=40117, name=SAX_TEMPERATURE, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_TEMPERATURE,),
+    ModbusItem(battery_slave_id=40, address=40096, name=SAX_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.001, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_PRODUCED),
+    ModbusItem(battery_slave_id=40, address=40097, name=SAX_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.001, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_CONSUMED),
+    ModbusItem(battery_slave_id=40, address=40099, name=SAX_STORAGE_STATUS, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_STORAGE_STATUS),
     ModbusItem(battery_slave_id=40, address=40115, name=SAX_CAPACITY, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10.0 ,device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CAPACITY),
     ModbusItem(battery_slave_id=40, address=40116, name=SAX_CYCLES,  mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CYCLES),
-    ModbusItem(battery_slave_id=40, address=40096, name=SAX_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_PRODUCED),
-    ModbusItem(battery_slave_id=40, address=40097, name=SAX_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_CONSUMED),
+    ModbusItem(battery_slave_id=40, address=40117, name=SAX_TEMPERATURE, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_TEMPERATURE,),
 ]
-# Battery items - smart meter data accessed through battery (polled at standard interval)
+# Battery items - Smartmeter data accessed through battery (polled at standard interval)
 MODBUS_BATTERY_SMARTMETER_ITEMS: list[ModbusItem] = [
     ModbusItem(battery_slave_id=40, address=40073, name=SAX_PHASE_CURRENTS_SUM, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.01,device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_PHASE_CURRENTS_SUM),
-    ModbusItem(battery_slave_id=40, address=40103, name=SAX_ACTIVE_POWER_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_ACTIVE_POWER_L1),
-    ModbusItem(battery_slave_id=40, address=40104, name=SAX_ACTIVE_POWER_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_ACTIVE_POWER_L2),
-    ModbusItem(battery_slave_id=40, address=40105, name=SAX_ACTIVE_POWER_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_ACTIVE_POWER_L3),
     ModbusItem(battery_slave_id=40, address=40074, name=SAX_CURRENT_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_CURRENT_L1),
     ModbusItem(battery_slave_id=40, address=40075, name=SAX_CURRENT_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.01,device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_CURRENT_L2),
     ModbusItem(battery_slave_id=40, address=40076, name=SAX_CURRENT_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_CURRENT_L3),
-    ModbusItem(battery_slave_id=40, address=40081, name=SAX_VOLTAGE_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L1),
-    ModbusItem(battery_slave_id=40, address=40082, name=SAX_VOLTAGE_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L2),
-    ModbusItem(battery_slave_id=40, address=40083, name=SAX_VOLTAGE_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L3),
+    ModbusItem(battery_slave_id=40, address=40081, name=SAX_VOLTAGE_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L1),
+    ModbusItem(battery_slave_id=40, address=40082, name=SAX_VOLTAGE_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L2),
+    ModbusItem(battery_slave_id=40, address=40083, name=SAX_VOLTAGE_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_VOLTAGE_L3),
     ModbusItem(battery_slave_id=40, address=40085, name=SAX_AC_POWER_TOTAL, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=10.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_AC_POWER_TOTAL),
-    ModbusItem(battery_slave_id=40, address=40087, name=SAX_GRID_FREQUENCY, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0,device=DeviceConstants.SM,entitydescription=DESCRIPTION_SAX_GRID_FREQUENCY),
-    ModbusItem(battery_slave_id=40, address=40089, name=SAX_APPARENT_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_APPARENT_POWER),
-    ModbusItem(battery_slave_id=40, address=40091, name=SAX_REACTIVE_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_REACTIVE_POWER),
-    ModbusItem(battery_slave_id=40, address=40093, name=SAX_POWER_FACTOR, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_POWER_FACTOR),
-    ModbusItem(battery_slave_id=40, address=40099, name=SAX_STORAGE_STATUS, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_STORAGE_STATUS),
+    ModbusItem(battery_slave_id=40, address=40087, name=SAX_GRID_FREQUENCY, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=0.1,device=DeviceConstants.SM,entitydescription=DESCRIPTION_SAX_GRID_FREQUENCY),
+    ModbusItem(battery_slave_id=40, address=40089, name=SAX_APPARENT_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=10.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_APPARENT_POWER),
+    ModbusItem(battery_slave_id=40, address=40091, name=SAX_REACTIVE_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=10.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_REACTIVE_POWER),
+    ModbusItem(battery_slave_id=40, address=40093, name=SAX_POWER_FACTOR, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_POWER_FACTOR),
+    ModbusItem(battery_slave_id=40, address=40103, name=SAX_SMARTMETER_POWER_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_POWER_L1),
+    ModbusItem(battery_slave_id=40, address=40104, name=SAX_SMARTMETER_POWER_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_POWER_L2),
+    ModbusItem(battery_slave_id=40, address=40105, name=SAX_SMARTMETER_POWER_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_POWER_L3),
 ]
-
-# Smart meter items - basic data (polled at standard interval)
-MODBUS_SMARTMETER_BASIC_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_slave_id=40, address=40110, name=SAX_SMARTMETER_TOTAL_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER),
-]
-# Smart meter items - phase-specific data (polled at lower frequency)
+# Smartmeter items - phase-specific data (polled at lower frequency)
 MODBUS_SMARTMETER_PHASE_ITEMS: list[ModbusItem] = [
     ModbusItem(battery_slave_id=40, address=40100, name=SAX_SMARTMETER_CURRENT_L1, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_CURRENT_L1),
     ModbusItem(battery_slave_id=40, address=40101, name=SAX_SMARTMETER_CURRENT_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.01, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_CURRENT_L2),
@@ -575,14 +565,16 @@ MODBUS_SMARTMETER_PHASE_ITEMS: list[ModbusItem] = [
     ModbusItem(battery_slave_id=40, address=40108, name=SAX_SMARTMETER_VOLTAGE_L2, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L2),
     ModbusItem(battery_slave_id=40, address=40109, name=SAX_SMARTMETER_VOLTAGE_L3, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=0.1, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_VOLTAGE_L3),
 ]
-
+# Smartmeter items - basic data (polled at standard interval)
+MODBUS_SMARTMETER_BASIC_ITEMS: list[ModbusItem] = [
+    ModbusItem(battery_slave_id=40, address=40110, name=SAX_SMARTMETER_TOTAL_POWER, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.SM, entitydescription=DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER),
+]
 # Aggregated items - calculated values (e.g., combined power) from all available batteries
 AGGREGATED_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CUMULATIVE_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED, translation_key="sax_cumulative_energy_produced"),
     SAXItem(name=SAX_CUMULATIVE_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED, translation_key="sax_cumulative_energy_consumed"),
     SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, translation_key="sax_combined_soc"),
 ]
-
 # Pilot items - switches for manual control and solar charging
 PILOT_ITEMS: list[SAXItem] = [
     # SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH),
