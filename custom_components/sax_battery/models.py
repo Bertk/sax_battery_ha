@@ -143,6 +143,7 @@ class BatteryModel(BaseModel):
 class SmartMeterModel(BaseModel):
     """Smart meter model for aggregated grid data."""
 
+    # Currently not used
     def get_device_info(self) -> DeviceInfo:
         """Get device info for smart meter."""
         return DeviceInfo(

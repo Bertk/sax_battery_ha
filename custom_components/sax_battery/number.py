@@ -23,7 +23,6 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
-from .utils import calculate_system_max_charge, calculate_system_max_discharge
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,11 +109,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._modbus_item = modbus_item
         self._battery_id = battery_id
 
-        # Get battery count from config entry
-        self._battery_count = 1
-        if coordinator.config_entry:
-            self._battery_count = coordinator.config_entry.data.get("battery_count", 1)
-
         # Generate unique ID using simple pattern
         if self._modbus_item.name.startswith("sax_"):
             item_name = self._modbus_item.name[4:]  # Remove "sax_" prefix
@@ -143,29 +137,8 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             clean_name = item_name.replace("_", " ").title()
             self._attr_name = clean_name
 
-        # Apply dynamic limits based on battery count for charge/discharge entities
-        self._apply_dynamic_limits()
-
         # Set device info for the specific battery
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
-
-    def _apply_dynamic_limits(self) -> None:
-        """Apply dynamic limits based on battery count for specific entities."""
-        # Only update max limits for charge and discharge entities
-        if self._modbus_item.name == SAX_MAX_CHARGE:
-            try:
-                max_charge = calculate_system_max_charge(self._battery_count)
-                self._attr_native_max_value = float(max_charge)
-            except ValueError:
-                # Keep original limit if battery count is invalid
-                pass
-        elif self._modbus_item.name == SAX_MAX_DISCHARGE:
-            try:
-                max_discharge = calculate_system_max_discharge(self._battery_count)
-                self._attr_native_max_value = float(max_discharge)
-            except ValueError:
-                # Keep original limit if battery count is invalid
-                pass
 
     @property
     def native_value(self) -> float | None:
@@ -198,7 +171,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             "modbus_address": getattr(self._modbus_item, "address", None),
             "last_update": getattr(self.coordinator, "last_update_success_time", None),
             "raw_value": raw_value,
-            "battery_count": self._battery_count,
             "entity_type": "modbus",
         }
 
@@ -313,7 +285,3 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         except Exception as err:
             _LOGGER.error("Failed to set %s to %s: %s", self._sax_item.name, value, err)
             raise
-
-
-# Backward compatibility alias
-SAXBatteryNumber = SAXBatteryModbusNumber

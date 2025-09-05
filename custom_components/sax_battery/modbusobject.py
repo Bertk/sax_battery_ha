@@ -263,11 +263,15 @@ class ModbusAPI:
         self,
         count: int,
         modbus_item: ModbusItem,
-    ) -> int | float | None:
-        """Read holding registers asynchronously."""
+    ) -> int | float | bool | None:
+        """Read holding registers asynchronously.
 
-        def _read() -> int | float | None:
-            """Sync internal read function."""
+        SAX Battery uses UINT16, INT16, and bool data types only.
+        Supports reading multiple registers for future enhancements.
+        """
+
+        def _read() -> int | float | bool | None:
+            """Sync internal read function with improved data type handling."""
 
             try:
                 _LOGGER.debug(
@@ -286,6 +290,7 @@ class ModbusAPI:
                     count=count,
                     device_id=modbus_item.battery_slave_id,
                 )
+
                 if result.isError():
                     _LOGGER.warning(
                         "Failed to read holding registers - Address: %s, Count: %s, Slave: %s",
@@ -296,28 +301,34 @@ class ModbusAPI:
                     return None
 
                 if not result.registers:
-                    return None
-
-                if hasattr(modbus_item, "data_type") and modbus_item.data_type:
-                    converted_data = self._modbus_client.convert_from_registers(
-                        result.registers, modbus_item.data_type
+                    _LOGGER.debug(
+                        "No registers returned for address %s", modbus_item.address
                     )
-                    # Handle different return types from convert_from_registers
-                    if isinstance(converted_data, (list, tuple)) and converted_data:
-                        first_value = converted_data[0]
-                        if isinstance(first_value, (int, float)):
-                            # Apply factor and offset from ModbusItem
-                            return first_value * modbus_item.factor - modbus_item.offset
-                    elif isinstance(converted_data, (int, float)):
-                        # Apply factor and offset from ModbusItem
-                        return converted_data * modbus_item.factor - modbus_item.offset
                     return None
 
-                # Fallback to raw register value
-                raw_value = result.registers[0]
-                if isinstance(raw_value, (int, float)):
-                    # Apply factor and offset from ModbusItem
-                    return raw_value * modbus_item.factor - modbus_item.offset
+                # Handle data type conversion for SAX Battery specific types
+                if hasattr(modbus_item, "data_type") and modbus_item.data_type:
+                    converted_data = self._convert_sax_battery_data(
+                        result.registers, modbus_item
+                    )
+                    if converted_data is not None:
+                        return converted_data
+
+                # Fallback to raw register processing for single register
+                if count == 1:
+                    raw_value = result.registers[0]
+                    return self._process_single_register(raw_value, modbus_item)
+
+                # For multiple registers, return the first valid value or None
+                # Future enhancement: handle multi-register data types properly
+                for register_value in result.registers:
+                    processed_value = self._process_single_register(
+                        register_value, modbus_item
+                    )
+                    if processed_value is not None:
+                        return processed_value
+
+                return None  # noqa: TRY300
 
             except ModbusException as exc:
                 _LOGGER.warning(
@@ -328,12 +339,10 @@ class ModbusAPI:
                     exc,
                 )
                 return None
-            except Exception as exc:  # noqa: BLE001
+            except (ValueError, TypeError) as exc:
                 _LOGGER.error(
-                    "Unexpected error reading holding registers - Address: %s, Count: %s, Slave: %s: %s",
+                    "Data conversion error reading holding registers - Address: %s: %s",
                     modbus_item.address,
-                    count,
-                    modbus_item.battery_slave_id,
                     exc,
                 )
                 return None
@@ -349,3 +358,162 @@ class ModbusAPI:
                 exc,
             )
             return None
+
+    def _convert_sax_battery_data(
+        self, registers: list[int], modbus_item: ModbusItem
+    ) -> int | float | bool | None:
+        """Convert register data for SAX Battery specific data types.
+
+        SAX Battery supports:
+        - UINT16: Unsigned 16-bit integer
+        - INT16: Signed 16-bit integer
+        - bool: Boolean values (0/1)
+
+        Args:
+            registers: List of register values from Modbus read
+            modbus_item: ModbusItem containing data type and conversion info
+
+        Returns:
+            Converted value or None if conversion fails
+
+        """
+        try:
+            # Type guard to ensure _modbus_client is not None
+            if self._modbus_client is None:
+                _LOGGER.error(
+                    "Cannot convert data for register %d: Modbus client not connected",
+                    modbus_item.address,
+                )
+                return None
+
+            # Convert using pymodbus built-in converter
+            converted_data = self._modbus_client.convert_from_registers(
+                registers, modbus_item.data_type
+            )
+
+            # Debug logging for specific registers
+            if modbus_item.address in (47, 48):
+                _LOGGER.debug(
+                    "Register %d conversion: %s -> %s (%s)",
+                    modbus_item.address,
+                    registers,
+                    converted_data,
+                    type(converted_data).__name__,
+                )
+
+            # Handle different return types from convert_from_registers
+            if isinstance(converted_data, (list, tuple)):
+                if not converted_data:
+                    return None
+                # Use first value from list/tuple
+                first_value = converted_data[0]
+                return self._apply_sax_battery_conversion(first_value, modbus_item)
+
+            if isinstance(converted_data, (int, float, bool)):
+                return self._apply_sax_battery_conversion(converted_data, modbus_item)
+
+            # Unexpected data type from conversion
+            _LOGGER.warning(
+                "Unexpected converted data type %s for register %d",
+                type(converted_data).__name__,
+                modbus_item.address,
+            )
+            return None  # noqa: TRY300
+
+        except ModbusException as exc:
+            _LOGGER.error(
+                "ModbusException converting data for register %d: %s",
+                modbus_item.address,
+                exc,
+            )
+            return None
+        except (ValueError, TypeError) as exc:
+            _LOGGER.error(
+                "Data conversion error for register %d: %s",
+                modbus_item.address,
+                exc,
+            )
+            return None
+
+    def _apply_sax_battery_conversion(
+        self,
+        value: int | float | bool,  # noqa: PYI041
+        modbus_item: ModbusItem,
+    ) -> int | float | bool | None:
+        """Apply SAX Battery specific conversions (factor/offset).
+
+        Args:
+            value: Raw converted value
+            modbus_item: ModbusItem with conversion parameters
+
+        Returns:
+            Converted value with proper typing
+
+        """
+
+        # Boolean values should not have factor/offset applied
+        if isinstance(value, bool):
+            return value
+
+        # # Validate numeric value for factor/offset calculation
+        # if not isinstance(value, (int, float)):
+        #     _LOGGER.warning(
+        #         "Cannot apply factor/offset to non-numeric value %s (%s) for register %d",
+        #         value,
+        #         type(value).__name__,
+        #         modbus_item.address,
+        #     )
+        #     return None
+
+        try:
+            # Apply factor and offset: result = (raw_value - offset) * factor
+            # Note: This is the inverse of the write operation
+            converted_value = (value - modbus_item.offset) * modbus_item.factor
+
+            # Ensure we return appropriate type based on the result
+            if isinstance(converted_value, float) and converted_value.is_integer():
+                # Return int if the float is actually a whole number
+                return int(converted_value)
+
+            return converted_value  # noqa: TRY300
+
+        except (ValueError, TypeError, OverflowError) as exc:
+            _LOGGER.error(
+                "Error applying factor/offset to value %s for register %d: %s",
+                value,
+                modbus_item.address,
+                exc,
+            )
+            return None
+
+    def _process_single_register(
+        self, raw_value: int, modbus_item: ModbusItem
+    ) -> int | float | bool | None:
+        """Process single register value for SAX Battery data types.
+
+        Args:
+            raw_value: Raw register value
+            modbus_item: ModbusItem with type and conversion info
+
+        Returns:
+            Processed value or None if invalid
+
+        """
+        # if not isinstance(raw_value, int):
+        #     _LOGGER.warning(
+        #         "Expected integer register value, got %s (%s) for address %d",
+        #         raw_value,
+        #         type(raw_value).__name__,
+        #         modbus_item.address,
+        #     )
+        #     return None
+
+        # Handle boolean registers (typically 0/1 values)
+        if (
+            hasattr(modbus_item, "data_type")
+            and "bool" in str(modbus_item.data_type).lower()
+        ):
+            return bool(raw_value)
+
+        # For UINT16/INT16, apply standard conversion
+        return self._apply_sax_battery_conversion(raw_value, modbus_item)

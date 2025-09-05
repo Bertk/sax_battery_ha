@@ -14,9 +14,6 @@ from .const import (
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_PILOT_FROM_HA,
-    LIMIT_MAX_CHARGE_PER_BATTERY,
-    LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    MAX_SUPPORTED_BATTERIES,
     MODBUS_BATTERY_PILOT_CONTROL_ITEMS,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
     MODBUS_BATTERY_REALTIME_ITEMS,
@@ -130,40 +127,6 @@ def should_include_entity(
     return True
 
 
-def calculate_system_max_charge(battery_count: int) -> int:
-    """Calculate maximum charge power for the entire system.
-
-    Args:
-        battery_count: Number of batteries in the system (1-3)
-
-    Returns:
-        Maximum charge power in watts for the system
-
-    """
-    if battery_count < 1 or battery_count > MAX_SUPPORTED_BATTERIES:
-        msg = f"Battery count must be between 1 and {MAX_SUPPORTED_BATTERIES}, got {battery_count}"
-        raise ValueError(msg)
-
-    return battery_count * LIMIT_MAX_CHARGE_PER_BATTERY
-
-
-def calculate_system_max_discharge(battery_count: int) -> int:
-    """Calculate maximum discharge power for the entire system.
-
-    Args:
-        battery_count: Number of batteries in the system (1-3)
-
-    Returns:
-        Maximum discharge power in watts for the system
-
-    """
-    if battery_count < 1 or battery_count > MAX_SUPPORTED_BATTERIES:
-        msg = f"Battery count must be between 1 and {MAX_SUPPORTED_BATTERIES}, got {battery_count}"
-        raise ValueError(msg)
-
-    return battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
-
-
 def create_register_access_config(
     config_data: dict[str, Any], is_master: bool = False
 ) -> RegisterAccessConfig:
@@ -220,15 +183,18 @@ class RegisterAccessConfig:
 
 
 def get_battery_realtime_items(access_config: RegisterAccessConfig) -> list[ModbusItem]:
-    """Get battery realtime items based on access configuration."""
+    """Get battery realtime items based on access configuration.
+
+    Only master batteries get write-only control items (registers 41-44).
+    """
     items = list(MODBUS_BATTERY_REALTIME_ITEMS)  # Make a copy
 
-    # Add pilot control items (registers 41, 42) when pilot is enabled
-    if access_config.pilot_from_ha:
+    # Add pilot control items (registers 41, 42) ONLY for master battery when pilot is enabled
+    if access_config.pilot_from_ha and access_config.is_master_battery:
         items.extend(MODBUS_BATTERY_PILOT_CONTROL_ITEMS)
 
-    # Add power limit items (registers 43, 44) when power limits are enabled
-    if access_config.limit_power:
+    # Add power limit items (registers 43, 44) ONLY for master battery when power limits are enabled
+    if access_config.limit_power and access_config.is_master_battery:
         items.extend(MODBUS_BATTERY_POWER_LIMIT_ITEMS)
 
     return items
