@@ -11,17 +11,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import (
-    CONF_MASTER_BATTERY,  # Import from local const.py, not homeassistant.const
-    DOMAIN,
-    # Add any other constants you need from const.py
-)
+from .const import DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
-
-_LOGGER = logging.getLogger(__name__)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,35 +29,6 @@ async def async_setup_entry(
     integration_data = hass.data[DOMAIN][config_entry.entry_id]
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
-
-    # Debug: Show the full config entry data
-    _LOGGER.info(
-        "Config entry data: %s",
-        {k: v for k, v in entry.data.items() if "password" not in k.lower()},
-    )
-
-    # Get master battery from config entry data (stored during config flow)
-    master_battery_id = entry.data.get(CONF_MASTER_BATTERY)
-
-    _LOGGER.info("Master battery from config: %s", master_battery_id)
-
-    # Fallback logic if not found in config
-    if not master_battery_id and hasattr(coordinator.hub, "batteries"):
-        available_batteries = list(coordinator.hub.batteries.keys())
-        master_battery_id = available_batteries[0] if available_batteries else None
-        _LOGGER.warning(
-            "No master battery in config, using fallback: %s from available: %s",
-            master_battery_id,
-            available_batteries,
-        )
-
-    _LOGGER.info(
-        "Final master battery selection: %s, Available batteries: %s",
-        master_battery_id,
-        list(coordinator.hub.batteries.keys())
-        if hasattr(coordinator.hub, "batteries") and coordinator.hub.batteries
-        else "None",
-    )
 
     entities: list[SensorEntity] = []
 

@@ -11,15 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import (
-    CONF_AUTO_PILOT_INTERVAL,
-    CONF_LIMIT_POWER,
-    CONF_MIN_SOC,
-    CONF_PILOT_FROM_HA,
-    DEFAULT_AUTO_PILOT_INTERVAL,
-    DEFAULT_MIN_SOC,
-    DOMAIN,
-)
+from .const import DOMAIN, SAX_MIN_SOC
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
@@ -60,93 +52,8 @@ async def async_setup_entry(
                     )
                 )
 
-            # Check connection status
-            if not client.connected:
-                _LOGGER.error("Modbus client not connected, attempting to reconnect")
-                try:
-                    await client.connect()
-                    _LOGGER.info("Reconnected to Modbus device")
-                except Exception as connect_err:
-                    _LOGGER.error("Failed to reconnect: %s", connect_err)
-                    return
-
-            # Divide by number of batteries due to manufacturer bug
-            # Each battery applies the limit individually, so we send per-battery value
-            battery_count = len(self._coordinator.batteries)
-            value_per_battery = value / battery_count if battery_count > 0 else value
-            value_int = int(value_per_battery) & 0xFFFF
-            slave_id = 64
-
-            _LOGGER.debug(
-                "Writing charge limit: total_value=%s, per_battery=%s, int_value=%s to register 44 with device_id=%s",
-                value,
-                value_per_battery,
-                value_int,
-                slave_id,
-            )
-
-            # Write to register 44 (charge power limit)
-            result = await client.write_registers(
-                44,  # Charge power limit register
-                [value_int],
-                device_id=slave_id,
-            )
-
-            # Check result for errors
-            if result.isError():
-                _LOGGER.error("Error writing max charge value: %s", result)
-                # Try to reconnect for next time
-                try:
-                    await client.close()
-                    await client.connect()
-                except Exception as reconnect_err:
-                    _LOGGER.debug("Failed to reconnect after error: %s", reconnect_err)
-            else:
-                _LOGGER.debug("Successfully wrote max charge value: %s", value)
-                # Only update _last_written_value on successful write
-                self._last_written_value = value
-                self._attr_native_value = value
-                self.async_write_ha_state()
-
-        except Exception as err:
-            _LOGGER.error("Failed to write max charge value: %s", err, exc_info=True)
-
-
-class SAXBatteryMaxDischargeNumber(NumberEntity):
-    """SAX Battery Maximum Discharge Power number."""
-
-    def __init__(self, coordinator: SAXBatteryCoordinator) -> None:
-        """Initialize the SAX Battery Maximum Discharge Power number."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{DOMAIN}_max_discharge_power"
-        self._attr_name = "Maximum Discharge Power"
-        self._attr_native_min_value = 0
-
-        # Calculate dynamic max value based on battery count
-        battery_count = len(coordinator.batteries)
-        self._attr_native_max_value = battery_count * 4600  # 4.6kW per battery
-        self._attr_native_step = 100
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_native_value = self._attr_native_max_value  # Start at max
-        self._attr_mode = NumberMode.SLIDER
-        self._last_written_value = self._attr_native_max_value
-
-        # Set up periodic writes
-        self._track_time_remove: Callable[[], None] | None = None
-
-        # Add device info
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, self._coordinator.device_id)},
-            "name": "SAX Battery System",
-            "manufacturer": "SAX",
-            "model": "SAX Battery",
-            "sw_version": "1.0",
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Set up periodic writes."""
-        self._track_time_remove = async_track_time_interval(
-            self.hass, self._periodic_write, timedelta(minutes=1)
+        _LOGGER.info(
+            "Added %d modbus number entities for %s", len(number_items), battery_id
         )
 
     # Create system-wide configuration numbers (from SAX items)
@@ -175,46 +82,8 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
         [type(entity).__name__ for entity in entities],
     )
 
-            # Divide by number of batteries due to manufacturer bug
-            # Each battery applies the limit individually, so we send per-battery value
-            battery_count = len(self._coordinator.batteries)
-            value_per_battery = value / battery_count if battery_count > 0 else value
-            value_int = int(value_per_battery) & 0xFFFF
-            slave_id = 64
-
-            _LOGGER.debug(
-                "Writing discharge limit: total_value=%s, per_battery=%s, int_value=%s to register 43 with device_id=%s",
-                value,
-                value_per_battery,
-                value_int,
-                slave_id,
-            )
-
-            # Write to register 43 (discharge power limit)
-            result = await client.write_registers(
-                43,  # Discharge power limit register
-                [value_int],
-                device_id=slave_id,
-            )
-
-            # Check result for errors
-            if result.isError():
-                _LOGGER.error("Error writing max discharge value: %s", result)
-                # Try to reconnect for next time
-                try:
-                    await client.close()
-                    await client.connect()
-                except Exception as reconnect_err:
-                    _LOGGER.debug("Failed to reconnect after error: %s", reconnect_err)
-            else:
-                _LOGGER.debug("Successfully wrote max discharge value: %s", value)
-                # Only update _last_written_value on successful write
-                self._last_written_value = value
-                self._attr_native_value = value
-                self.async_write_ha_state()
-
-        except Exception as err:
-            _LOGGER.error("Failed to write max discharge value: %s", err, exc_info=True)
+    if entities:
+        async_add_entities(entities)
 
 
 class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
@@ -271,14 +140,30 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         return float(value) if value is not None else None
 
     @property
-    def icon(self) -> str | None:
-        """Return the icon to use for the entity."""
-        current_value = self.native_value or 0
-        if current_value > 0:
-            return "mdi:battery-charging"
-        if current_value < 0:
-            return "mdi:battery-minus"
-        return "mdi:battery"
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            super().available
+            and self.coordinator.data is not None
+            and self._modbus_item.name in self.coordinator.data
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        raw_value = (
+            self.coordinator.data.get(self._modbus_item.name)
+            if self.coordinator.data
+            else None
+        )
+
+        return {
+            "battery_id": self._battery_id,
+            "modbus_address": getattr(self._modbus_item, "address", None),
+            "last_update": getattr(self.coordinator, "last_update_success_time", None),
+            "raw_value": raw_value,
+            "entity_type": "modbus",
+        }
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value using direct ModbusItem communication."""
