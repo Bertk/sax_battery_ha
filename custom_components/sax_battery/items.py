@@ -15,7 +15,15 @@ from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.switch import SwitchEntityDescription
 
 # Import from entity_keys instead of const to break circular import
-from .entity_keys import SAX_ENERGY_CONSUMED, SAX_ENERGY_PRODUCED, SAX_SOC
+from .entity_keys import (
+    SAX_COMBINED_SOC,
+    SAX_CUMULATIVE_ENERGY_CONSUMED,
+    SAX_CUMULATIVE_ENERGY_PRODUCED,
+    SAX_ENERGY_CONSUMED,
+    SAX_ENERGY_PRODUCED,
+    SAX_MIN_SOC,
+    SAX_SOC,
+)
 from .enums import DeviceConstants, TypeConstants
 
 _LOGGER = logging.getLogger(__name__)
@@ -110,7 +118,7 @@ class ModbusItem(BaseItem):
 
     address: int = 0
     battery_slave_id: int = 1
-    data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.INT16
+    data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.UINT16
     factor: float = 1.0
     offset: int = 0
     _modbus_api: Any = field(default=None, init=False)  # Will be set via set_api()
@@ -147,7 +155,7 @@ class ModbusItem(BaseItem):
             _LOGGER.exception("Failed to read value for %s", self.name)
             return None
 
-    async def async_write_value(self, value: float) -> bool:
+    async def async_write_value(self, value: float | bool) -> bool:
         """Write value to physical modbus register."""
         # Check if this type supports writing using TypeConstants
         if self.mtype in (
@@ -163,12 +171,74 @@ class ModbusItem(BaseItem):
             return False
 
         try:
-            result = await self._modbus_api.write_registers(
-                value=value, modbus_item=self
+            # Convert value to appropriate type for Modbus writing
+            if isinstance(value, bool):
+                # For switch entities, use predefined on/off values
+                converted_value = (
+                    self.get_switch_on_value() if value else self.get_switch_off_value()
+                )
+            else:  # noqa: PLR5501
+                # For number entities, convert float to int as required by UINT16/INT16
+                if self.data_type in (
+                    ModbusClientMixin.DATATYPE.UINT16,
+                    ModbusClientMixin.DATATYPE.INT16,
+                    ModbusClientMixin.DATATYPE.UINT32,
+                    ModbusClientMixin.DATATYPE.INT32,
+                ):
+                    # Validate range for data type
+                    if self.data_type == ModbusClientMixin.DATATYPE.UINT16:
+                        if not 0 <= value <= 65535:
+                            _LOGGER.error(
+                                "Value %s out of range for UINT16 (0-65535) on %s",
+                                value,
+                                self.name,
+                            )
+                            return False
+                    elif self.data_type == ModbusClientMixin.DATATYPE.INT16:
+                        if not -32768 <= value <= 32767:
+                            _LOGGER.error(
+                                "Value %s out of range for INT16 (-32768-32767) on %s",
+                                value,
+                                self.name,
+                            )
+                            return False
+
+                    # Convert to integer for struct.pack compatibility
+                    converted_value = int(round(value))
+                else:
+                    # Error message for other data types
+                    _LOGGER.error(
+                        "Wrong data type for write_registers: item %s", self.name
+                    )
+                    return False
+
+            _LOGGER.debug(
+                "Writing value %s (converted: %s) to %s at address %d",
+                value,
+                converted_value,
+                self.name,
+                self.address,
             )
+
+            result = await self._modbus_api.write_registers(
+                value=converted_value, modbus_item=self
+            )
+
+            if result:
+                _LOGGER.debug("Successfully wrote value to %s", self.name)
+            else:
+                _LOGGER.warning("Failed to write value to %s", self.name)
+
             return bool(result) if result is not None else False
-        except ModbusException:
-            _LOGGER.exception("Failed to write value for %s", self.name)
+
+        except (ValueError, TypeError) as exc:
+            _LOGGER.error("Invalid value %s for %s: %s", value, self.name, exc)
+            return False
+        except ModbusException as exc:
+            _LOGGER.error("Modbus error writing to %s: %s", self.name, exc)
+            return False
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.error("Unexpected error writing to %s: %s", self.name, exc)
             return False
 
     def get_switch_on_value(self) -> int:
@@ -224,14 +294,15 @@ class SAXItem(BaseItem):
     def calculate_value(self, coordinators: dict[str, Any]) -> float | int | None:
         """Calculate system-wide value from multiple battery coordinators."""
         try:
-            if self.name == "sax_combined_soc":
+            if self.name == SAX_COMBINED_SOC:
                 return self._calculate_combined_soc(coordinators)
-            if self.name == "sax_cumulative_energy_produced":
+            if self.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
                 return self._calculate_cumulative_energy_produced(coordinators)
-            if self.name == "sax_cumulative_energy_consumed":
+            if self.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
                 return self._calculate_cumulative_energy_consumed(coordinators)
             # Default: return None for unknown calculation types
-            _LOGGER.warning("Unknown calculation type for SAXItem: %s", self.name)
+            if self.name != SAX_MIN_SOC:
+                _LOGGER.warning("Unknown calculation type for SAXItem: %s", self.name)
             return None  # noqa: TRY300
         except (ValueError, TypeError, KeyError) as exc:
             _LOGGER.error("Error calculating value for %s: %s", self.name, exc)
