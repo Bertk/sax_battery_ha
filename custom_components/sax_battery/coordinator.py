@@ -1,263 +1,146 @@
-"""Data update coordinator for SAX Battery integration."""
+"""SAX Battery data update coordinator."""
 
 from __future__ import annotations
 
-import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from pymodbus import ModbusException
+
+from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_DEVICE_ID
-from .hub import HubConnectionError, HubException, SAXBatteryHub
+from .const import BATTERY_POLL_INTERVAL, DOMAIN
+from .items import ModbusItem, SAXItem
+from .modbusobject import ModbusAPI
+from .models import SAXBatteryData
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SAXBatteryCoordinator(DataUpdateCoordinator):
-    """SAX Battery data update coordinator."""
+class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """SAX Battery data update coordinator with direct ModbusItem integration."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        hub: SAXBatteryHub,
-        scan_interval: int,
-        entry: ConfigEntry,
+        battery_id: str,
+        sax_data: SAXBatteryData,
+        modbus_api: ModbusAPI,
+        config_entry: config_entries.ConfigEntry,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
-            name="SAX Battery Coordinator",
-            update_interval=timedelta(seconds=scan_interval),
-        )
-        self._hub = hub
-        self.entry = entry
-        self.device_id = entry.data.get(CONF_DEVICE_ID)
-
-        # Add other attributes that platforms might expect
-        self.power_sensor_entity_id = entry.data.get("power_sensor_entity_id")
-        self.pf_sensor_entity_id = entry.data.get("pf_sensor_entity_id")
-
-        # Add batteries dict for multi-battery support
-        self.batteries = {}
-        for battery_id, battery in hub.batteries.items():
-            self.batteries[battery_id] = battery
-            # Set each battery's _data_manager reference to this coordinator
-            battery._data_manager = self
-
-        # Add master_battery attribute for compatibility (use first battery)
-        self.master_battery = (
-            next(iter(hub.batteries.values())) if hub.batteries else None
+            name=f"{DOMAIN}_{battery_id}",
+            update_interval=timedelta(seconds=BATTERY_POLL_INTERVAL),
+            config_entry=config_entry,
         )
 
-        # Add other attributes that might be expected
-        self.modbus_clients = hub._clients
+        self.battery_id = battery_id
+        self.sax_data = sax_data
+        self.modbus_api = modbus_api
+        self.last_update_success_time: datetime | None = None
 
-        # Add more compatibility attributes that might be expected
-        self.last_updates: dict[str, Any] = {}
+        # Initialize ModbusItems with API reference
+        self._setup_modbus_items()
 
-        # Add modbus_registers for compatibility with switch platform
-        self.modbus_registers = {}
-        for battery_id in self.batteries:
-            self.modbus_registers[battery_id] = {
-                "sax_status": {
-                    "address": 45,
-                    "count": 1,
-                    "data_type": "int",
-                    "slave": 64,
-                    "scan_interval": 60,
-                    "state_on": 3,
-                    "state_off": 1,
-                    "command_on": 2,
-                    "command_off": 1,
-                }
-            }
+    def _setup_modbus_items(self) -> None:
+        """Set up ModbusItems with API reference for direct communication."""
+        for item in self.sax_data.get_modbus_items_for_battery(self.battery_id):
+            if isinstance(item, ModbusItem):
+                item.set_api(self.modbus_api)
 
-        # Add global modbus lock for write operations
-        self._write_lock = asyncio.Lock()
-
-    async def async_write_modbus_registers(
-        self, battery_id: str, address: int, values: list[int], device_id: int = 64
-    ) -> bool:
-        """Write to Modbus registers with proper locking to prevent conflicts."""
-        async with self._write_lock:
-            try:
-                # Add delay to avoid conflicts with other integrations
-                await asyncio.sleep(0.5)
-
-                # Use hub's write method if available, otherwise direct client access
-                if hasattr(self._hub, "write_registers"):
-                    success = await self._hub.write_registers(
-                        battery_id, address, values, device_id
-                    )
-                else:
-                    # Fallback to direct client access with retries
-                    client = self.modbus_clients.get(battery_id)
-                    if not client:
-                        _LOGGER.error(
-                            "No Modbus client found for battery %s", battery_id
-                        )
-                        return False
-
-                    max_retries = 3
-                    for attempt in range(max_retries):
-                        try:
-                            if not client.connected:
-                                await client.connect()
-                                await asyncio.sleep(0.1)
-
-                            result = await client.write_registers(
-                                address, values, device_id=device_id
-                            )
-
-                            if result.isError():
-                                if attempt < max_retries - 1:
-                                    await asyncio.sleep(1.0 * (2**attempt))
-                                    continue
-                                _LOGGER.error(
-                                    "Modbus write failed after %d attempts", max_retries
-                                )
-                                return False
-
-                            _LOGGER.debug(
-                                "Successfully wrote to battery %s, address %d, values %s",
-                                battery_id,
-                                address,
-                                values,
-                            )
-                            return True
-
-                        except Exception as err:
-                            _LOGGER.warning(
-                                "Attempt %d failed for battery %s: %s",
-                                attempt + 1,
-                                battery_id,
-                                err,
-                            )
-                            if attempt == max_retries - 1:
-                                return False
-                            await asyncio.sleep(1.0 * (2**attempt))
-
-                return success if hasattr(self._hub, "write_registers") else False
-
-            except Exception as err:
-                _LOGGER.error("Error writing Modbus registers: %s", err)
-                return False
+        # Set up SAXItems with coordinator references
+        for sax_item in self.sax_data.get_sax_items_for_battery(self.battery_id):
+            if isinstance(sax_item, SAXItem):
+                # Pass all coordinators for multi-battery calculations
+                sax_item.set_coordinators(self.sax_data.coordinators)
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from the hub with timeout and sequential processing."""
-        # Prevent concurrent data fetching
-        if hasattr(self, "_fetching_lock"):
-            if self._fetching_lock.locked():
-                _LOGGER.debug("Data fetch already in progress, using cached data")
-                return self.data or {}
+        """Update data from battery using direct ModbusItem communication."""
+        try:
+            data: dict[str, Any] = {}
+
+            # Update smart meter data if this is master battery
+            if self.sax_data.should_poll_smart_meter(self.battery_id):
+                await self._update_smart_meter_data(data)
+
+            # Update battery data using direct ModbusItem calls
+            for item in self.sax_data.get_modbus_items_for_battery(self.battery_id):
+                if isinstance(item, ModbusItem):
+                    value = await item.async_read_value()
+                    data[item.name] = value
+
+            # Update SAX calculated items
+            for sax_item in self.sax_data.get_sax_items_for_battery(self.battery_id):
+                if isinstance(sax_item, SAXItem):
+                    calculated_value = await sax_item.async_read_value()
+                    data[sax_item.name] = calculated_value
+
+            self.last_update_success_time = datetime.now()
+            return data  # noqa: TRY300
+
+        except (ModbusException, OSError, TimeoutError) as err:
+            _LOGGER.error("Error updating battery data: %s", err)
+            raise UpdateFailed(
+                f"Error communicating with battery {self.battery_id}"
+            ) from err
+
+    async def _update_smart_meter_data(self, data: dict[str, Any]) -> None:
+        """Update smart meter data (only for master battery)."""
+        try:
+            for item in self.sax_data.get_smart_meter_items():
+                if isinstance(item, ModbusItem):
+                    # Set API reference if not already set
+                    if item._modbus_api is None:  # noqa: SLF001
+                        item.set_api(self.modbus_api)
+
+                    value = await item.async_read_value()
+                    data[item.name] = value
+
+                    # Update smart meter model if available
+                    if self.sax_data.smart_meter_data and value is not None:
+                        self.sax_data.smart_meter_data.set_value(
+                            item.name, float(value)
+                        )
+
+        except (ModbusException, OSError, TimeoutError) as err:
+            _LOGGER.error("Error updating smart meter data: %s", err)
+
+    async def async_write_number_value(self, item: ModbusItem, value: float) -> bool:
+        """Write number value using direct ModbusItem communication."""
+        if isinstance(item, ModbusItem):
+            # Ensure API is set
+            if item._modbus_api is None:  # noqa: SLF001
+                item.set_api(self.modbus_api)
+            return await item.async_write_value(value)
+        return False  # type:ignore[unreachable]
+
+    async def async_write_switch_value(self, item: ModbusItem, value: bool) -> bool:
+        """Write switch value using direct ModbusItem communication."""
+        if isinstance(item, ModbusItem):
+            # Ensure API is set
+            if item._modbus_api is None:  # noqa: SLF001
+                item.set_api(self.modbus_api)
+
+            # Convert boolean to appropriate switch value
+            write_value = (
+                item.get_switch_on_value() if value else item.get_switch_off_value()
+            )
+            return await item.async_write_value(write_value)
+        return False  # type:ignore[unreachable]
+
+    def update_sax_item_state(self, item: SAXItem | str, value: Any) -> None:
+        """Update SAX item state in the coordinator data."""
+        if isinstance(item, str):
+            item_name = item
         else:
-            self._fetching_lock = asyncio.Lock()
+            item_name = item.name
 
-        async with self._fetching_lock:
-            try:
-                # Reduce timeout to prevent HA coordinator timeouts
-                raw_data = await asyncio.wait_for(
-                    self._hub.read_data(),
-                    timeout=20.0,  # Reduced from 25 to 20 seconds
-                )
-
-                # Calculate combined values for multi-battery systems
-                combined_data = self._calculate_combined_values(raw_data)
-
-                # Merge raw data with combined values
-                raw_data.update(combined_data)
-
-                return raw_data
-
-            except TimeoutError:
-                _LOGGER.warning("Data fetch timed out after 20 seconds")
-                # Return last known data if available
-                return self.data or {}
-            except Exception as error:
-                _LOGGER.error("Error communicating with API: %s", error)
-                raise UpdateFailed(f"Error communicating with API: {error}") from error
-
-    def _calculate_combined_values(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Calculate combined values from all batteries."""
-        combined = {}
-
-        # Calculate combined SOC (average of all batteries)
-        soc_sum = 0.0
-        soc_count = 0
-
-        # Calculate combined power (sum of all batteries)
-        power_sum = 0.0
-
-        # Iterate through all configured batteries
-        for battery_id in self.batteries:
-            # Get SOC for this battery
-            soc_key = f"{battery_id}_soc"
-            if soc_key in data and data[soc_key] is not None:
-                soc_sum += data[soc_key]
-                soc_count += 1
-
-            # Get power for this battery
-            power_key = f"{battery_id}_power"
-            if power_key in data and data[power_key] is not None:
-                power_sum += data[power_key]
-
-        # Calculate average SOC
-        if soc_count > 0:
-            combined["combined_soc"] = round(soc_sum / soc_count, 1)
-        else:
-            combined["combined_soc"] = None
-
-        # Set combined power
-        combined["combined_power"] = round(power_sum, 1) if power_sum != 0 else 0.0
-
-        _LOGGER.debug(
-            "Calculated combined values: SOC=%s%% (from %d batteries), Power=%sW",
-            combined["combined_soc"],
-            soc_count,
-            combined["combined_power"],
-        )
-
-        return combined
-
-    @property
-    def combined_data(self) -> dict[str, Any]:
-        """Return combined data for backward compatibility."""
-        if not hasattr(self, "_combined_data"):
-            self._combined_data = {}
-        return self._combined_data
-
-    @combined_data.setter
-    def combined_data(self, value: dict[str, Any]) -> None:
-        """Set combined data."""
-        self._combined_data = value
-
-    async def _refresh_modbus_data_with_retry(
-        self,
-        ex_type: type[Exception] = Exception,
-        limit: int = 2,
-    ) -> dict[str, float | int | None]:
-        """Refresh modbus data with retries."""
-        for i in range(limit):
-            try:
-                data = await self._hub.read_data()  # Changed back to existing method
-            except (HubException, HubConnectionError) as err:
-                if i == limit - 1:  # Last attempt
-                    raise ex_type("Error refreshing data: %s", err) from err
-                _LOGGER.warning(
-                    "Retry %s/%s - Error refreshing data: %s", i + 1, limit, err
-                )
-                await asyncio.sleep(1)  # Wait before retry
-            else:
-                return data or {}
-
-        return {}
-
-    @property
-    def hub(self) -> SAXBatteryHub:
-        """Return the hub."""
-        return self._hub
+        if self.data:
+            self.data[item_name] = value
+            self.async_update_listeners()
