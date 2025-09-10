@@ -115,6 +115,7 @@ class TestModbusAPI:
             address=123,
             values=[1],  # 10 / factor (10.0) = 1, corrected expectation
             device_id=1,
+            no_response_expected=True,
         )
 
     @patch("custom_components.sax_battery.modbusobject.ModbusTcpClient")

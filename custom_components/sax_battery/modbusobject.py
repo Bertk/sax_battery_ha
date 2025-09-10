@@ -147,11 +147,29 @@ class ModbusAPI:
                     raw_values = [int(value)]
 
                 # Always use array for Write registers (code 0x10)
+
                 result = self._modbus_client.write_registers(
                     address=modbus_item.address,
                     values=raw_values,
                     device_id=modbus_item.battery_slave_id,
+                    no_response_expected=True,
                 )
+
+                _LOGGER.debug(
+                    "Wrote registers at address %d: %s (raw: %s), error: %s, result: %s",
+                    modbus_item.address,
+                    value,
+                    raw_values,
+                    result.isError(),
+                    result,
+                )
+
+                # For write-only registers, ExceptionResponse(0xff) with exception_code=0 is success
+                if result.isError() and result.function_code == 0xFF:
+                    # Check if this is the "no response expected" success case
+                    if hasattr(result, "exception_code") and result.exception_code == 0:
+                        return True
+
                 return not result.isError()
 
             except (ModbusException, ValueError, TypeError) as exc:
