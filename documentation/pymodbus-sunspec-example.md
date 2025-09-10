@@ -1,7 +1,8 @@
 
 # Information for SAX power modbus functionality
 
-[SAX Power Installationsableitung](https://sax-power.net/download/Handbuch_SAX_Home_5,8_DE.pdf)
+[SAX Power Installationsanleitung](https://sax-power.net/download/Handbuch_SAX_Home_5,8_DE.pdf) includes description of SAX Power modbus support
+
 [SunSpec Device Information Model Specification](https://sunspec.org/wp-content/uploads/2025/01/SunSpec-Device-Information-Model-Specificiation-V1-2-1-1.pdf)
 
 ## Pymodbus example for sunssf client
