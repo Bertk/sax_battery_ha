@@ -11,7 +11,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SAX_MIN_SOC
+from .const import (
+    DOMAIN,
+    SAX_MAX_CHARGE,
+    SAX_MAX_DISCHARGE,
+    SAX_MIN_SOC,
+    WRITE_ONLY_REGISTERS,
+)
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
@@ -102,6 +108,13 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._modbus_item = modbus_item
         self._battery_id = battery_id
 
+        # Local state for write-only registers
+        self._local_value: float | None = None
+        self._is_write_only = (
+            hasattr(modbus_item, "address")
+            and modbus_item.address in WRITE_ONLY_REGISTERS
+        )
+
         # Generate unique ID using simple pattern
         if self._modbus_item.name.startswith("sax_"):
             item_name = self._modbus_item.name[4:]  # Remove "sax_" prefix
@@ -131,9 +144,44 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # Set device info for the specific battery
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
 
+        # Initialize with default values for write-only registers
+        if self._is_write_only:
+            self._initialize_write_only_defaults()
+
+    def _initialize_write_only_defaults(self) -> None:
+        """Initialize default values for write-only registers based on config."""
+        if not self.coordinator.config_entry:
+            return
+
+        config_data = self.coordinator.config_entry.data
+
+        # Set default values based on register type
+        if self._modbus_item.name == SAX_MAX_CHARGE:
+            # Get from config or use entity description default
+            battery_count = config_data.get("battery_count", 1)
+            default_value = 5000.0 * battery_count  # Default per battery
+            self._local_value = float(config_data.get("max_charge", default_value))
+
+        elif self._modbus_item.name == SAX_MAX_DISCHARGE:
+            # Get from config or use entity description default
+            battery_count = config_data.get("battery_count", 1)
+            default_value = 5000.0 * battery_count  # Default per battery
+            self._local_value = float(config_data.get("max_discharge", default_value))
+
+        # Add other write-only registers as needed
+        # elif self._modbus_item.address == 41:  # Pilot power
+        #     self._local_value = 0.0
+        # elif self._modbus_item.address == 42:  # Pilot power factor
+        #     self._local_value = 1.0
+
     @property
     def native_value(self) -> float | None:
         """Return the current value."""
+        # For write-only registers, use local state
+        if self._is_write_only:
+            return self._local_value
+
+        # For readable registers, use coordinator data
         if not self.coordinator.data:
             return None
         value = self.coordinator.data.get(self._modbus_item.name)
@@ -142,6 +190,11 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        # Write-only registers are always available if coordinator is available
+        if self._is_write_only:
+            return super().available
+
+        # Readable registers need data presence
         return (
             super().available
             and self.coordinator.data is not None
@@ -151,38 +204,92 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        raw_value = (
-            self.coordinator.data.get(self._modbus_item.name)
-            if self.coordinator.data
-            else None
-        )
-
-        return {
+        attributes = {
             "battery_id": self._battery_id,
             "modbus_address": getattr(self._modbus_item, "address", None),
             "last_update": getattr(self.coordinator, "last_update_success_time", None),
-            "raw_value": raw_value,
             "entity_type": "modbus",
+            "is_write_only": self._is_write_only,
         }
+
+        if self._is_write_only:
+            attributes.update(
+                {
+                    "local_value": self._local_value,
+                    "note": "Write-only register - value maintained locally",
+                }
+            )
+        else:
+            raw_value = (
+                self.coordinator.data.get(self._modbus_item.name)
+                if self.coordinator.data
+                else None
+            )
+            attributes["raw_value"] = raw_value
+
+        return attributes
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value using direct ModbusItem communication."""
         try:
-            # Use direct ModbusItem communication
+            # Write to the device
             success = await self._modbus_item.async_write_value(value)
-            if not success:
+
+            if success:
+                # For write-only registers, update local state immediately
+                if self._is_write_only:
+                    self._local_value = value
+                    self.async_write_ha_state()
+
+                    # Optionally save to config entry for persistence
+                    if self.coordinator.config_entry:
+                        await self._save_write_only_value_to_config(value)
+
+                    _LOGGER.debug(
+                        "Updated local value for write-only register %s to %s",
+                        self._modbus_item.name,
+                        value,
+                    )
+                else:
+                    # For readable registers, refresh coordinator data
+                    await self.coordinator.async_request_refresh()
+            else:
                 _LOGGER.error(
                     "Failed to write value %s to %s", value, self._modbus_item.name
                 )
-
-            # Refresh coordinator data
-            await self.coordinator.async_request_refresh()
 
         except Exception as err:
             _LOGGER.error(
                 "Failed to set %s to %s: %s", self._modbus_item.name, value, err
             )
             raise
+
+    async def _save_write_only_value_to_config(self, value: float) -> None:
+        """Save write-only register value to config entry for persistence."""
+        if not self.coordinator.config_entry:
+            return
+
+        new_data = dict(self.coordinator.config_entry.data)
+
+        # Map register names to config keys
+        if self._modbus_item.name == SAX_MAX_CHARGE:
+            new_data["max_charge"] = value
+        elif self._modbus_item.name == SAX_MAX_DISCHARGE:
+            new_data["max_discharge"] = value
+
+        # Update config entry
+        self.hass.config_entries.async_update_entry(
+            self.coordinator.config_entry,
+            data=new_data,
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Call entity after it is added to hass."""
+        await super().async_added_to_hass()
+
+        # For write-only registers, restore value from config if available
+        if self._is_write_only and self._local_value is None:
+            self._initialize_write_only_defaults()
 
 
 class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEntity):
@@ -208,7 +315,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         if self._sax_item.entitydescription is not None:
             self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
-        # Set system device info - this creates the "SAX Battery Cluster" device
+        # Set cluster device info - this creates the "SAX Battery Cluster" device
         self._attr_device_info = coordinator.sax_data.get_device_info("cluster")
 
     @property
@@ -220,7 +327,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             return float(config_value)
 
         # For other SAX items, use the item's own read method
-        # This will be async in real implementation but simplified here
         return None
 
     @property
