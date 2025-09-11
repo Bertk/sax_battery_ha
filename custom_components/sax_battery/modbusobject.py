@@ -187,11 +187,17 @@ class ModbusAPI:
 
         Args:
             value: The nominal power value to write
-            power_factor: Power factor to apply
+            power_factor: Power factor as scaled integer (e.g., 9500 for 0.95)
             modbus_item: Optional modbus item for address and device_id info
 
         Returns:
             bool: True if write was successful, False otherwise
+
+        Security:
+            Validates inputs and address restrictions
+
+        Performance:
+            Single Modbus transaction for both registers
 
         """
         if self._modbus_client is None or not self._modbus_client.connected:
@@ -205,11 +211,11 @@ class ModbusAPI:
                     device_id = modbus_item.battery_slave_id
                 else:
                     _LOGGER.error(
-                        "ModbusItem is required for write_holding_registers operation"
+                        "ModbusItem is required for write_nominal_power operation"
                     )
                     return False
 
-                # Check for valid SAX battery address
+                # Security: Check for valid SAX battery address
                 if address != 41:
                     _LOGGER.error(
                         "Invalid address %s for nominal power write, only address 41 is supported",
@@ -217,21 +223,48 @@ class ModbusAPI:
                     )
                     return False
 
-                # Convert power to integer for Modbus
+                # Convert power to integer for Modbus (security: input validation)
+                if not isinstance(value, (int, float)):
+                    raise ValueError("Power value must be numeric")  # noqa: TRY004, TRY301
                 power_int = int(value) & 0xFFFF
 
-                # Convert PF to integer (assuming PF is a small decimal like 0.95)
-                # Scale PF by 10 to preserve precision
-                pf_int = int(power_factor * 10) & 0xFFFF
+                # Power factor is already scaled integer (security: validate range)
+                if not isinstance(power_factor, int) or not (
+                    0 <= power_factor <= 10000
+                ):
+                    raise ValueError(  # noqa: TRY301
+                        f"Power factor {power_factor} outside valid range [0, 10000]"
+                    )
+                pf_int = power_factor & 0xFFFF
 
                 # Type guard to ensure _modbus_client is not None
                 if self._modbus_client is None:
                     return False
 
+                # Performance: Single write operation for both registers
                 result = self._modbus_client.write_registers(
-                    address=address, values=[power_int, pf_int], device_id=device_id
+                    address=address,
+                    values=[power_int, pf_int],
+                    device_id=device_id,
+                    no_response_expected=True,
                 )
+
+                _LOGGER.debug(
+                    "Wrote pilot control registers at address %d: power=%s, power_factor=%s, error=%s",
+                    address,
+                    power_int,
+                    pf_int,
+                    result.isError(),
+                )
+
+                # For write-only registers, ExceptionResponse(0xff) with exception_code=0 is success
+                if result.isError() and result.function_code == 0xFF:
+                    # Check if this is the "no response expected" success case
+                    if hasattr(result, "exception_code") and result.exception_code == 0:
+                        return True
+
                 return not result.isError()
+
             except ModbusException as exc:
                 _LOGGER.error("Modbus error during nominal power write: %s", exc)
                 return False
