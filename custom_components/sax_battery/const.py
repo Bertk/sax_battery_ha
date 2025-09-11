@@ -85,10 +85,6 @@ CONF_LIMIT_POWER = "limit_power"
 LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts per battery
 LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts per battery
 
-# Legacy constants for backward compatibility
-LIMIT_MAX_CHARGE = LIMIT_MAX_CHARGE_PER_BATTERY  # Single battery default
-LIMIT_MAX_DISCHARGE = LIMIT_MAX_DISCHARGE_PER_BATTERY  # Single battery default
-
 # Maximum supported batteries in a system
 MAX_SUPPORTED_BATTERIES = 3
 
@@ -114,9 +110,6 @@ CONF_DEVICE_ID = "device_id"
 
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 10  # Standard battery data polling (SOC, Power, Status)
-BATTERY_STATIC_POLL_INTERVAL = 300  # Static/accumulated data polling (5 minutes)
-SMARTMETER_POLL_INTERVAL = 10  # Basic Smartmeter data polling
-SMARTMETER_PHASE_POLL_INTERVAL = 60  # L1/L2/L3 phase-specific data polling
 CONF_MIN_SOC = "min_soc"
 CONF_PRIORITY_DEVICES = "priority_devices"
 CONF_ENABLE_SOLAR_CHARGING = "enable_solar_charging"

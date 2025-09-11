@@ -7,7 +7,6 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 
 from .const import (
     CONF_BATTERY_COUNT,
@@ -22,62 +21,6 @@ from .const import (
 from .items import ModbusItem, SAXItem
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def format_battery_display_name(battery_id: str) -> str:
-    """Format battery ID for display purposes.
-
-    This function is primarily used for device names, not entity names.
-    Entity names should not include battery prefix when _attr_has_entity_name = True.
-
-    Args:
-        battery_id: Battery identifier (e.g., "battery_a", "battery_b", "cluster")
-
-    Returns:
-        Formatted display name (e.g., "Battery A", "Battery B", "Cluster")
-
-    """
-    if battery_id.lower().startswith("battery_"):
-        # Remove "battery_" prefix and capitalize the letter
-        battery_letter = battery_id[8:].upper()
-        return f"Battery {battery_letter}"
-    if battery_id == "cluster":
-        return "Cluster"
-    return battery_id.replace("_", " ").title()
-
-
-def determine_entity_category(
-    modbus_item: ModbusItem | SAXItem,
-) -> EntityCategory | None:
-    """Determine entity category based on modbus item.
-
-    Args:
-        modbus_item: Modbus item
-
-    Returns:
-        Entity category or None
-
-    """
-    # Check entitydescription for entity_category first
-    if hasattr(modbus_item, "entitydescription") and modbus_item.entitydescription:
-        if (
-            hasattr(modbus_item.entitydescription, "entity_category")
-            and modbus_item.entitydescription.entity_category
-        ):
-            return modbus_item.entitydescription.entity_category
-
-    diagnostic_keywords = ["debug", "diagnostic", "status", "error", "version"]
-    config_keywords = ["config", "setting", "limit", "max_", "pilot_", "enable_"]
-
-    item_name_lower = modbus_item.name.lower()
-
-    if any(keyword in item_name_lower for keyword in diagnostic_keywords):
-        return EntityCategory.DIAGNOSTIC
-
-    if any(keyword in item_name_lower for keyword in config_keywords):
-        return EntityCategory.CONFIG
-
-    return None
 
 
 def should_include_entity(
