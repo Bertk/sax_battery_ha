@@ -175,6 +175,13 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 no_response_expected=True,
             )
 
+            _LOGGER.info(
+                "Wrote charge power limit registers (44): %s , error: %s, result: %s",
+                value_int,
+                result.isError(),
+                result,
+            )
+
             # Check result for errors
             if result.isError() and result.function_code != 0xFF:
                 _LOGGER.error("Error writing max charge value: %s", result)
@@ -308,6 +315,13 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 [value_int],
                 device_id=slave_id,
                 no_response_expected=True,
+            )
+
+            _LOGGER.info(
+                "Wrote discharge power limit register (43): %s , error: %s, result: %s",
+                value_int,
+                result.isError(),
+                result,
             )
 
             # Check result for errors
