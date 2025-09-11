@@ -1,8 +1,8 @@
 """Battery pilot service for SAX Battery integration."""
 
+import asyncio
 from collections.abc import Callable
 from datetime import timedelta
-import asyncio
 import logging
 from typing import Any
 
@@ -26,7 +26,6 @@ from .const import (
     DEFAULT_MIN_SOC,
     DOMAIN,
     SAX_COMBINED_SOC,
-    SAX_COMBINED_POWER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -496,7 +495,7 @@ class SAXBatteryPilot:
         # Use the hub's write method instead of coordinator
         try:
             # Get the coordinator's hub
-            hub = self.sax_data._hub if hasattr(self.sax_data, "_hub") else None
+            hub = self.sax_data._hub if hasattr(self.sax_data, "_hub") else None  # noqa: SLF001
             if not hub:
                 _LOGGER.error("No hub available for writing")
                 return
@@ -525,9 +524,9 @@ class SAXBatteryPilot:
             else:
                 _LOGGER.error("Failed to send power command: %sW", power)
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError:  # noqa: UP041
             _LOGGER.error("Timeout sending power command: %sW (took >10s)", power)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001
             _LOGGER.error("Error sending power command: %sW - %s", power, err)
 
 
@@ -591,7 +590,7 @@ class SAXBatteryPilotPowerEntity(NumberEntity):
         # If we're in manual mode, send the command immediately
         if self._pilot.entry.data.get(CONF_MANUAL_CONTROL, False):
             # Apply SOC constraints
-            constrained_value = await self._pilot._apply_soc_constraints(value)
+            constrained_value = await self._pilot._apply_soc_constraints(value)  # noqa: SLF001
             await self._pilot.send_power_command(constrained_value, 1.0)
 
             # Log what actually happened

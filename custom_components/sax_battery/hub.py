@@ -227,7 +227,7 @@ class SAXBatteryHub:
                 _LOGGER.debug(
                     "Successfully wrote to battery %s, address %d", battery_id, address
                 )
-                return True
+                return True  # noqa: TRY300
 
             except TimeoutError:
                 _LOGGER.error(
@@ -237,7 +237,7 @@ class SAXBatteryHub:
             except (ConnectionException, ModbusIOException) as e:
                 _LOGGER.error("Modbus write error for battery %s: %s", battery_id, e)
                 return False
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _LOGGER.error(
                     "Unexpected error writing to battery %s: %s", battery_id, e
                 )
@@ -280,7 +280,7 @@ class SAXBatteryHub:
                             f"Quick reconnect failed for battery {battery_id}"
                         )
                 except TimeoutError:
-                    raise HubConnectionError(
+                    raise HubConnectionError(  # noqa: B904
                         f"Reconnect timeout for battery {battery_id}"
                     )
             else:
@@ -291,9 +291,7 @@ class SAXBatteryHub:
         try:
             # Add timeout to individual register reads
             result = await asyncio.wait_for(
-                client.read_holding_registers(
-                    address, count=count, device_id=slave
-                ),
+                client.read_holding_registers(address, count=count, device_id=slave),
                 timeout=READ_TIMEOUT,  # 3 second timeout per read
             )
 
@@ -308,7 +306,7 @@ class SAXBatteryHub:
                 len(result.registers),
                 battery_id,
             )
-            return result.registers
+            return result.registers  # noqa: TRY300
 
         except TimeoutError:
             _LOGGER.error(
@@ -318,7 +316,7 @@ class SAXBatteryHub:
                 READ_TIMEOUT,
             )
             self._connected[battery_id] = False  # Mark as disconnected
-            raise HubConnectionError(
+            raise HubConnectionError(  # noqa: B904
                 f"Read timeout for battery {battery_id} at address {address}"
             )
         except (ConnectionException, ModbusIOException) as e:
@@ -358,7 +356,7 @@ class SAXBatteryHub:
             self._reading = False
 
     async def _read_data_internal(self) -> dict[str, Any]:
-        """Internal data reading logic."""
+        """Use internal data reading logic."""
         # Quick connect check
         if not await self.connect():
             _LOGGER.warning("Failed to connect to batteries, returning empty data")
@@ -398,7 +396,7 @@ class SAXBatteryHub:
                     battery_id,
                 )
                 self._connected[battery_id] = False
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _LOGGER.error("Error reading from %s: %s", battery_id, e)
 
         _LOGGER.debug(
@@ -414,7 +412,7 @@ class SAXBatteryHub:
         """Safely read data from a single battery with error handling."""
         try:
             return await battery.read_data()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _LOGGER.error("Error reading data from %s: %s", battery_id, e)
             return {}
 

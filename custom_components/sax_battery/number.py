@@ -7,7 +7,7 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -24,6 +24,10 @@ from .const import (
 from .coordinator import SAXBatteryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+# Battery limits per individual battery unit 7.5kW model
+# Adjusted to realistic values based on SAX service feedback
+LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts per battery
+LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts per battery (20A fuse)
 
 
 async def async_setup_entry(
@@ -68,7 +72,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
 
         # Calculate dynamic max value based on battery count
         battery_count = len(coordinator.batteries)
-        self._attr_native_max_value = battery_count * 3500  # 3.5kW per battery
+        self._attr_native_max_value = battery_count * LIMIT_MAX_CHARGE_PER_BATTERY
         self._attr_native_step = 100
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_native_value = self._attr_native_max_value  # Start at max
@@ -128,7 +132,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 _LOGGER.error("Master battery data manager not available")
                 return
 
-            client = master_battery._data_manager.modbus_clients.get(
+            client = master_battery._data_manager.modbus_clients.get(  # noqa: SLF001
                 master_battery.battery_id
             )
 
@@ -144,7 +148,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 try:
                     await client.connect()
                     _LOGGER.info("Reconnected to Modbus device")
-                except Exception as connect_err:
+                except Exception as connect_err:  # noqa: BLE001
                     _LOGGER.error("Failed to reconnect: %s", connect_err)
                     return
 
@@ -168,16 +172,17 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 44,  # Charge power limit register
                 [value_int],
                 device_id=slave_id,
+                no_response_expected=True,
             )
 
             # Check result for errors
-            if result.isError():
+            if result.isError() and result.function_code != 0xFF:
                 _LOGGER.error("Error writing max charge value: %s", result)
                 # Try to reconnect for next time
                 try:
                     await client.close()
                     await client.connect()
-                except Exception as reconnect_err:
+                except Exception as reconnect_err:  # noqa: BLE001
                     _LOGGER.debug("Failed to reconnect after error: %s", reconnect_err)
             else:
                 _LOGGER.debug("Successfully wrote max charge value: %s", value)
@@ -187,7 +192,7 @@ class SAXBatteryMaxChargeNumber(NumberEntity):
                 self.async_write_ha_state()
 
         except Exception as err:
-            _LOGGER.error("Failed to write max charge value: %s", err, exc_info=True)
+            _LOGGER.error("Failed to write max charge value: %s", err, exc_info=True)  # noqa: G201
 
 
 class SAXBatteryMaxDischargeNumber(NumberEntity):
@@ -202,7 +207,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
 
         # Calculate dynamic max value based on battery count
         battery_count = len(coordinator.batteries)
-        self._attr_native_max_value = battery_count * 3500  # 3.5kW per battery
+        self._attr_native_max_value = battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
         self._attr_native_step = 100
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_native_value = self._attr_native_max_value  # Start at max
@@ -262,7 +267,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 _LOGGER.error("Master battery data manager not available")
                 return
 
-            client = master_battery._data_manager.modbus_clients.get(
+            client = master_battery._data_manager.modbus_clients.get(  # noqa: SLF001
                 master_battery.battery_id
             )
 
@@ -278,7 +283,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 try:
                     await client.connect()
                     _LOGGER.info("Reconnected to Modbus device")
-                except Exception as connect_err:
+                except Exception as connect_err:  # noqa: BLE001
                     _LOGGER.error("Failed to reconnect: %s", connect_err)
                     return
 
@@ -302,16 +307,17 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 43,  # Discharge power limit register
                 [value_int],
                 device_id=slave_id,
+                no_response_expected=True,
             )
 
             # Check result for errors
-            if result.isError():
+            if result.isError() and result.function_code != 0xFF:
                 _LOGGER.error("Error writing max discharge value: %s", result)
                 # Try to reconnect for next time
                 try:
                     await client.close()
                     await client.connect()
-                except Exception as reconnect_err:
+                except Exception as reconnect_err:  # noqa: BLE001
                     _LOGGER.debug("Failed to reconnect after error: %s", reconnect_err)
             else:
                 _LOGGER.debug("Successfully wrote max discharge value: %s", value)
@@ -321,7 +327,7 @@ class SAXBatteryMaxDischargeNumber(NumberEntity):
                 self.async_write_ha_state()
 
         except Exception as err:
-            _LOGGER.error("Failed to write max discharge value: %s", err, exc_info=True)
+            _LOGGER.error("Failed to write max discharge value: %s", err, exc_info=True)  # noqa: G201
 
 
 class SAXBatteryPilotIntervalNumber(NumberEntity):
@@ -335,7 +341,7 @@ class SAXBatteryPilotIntervalNumber(NumberEntity):
         self._attr_native_min_value = 5  # Minimum 5 seconds for local network polling
         self._attr_native_max_value = 300  # Max 5 minutes in seconds
         self._attr_native_step = 1
-        self._attr_native_unit_of_measurement = "s"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_native_value = entry.options.get(
             CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
         )
