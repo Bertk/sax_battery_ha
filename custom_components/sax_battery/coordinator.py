@@ -144,3 +144,75 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.data:
             self.data[item_name] = value
             self.async_update_listeners()
+
+    async def async_write_pilot_control_value(
+        self,
+        power_item: ModbusItem,
+        power_factor_item: ModbusItem,
+        power: float,
+        power_factor: float,
+    ) -> bool:
+        """Write pilot control values (power and power factor) simultaneously.
+
+        This method is specifically for MODBUS_BATTERY_PILOT_CONTROL_ITEMS that require
+        writing both power and power factor registers at the same time.
+
+        Args:
+            power_item: ModbusItem for the power register (address 41)
+            power_factor_item: ModbusItem for the power factor register (address 42)
+            power: Power value to write
+            power_factor: Power factor value to write
+
+        Returns:
+            bool: True if both values were written successfully
+
+        Security:
+            Validates input types and ranges before writing
+
+        Performance:
+            Single Modbus transaction for both registers
+
+        """
+        # Input validation (security)
+        if not isinstance(power, (int, float)):
+            raise ValueError("Power must be numeric")  # noqa: TRY004
+        if not isinstance(power_factor, (int, float)):
+            raise ValueError("Power factor must be numeric")  # noqa: TRY004
+
+        # Range validation for power factor (typical range 0.0 to 1.0)
+        if not (0.0 <= power_factor <= 1.0):
+            raise ValueError(
+                f"Power factor {power_factor} outside valid range [0.0, 1.0]"
+            )
+
+        try:
+            # Use the specialized write method that handles both registers
+            success = await self.modbus_api.write_nominal_power(
+                value=power,
+                power_factor=int(
+                    power_factor * 10000
+                ),  # Convert to integer with precision
+                modbus_item=power_item,  # Use power item for address/device_id
+            )
+
+            if success:
+                # Update coordinator data for both values (performance optimization)
+                self.data[power_item.name] = power
+                self.data[power_factor_item.name] = power_factor
+                _LOGGER.debug(
+                    "Successfully wrote pilot control: power=%s, power_factor=%s",
+                    power,
+                    power_factor,
+                )
+            else:
+                _LOGGER.error(
+                    "Failed to write pilot control values: power=%s, power_factor=%s",
+                    power,
+                    power_factor,
+                )
+
+            return success  # noqa: TRY300
+
+        except (OSError, TimeoutError, ModbusException) as err:
+            _LOGGER.error("Error writing pilot control values: %s", err)
+            return False
