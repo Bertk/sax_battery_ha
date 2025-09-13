@@ -15,6 +15,7 @@
         "ms-python.pylint",
         "ms-python.python",
         "ms-python.vscode-pylance",
+        "ms-pyright.pyright",
         "visualstudioexptteam.vscodeintellicode",
         "ms-python.mypy-type-checker",
         "redhat.vscode-yaml",
