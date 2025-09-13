@@ -517,7 +517,6 @@ ignore = [
   "TRY003", # Avoid specifying long messages outside the exception class
   "TRY400", # Use `logging.exception` instead of `logging.error`
   # Ignored due to performance: https://github.com/charliermarsh/ruff/issues/2923
-  "UP038", # Use `X | Y` in `isinstance` call instead of `(X, Y)`
   "UP046", # Non PEP 695 generic class
   "UP047", # Non PEP 696 generic function
   "UP049", # Avoid private type parameter names
@@ -594,6 +593,29 @@ warn_return_any = true
 warn_unused_configs = true
 
 # Allow more flexibility in tests
-[[tool.mypy.overrides]]
+[tool.mypy.overrides]
 module = "test.*"
 disable_error_code = ["misc", "attr-defined"]
+
+[tool.pyright]
+# Type checking configuration
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+
+# Disable specific checks that are common in Home Assistant integrations
+reportIncompatibleVariableOverride = false
+reportGeneralTypeIssues = "warning"
+reportOptionalMemberAccess = "warning"
+reportOptionalSubscript = "warning"
+
+# Keep important security-related checks enabled
+reportUnknownMemberType = "error"
+reportUnknownVariableType = "error"
+reportUntypedFunctionDecorator = "error"
+
+# Exclude patterns
+exclude = [
+    "**/__pycache__",
+    "**/node_modules",
+    "tests/**/*",  # if you want less strict checking for tests
+]
