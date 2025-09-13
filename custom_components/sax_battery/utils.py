@@ -29,18 +29,22 @@ def should_include_entity(
     battery_id: str,
 ) -> bool:
     """Determine if entity should be included based on configuration."""
-    # Handle write-only registers first (specific case)
-    if hasattr(item, "address") and item.address in WRITE_ONLY_REGISTERS:
+    # Handle write-only registers first (specific case) - only applies to ModbusItem
+    if (
+        isinstance(item, ModbusItem)
+        and hasattr(item, "address")
+        and item.address in WRITE_ONLY_REGISTERS
+    ):
         # Get master battery ID from configuration
         master_battery_id = config_entry.data.get(CONF_MASTER_BATTERY, "battery_a")
         is_master = battery_id == master_battery_id
 
         # Pilot registers (41, 42) require pilot_from_ha AND master battery
         if item.address in {41, 42}:
-            return config_entry.data.get(CONF_PILOT_FROM_HA, False) and is_master
+            return bool(config_entry.data.get(CONF_PILOT_FROM_HA, False) and is_master)
         # Power limit registers (43, 44) require limit_power AND master battery
         elif item.address in {43, 44}:  # noqa: RET505
-            return config_entry.data.get(CONF_LIMIT_POWER, False) and is_master
+            return bool(config_entry.data.get(CONF_LIMIT_POWER, False) and is_master)
         else:
             # Unknown write-only register
             return False
@@ -82,13 +86,21 @@ def create_register_access_config(
     Returns:
         RegisterAccessConfig with dynamic limits based on battery count
 
+    Security:
+        Validates configuration parameters and applies secure defaults
+
     """
     battery_count = config_data.get(CONF_BATTERY_COUNT, 1)
 
+    # Security: Validate battery count is within reasonable limits
+    if not isinstance(battery_count, int) or battery_count < 1 or battery_count > 10:
+        _LOGGER.warning("Invalid battery count %s, using default of 1", battery_count)
+        battery_count = 1
+
     return RegisterAccessConfig(
-        pilot_from_ha=config_data.get(CONF_PILOT_FROM_HA, False),
-        limit_power=config_data.get(CONF_LIMIT_POWER, False),
-        is_master_battery=is_master,
+        pilot_from_ha=bool(config_data.get(CONF_PILOT_FROM_HA, False)),
+        limit_power=bool(config_data.get(CONF_LIMIT_POWER, False)),
+        is_master_battery=bool(is_master),
         battery_count=battery_count,
     )
 
@@ -96,14 +108,30 @@ def create_register_access_config(
 def get_writable_registers(
     config_data: dict[str, Any], is_master: bool = False
 ) -> set[int]:
-    """Get set of registers that are writable based on current configuration."""
+    """Get set of registers that are writable based on current configuration.
+
+    Args:
+        config_data: Configuration data from config entry
+        is_master: Whether this is the master battery
+
+    Returns:
+        Set of writable register addresses
+
+    Security:
+        Only returns registers that are explicitly authorized by configuration
+
+    """
     access_config = create_register_access_config(config_data, is_master)
     return access_config.get_writable_registers()
 
 
 @dataclass(frozen=True)
 class RegisterAccessConfig:
-    """Configuration for register access control."""
+    """Configuration for register access control.
+
+    Security:
+        Immutable configuration prevents tampering after creation
+    """
 
     pilot_from_ha: bool = False
     limit_power: bool = False
@@ -111,8 +139,16 @@ class RegisterAccessConfig:
     battery_count: int = 1
 
     def get_writable_registers(self) -> set[int]:
-        """Get set of writable register addresses."""
-        writable = set()
+        """Get set of writable register addresses.
+
+        Returns:
+            Set of register addresses that are writable based on configuration
+
+        Security:
+            Uses explicit allow-list pattern - only authorized registers are returned
+
+        """
+        writable: set[int] = set()
 
         # Pilot control registers require both pilot_from_ha AND master battery
         if self.pilot_from_ha and self.is_master_battery:
@@ -129,6 +165,16 @@ def get_battery_realtime_items(access_config: RegisterAccessConfig) -> list[Modb
     """Get battery realtime items based on access configuration.
 
     Only master batteries get write-only control items (registers 41-44).
+
+    Args:
+        access_config: Register access configuration
+
+    Returns:
+        List of ModbusItem objects for realtime data
+
+    Security:
+        Only includes control items for authorized master batteries
+
     """
     items = list(MODBUS_BATTERY_REALTIME_ITEMS)  # Make a copy
 
