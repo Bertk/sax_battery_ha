@@ -183,7 +183,7 @@ class SAXBatteryCalculatedSensor(
         ):
             item_name = self.entity_description.name[4:]  # eliminate 'Sax '
 
-        self._attr_name = f"Sax {item_name}"
+        self._attr_name = f"Sax {item_name}"  # type: ignore
 
         # Set system device info
         self._attr_device_info = coordinator.sax_data.get_device_info("cluster")

@@ -273,7 +273,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Generate schema for all batteries
         schema: dict[vol.Marker, Any] = {}
-        battery_choices = []
+        battery_choices: list[str] = []
         battery_count = self._battery_count or 0  # Default to 0 if None
 
         for i in range(1, battery_count + 1):
@@ -356,7 +356,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             current_limit_power = self.config_entry.data.get(CONF_LIMIT_POWER, False)
 
             # Extract pilot-specific options from user input
-            pilot_options = {}
+            pilot_options: dict[str, Any] = {}
             if CONF_MIN_SOC in user_input:
                 pilot_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
             if CONF_AUTO_PILOT_INTERVAL in user_input:
