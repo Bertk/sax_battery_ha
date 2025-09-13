@@ -319,7 +319,11 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Load existing configuration data
-        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        entry_id = self.context.get("entry_id")
+        if entry_id is None:
+            return self.async_abort(reason="unknown")
+
+        entry = self.hass.config_entries.async_get_entry(entry_id)
         if entry is None:
             return self.async_abort(reason="unknown")
 
