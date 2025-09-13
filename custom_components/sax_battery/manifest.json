@@ -1,10 +1,11 @@
 {
+    "domain": "sax_battery",
+    "name": "SAX battery pilot for HomeAssistant",
     "codeowners": [
         "@matfroh"
     ],
     "config_flow": true,
     "documentation": "https://github.com/matfroh/sax_battery_ha",
-    "domain": "sax_battery",
     "integration_type": "hub",
     "iot_class": "local_polling",
     "issue_tracker": "https://github.com/matfroh/sax_battery_ha/issues",
@@ -12,7 +13,6 @@
         "sax_battery",
         "pymodbus"
     ],
-    "name": "SAX battery pilot for HomeAssistant",
     "requirements": [
         "pymodbus>=3.11.1,<4.0.0",
         "voluptuous"
