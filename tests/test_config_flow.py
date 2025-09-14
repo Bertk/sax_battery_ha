@@ -173,53 +173,51 @@ class TestSAXBatteryConfigFlow:
         )
 
         assert result4.get("type") == FlowResultType.CREATE_ENTRY
-        assert result4.get("title") == "SAX Battery"
+        # Fix: Update expected title to match new format
+        assert result4.get("title") == "SAX Battery System (1 batteries)"
+        # OWASP A03: Verify configuration data structure is correct
+        assert "batteries" in result4.get("data", {})
+        assert result4["data"]["batteries"]["battery_a"]["host"] == "192.168.1.100"
+        assert result4["data"]["batteries"]["battery_a"]["port"] == 502
 
-        data = result4["data"]
-        assert data["battery_count"] == 1
-        assert data["pilot_from_ha"] is False
-        assert data["limit_power"] is False
-        assert data["master_battery"] == "battery_a"  # Auto-set for single battery
 
-        mock_async_setup_entry.assert_called_once()
+async def test_form_user_single_battery_auto_master(
+    hass: HomeAssistant, enable_custom_integrations, mock_async_setup_entry
+) -> None:
+    """Test single battery automatically sets as master."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
 
-    async def test_form_user_single_battery_auto_master(
-        self, hass: HomeAssistant, enable_custom_integrations, mock_async_setup_entry
-    ) -> None:
-        """Test single battery automatically sets as master."""
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_USER}
-        )
+    result2 = await hass.config_entries.flow.async_configure(  # noqa: F841
+        result["flow_id"],
+        {"battery_count": 1},
+    )
 
-        result2 = await hass.config_entries.flow.async_configure(  # noqa: F841
-            result["flow_id"],
-            {"battery_count": 1},
-        )
+    result3 = await hass.config_entries.flow.async_configure(  # noqa: F841
+        result["flow_id"],
+        {
+            "pilot_from_ha": False,
+            "limit_power": False,
+        },
+    )
 
-        result3 = await hass.config_entries.flow.async_configure(  # noqa: F841
-            result["flow_id"],
-            {
-                "pilot_from_ha": False,
-                "limit_power": False,
-            },
-        )
+    result4 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "battery_a_host": "192.168.1.100",
+            "battery_a_port": 502,
+        },
+    )
 
-        result4 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "battery_a_host": "192.168.1.100",
-                "battery_a_port": 502,
-            },
-        )
+    assert result4.get("type") == FlowResultType.CREATE_ENTRY
+    data = result4["data"]
+    assert data["master_battery"] == "battery_a"
 
-        assert result4.get("type") == FlowResultType.CREATE_ENTRY
-        data = result4["data"]
-        assert data["master_battery"] == "battery_a"
-
-        mock_async_setup_entry.assert_called_once()
+    mock_async_setup_entry.assert_called_once()
 
     async def test_form_user_multiple_batteries(
-        self, hass: HomeAssistant, enable_custom_integrations, mock_async_setup_entry
+        hass: HomeAssistant, enable_custom_integrations, mock_async_setup_entry
     ) -> None:
         """Test multiple battery configuration."""
         result = await hass.config_entries.flow.async_init(

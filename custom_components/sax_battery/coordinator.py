@@ -8,11 +8,11 @@ from typing import Any
 
 from pymodbus import ModbusException
 
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import BATTERY_POLL_INTERVAL, DOMAIN
+from .const import BATTERY_POLL_INTERVAL, BATTERY_POLL_SLAVE_INTERVAL
 from .items import ModbusItem, SAXItem
 from .modbusobject import ModbusAPI
 from .models import SAXBatteryData
@@ -29,21 +29,31 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         battery_id: str,
         sax_data: SAXBatteryData,
         modbus_api: ModbusAPI,
-        config_entry: config_entries.ConfigEntry,
+        config_entry: ConfigEntry,
+        battery_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN}_{battery_id}",
-            update_interval=timedelta(seconds=BATTERY_POLL_INTERVAL),
-            config_entry=config_entry,
-        )
-
         self.battery_id = battery_id
         self.sax_data = sax_data
         self.modbus_api = modbus_api
+        self.config_entry = config_entry
+        self.battery_config = battery_config or {}
+
+        # Initialize timestamp for tracking last successful update
         self.last_update_success_time: datetime | None = None
+
+        # Determine update interval based on battery role
+        is_master = self.battery_config.get("is_master", False)
+        update_interval = (
+            BATTERY_POLL_INTERVAL if is_master else BATTERY_POLL_SLAVE_INTERVAL
+        )  # Master polls more frequently
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"SAX Battery {battery_id}",
+            update_interval=timedelta(seconds=update_interval),
+        )
 
         # Initialize ModbusItems with API reference
         self._setup_modbus_items()

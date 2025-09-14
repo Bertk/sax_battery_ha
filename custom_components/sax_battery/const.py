@@ -74,6 +74,19 @@ from .items import ModbusItem, SAXItem
 
 DOMAIN = "sax_battery"
 
+# Multi-battery configuration keys
+CONF_BATTERIES = "batteries"
+CONF_BATTERY_HOST = "host"
+CONF_BATTERY_PORT = "port"
+CONF_BATTERY_ENABLED = "enabled"
+CONF_BATTERY_PHASE = "phase"
+CONF_BATTERY_IS_MASTER = "is_master"
+
+# Battery ID mapping
+BATTERY_IDS = ["battery_a", "battery_b", "battery_c"]
+BATTERY_PHASES = {"battery_a": "L1", "battery_b": "L2", "battery_c": "L3"}
+
+
 # Configuration constants for write access control
 CONF_PILOT_FROM_HA = "pilot_from_ha"
 CONF_LIMIT_POWER = "limit_power"
@@ -110,6 +123,7 @@ CONF_DEVICE_ID = "device_id"
 
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 10  # Standard battery data polling (SOC, Power, Status)
+BATTERY_POLL_SLAVE_INTERVAL = 30  # Standard battery data polling (SOC, Power, Status)
 CONF_MIN_SOC = "min_soc"
 CONF_PRIORITY_DEVICES = "priority_devices"
 CONF_ENABLE_SOLAR_CHARGING = "enable_solar_charging"

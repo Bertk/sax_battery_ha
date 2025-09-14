@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 import uuid
 
@@ -14,8 +15,16 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    BATTERY_IDS,
+    BATTERY_PHASES,
     CONF_AUTO_PILOT_INTERVAL,
+    CONF_BATTERIES,
     CONF_BATTERY_COUNT,
+    CONF_BATTERY_ENABLED,
+    CONF_BATTERY_HOST,
+    CONF_BATTERY_IS_MASTER,
+    CONF_BATTERY_PHASE,
+    CONF_BATTERY_PORT,
     CONF_DEVICE_ID,
     CONF_ENABLE_SOLAR_CHARGING,
     CONF_LIMIT_POWER,
@@ -251,33 +260,84 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_battery_config(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure individual batteries."""
+        """Configure individual batteries using consistent constants."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            self._data.update(user_input)
+            battery_count = self._battery_count or 1
+            battery_configs: dict[str, dict[str, Any]] = {}
+            validation_passed = True
 
-            # Debug logging before creating entry
-            _LOGGER.debug("Final configuration data: %s", self._data)
-            _LOGGER.info(
-                "Creating SAX Battery entry with limit_power=%s, pilot_from_ha=%s",
-                self._data.get(CONF_LIMIT_POWER, False),
-                self._data.get(CONF_PILOT_FROM_HA, False),
-            )
+            for i in range(1, battery_count + 1):
+                battery_id = BATTERY_IDS[i - 1]  # Use consistent battery IDs
+                host_key = f"{battery_id}_host"
+                port_key = f"{battery_id}_port"
 
-            # Create the entry with all collected data
-            return self.async_create_entry(
-                title="SAX Battery",
-                data=self._data,
-            )
+                host = user_input.get(host_key, "").strip()
+                port = user_input.get(port_key, DEFAULT_PORT)
 
-        # Generate schema for all batteries
+                # Validation logic (unchanged)
+                if not host:
+                    errors[host_key] = "invalid_host"
+                    validation_passed = False
+                    continue
+
+                if not self._validate_host(host):
+                    errors[host_key] = "invalid_host_format"
+                    validation_passed = False
+                    continue
+
+                try:
+                    port_int = int(port)
+                    if not (1 <= port_int <= 65535):
+                        errors[port_key] = "invalid_port"
+                        validation_passed = False
+                        continue
+                except (ValueError, TypeError):
+                    errors[port_key] = "invalid_port"
+                    validation_passed = False
+                    continue
+
+                # Store using new constants
+                battery_configs[battery_id] = {
+                    CONF_BATTERY_HOST: host,
+                    CONF_BATTERY_PORT: port_int,
+                    CONF_BATTERY_ENABLED: True,
+                    CONF_BATTERY_PHASE: BATTERY_PHASES[battery_id],
+                    CONF_BATTERY_IS_MASTER: False,  # Set below
+                }
+
+            if validation_passed:
+                # Set master battery using new constants
+                if battery_count > 1 and CONF_MASTER_BATTERY in user_input:
+                    master_battery = user_input[CONF_MASTER_BATTERY]
+                    if master_battery in battery_configs:
+                        self._data[CONF_MASTER_BATTERY] = master_battery
+                        battery_configs[master_battery][CONF_BATTERY_IS_MASTER] = True
+                    else:
+                        errors[CONF_MASTER_BATTERY] = "invalid_master"
+                        validation_passed = False
+                # Single battery - set battery_a as master
+                elif "battery_a" in battery_configs:
+                    self._data[CONF_MASTER_BATTERY] = "battery_a"
+                    battery_configs["battery_a"][CONF_BATTERY_IS_MASTER] = True
+
+                if validation_passed:
+                    # Store nested configuration using new constant
+                    self._data[CONF_BATTERIES] = battery_configs
+
+                    return self.async_create_entry(
+                        title=f"SAX Battery System ({battery_count} batteries)",
+                        data=self._data,
+                    )
+
+        # Generate schema using consistent battery IDs
         schema: dict[vol.Marker, Any] = {}
         battery_choices: list[str] = []
-        battery_count = self._battery_count or 0  # Default to 0 if None
+        battery_count = self._battery_count or 1
 
         for i in range(1, battery_count + 1):
-            battery_id = f"battery_{chr(96 + i)}"
+            battery_id = BATTERY_IDS[i - 1]
             battery_choices.append(battery_id)
 
             schema[vol.Required(f"{battery_id}_host")] = str
@@ -285,24 +345,43 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Coerce(int), vol.Range(min=1, max=65535)
             )
 
-        # Add master battery selection only if more than 1 battery
         if battery_count > 1:
             schema[vol.Required(CONF_MASTER_BATTERY, default="battery_a")] = vol.In(
                 battery_choices
             )
-        else:
-            # For single battery, automatically set battery_a as master
-            self._data[CONF_MASTER_BATTERY] = "battery_a"
 
         return self.async_show_form(
             step_id="battery_config",
             data_schema=vol.Schema(schema),
             errors=errors,
             description_placeholders={
-                "battery_description": "Configure IP addresses and ports for each battery",
-                "master_description": "Select which battery will be the master for control operations",
+                "battery_description": f"Configure network settings for {battery_count} SAX batteries",
+                "phase_info": "Battery A→L1, Battery B→L2, Battery C→L3",
             },
         )
+
+    def _validate_host(self, host: str) -> bool:
+        """Validate host format for security.
+
+        Args:
+            host: Hostname or IP address to validate
+
+        Returns:
+            bool: True if host format is valid
+
+        Security:
+            Prevents malformed hosts that could cause issues in network operations
+
+        """
+        # Basic hostname/IP validation
+        # Allow hostnames and IPv4 addresses
+        hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
+        ipv4_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+
+        if not host or len(host) > 253:
+            return False
+
+        return bool(re.match(hostname_pattern, host) or re.match(ipv4_pattern, host))
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None

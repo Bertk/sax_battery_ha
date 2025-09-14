@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import BATTERY_IDS, CONF_BATTERY_IS_MASTER, CONF_BATTERY_PHASE, DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
@@ -25,15 +25,33 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SAX Battery sensor platform."""
+    """Set up SAX Battery sensor platform with multi-battery support."""
     integration_data = hass.data[DOMAIN][config_entry.entry_id]
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
     entities: list[SensorEntity] = []
 
-    # Create sensors for each battery (modbus items)
+    # Create sensors for each battery using new constants
     for battery_id, coordinator in coordinators.items():
+        # Validate battery_id is in allowed list
+        if battery_id not in BATTERY_IDS:
+            _LOGGER.warning("Invalid battery ID %s, skipping", battery_id)
+            continue
+
+        # Get battery-specific configuration
+        battery_config = coordinator.battery_config
+        is_master = battery_config.get(CONF_BATTERY_IS_MASTER, False)
+        phase = battery_config.get(CONF_BATTERY_PHASE, "L1")
+
+        _LOGGER.debug(
+            "Setting up sensors for %s battery %s (%s)",
+            "master" if is_master else "slave",
+            battery_id,
+            phase,
+        )
+
+        # Filter sensor items for this battery
         sensor_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.SENSOR,
@@ -42,7 +60,7 @@ async def async_setup_entry(
         )
 
         for modbus_item in sensor_items:
-            if isinstance(modbus_item, ModbusItem):  # Type guard
+            if isinstance(modbus_item, ModbusItem):
                 entities.append(  # noqa: PERF401
                     SAXBatteryModbusSensor(
                         coordinator=coordinator,
@@ -55,28 +73,32 @@ async def async_setup_entry(
             "Added %d modbus sensor entities for %s", len(sensor_items), battery_id
         )
 
-    # Create system-wide calculated sensors (SAX items with SENSOR_CALC)
-    system_sensor_items = filter_sax_items_by_type(
-        sax_data.get_sax_items_for_battery(
-            "battery_a"
-        ),  # Use first battery for system items
-        TypeConstants.SENSOR,
-    )
+    # Create system-wide calculated sensors only once (using master battery coordinator)
+    master_coordinators = {
+        battery_id: coordinator
+        for battery_id, coordinator in coordinators.items()
+        if coordinator.battery_config.get(CONF_BATTERY_IS_MASTER, False)
+    }
 
-    # Get first coordinator for calculated sensors - fix StopIteration error
-    if coordinators:
-        first_coordinator = next(iter(coordinators.values()))
+    if master_coordinators:
+        master_coordinator = next(iter(master_coordinators.values()))
+
+        system_sensor_items = filter_sax_items_by_type(
+            sax_data.get_sax_items_for_battery("battery_a"),
+            TypeConstants.SENSOR,
+        )
+
         for sax_item in system_sensor_items:
-            if isinstance(sax_item, SAXItem):  # Type guard
+            if isinstance(sax_item, SAXItem):
                 entities.append(  # noqa: PERF401
                     SAXBatteryCalculatedSensor(
-                        coordinator=first_coordinator,
+                        coordinator=master_coordinator,
                         sax_item=sax_item,
                         coordinators=coordinators,
                     )
                 )
 
-    _LOGGER.info("Added %d calculated sensor entities", len(system_sensor_items))
+        _LOGGER.info("Added %d calculated sensor entities", len(system_sensor_items))
 
     if entities:
         async_add_entities(entities)
@@ -183,7 +205,7 @@ class SAXBatteryCalculatedSensor(
         ):
             item_name = self.entity_description.name[4:]  # eliminate 'Sax '
 
-        self._attr_name = f"Sax {item_name}"
+        self._attr_name = f"Sax {item_name}"  # pyright: ignore[reportPossiblyUnboundVariable]
 
         # Set system device info
         self._attr_device_info = coordinator.sax_data.get_device_info("cluster")

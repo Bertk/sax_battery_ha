@@ -10,7 +10,7 @@
     "iot_class": "local_polling",
     "issue_tracker": "https://github.com/matfroh/sax_battery_ha/issues",
     "loggers": [
-        "sax_battery",
+        "custom_components.sax_battery",
         "pymodbus"
     ],
     "requirements": [

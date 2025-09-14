@@ -13,6 +13,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    BATTERY_IDS,
+    CONF_BATTERY_IS_MASTER,
+    CONF_BATTERY_PHASE,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
@@ -37,16 +40,33 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SAX Battery number entities."""
+    """Set up SAX Battery number entities with multi-battery support."""
     integration_data = hass.data[DOMAIN][config_entry.entry_id]
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
     entities: list[NumberEntity] = []
 
-    # Create numbers for each battery
+    # Create numbers for each battery using new constants
     for battery_id, coordinator in coordinators.items():
-        # Regular writable number items (NUMBER)
+        # Validate battery_id
+        if battery_id not in BATTERY_IDS:
+            _LOGGER.warning("Invalid battery ID %s, skipping", battery_id)
+            continue
+
+        # Get battery configuration
+        battery_config = coordinator.battery_config
+        is_master = battery_config.get(CONF_BATTERY_IS_MASTER, False)
+        phase = battery_config.get(CONF_BATTERY_PHASE, "L1")
+
+        _LOGGER.debug(
+            "Setting up numbers for %s battery %s (%s)",
+            "master" if is_master else "slave",
+            battery_id,
+            phase,
+        )
+
+        # Filter number items for this battery
         number_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.NUMBER,
@@ -55,7 +75,7 @@ async def async_setup_entry(
         )
 
         for modbus_item in number_items:
-            if isinstance(modbus_item, ModbusItem):  # Type guard
+            if isinstance(modbus_item, ModbusItem):
                 entities.append(  # noqa: PERF401
                     SAXBatteryModbusNumber(
                         coordinator=coordinator,
@@ -68,31 +88,31 @@ async def async_setup_entry(
             "Added %d modbus number entities for %s", len(number_items), battery_id
         )
 
-    # Create system-wide configuration numbers (from SAX items)
-    system_number_items = filter_sax_items_by_type(
-        sax_data.get_sax_items_for_battery(
-            "battery_a"
-        ),  # Use first battery for system items
-        TypeConstants.NUMBER,
-    )
+    # Create system-wide configuration numbers only once (using master coordinator)
+    master_coordinators = {
+        battery_id: coordinator
+        for battery_id, coordinator in coordinators.items()
+        if coordinator.battery_config.get(CONF_BATTERY_IS_MASTER, False)
+    }
 
-    # Get first coordinator for config numbers
-    first_coordinator = next(iter(coordinators.values())) if coordinators else None
-    if first_coordinator:
+    if master_coordinators:
+        master_coordinator = next(iter(master_coordinators.values()))
+
+        system_number_items = filter_sax_items_by_type(
+            sax_data.get_sax_items_for_battery("battery_a"),
+            TypeConstants.NUMBER,
+        )
+
         for sax_item in system_number_items:
-            if isinstance(sax_item, SAXItem):  # Type guard
+            if isinstance(sax_item, SAXItem):
                 entities.append(  # noqa: PERF401
                     SAXBatteryConfigNumber(
-                        coordinator=first_coordinator,
+                        coordinator=master_coordinator,
                         sax_item=sax_item,
                     )
                 )
 
-    _LOGGER.info(
-        "Adding %d number entities: %s",
-        len(entities),
-        [type(entity).__name__ for entity in entities],
-    )
+        _LOGGER.info("Added %d config number entities", len(system_number_items))
 
     if entities:
         async_add_entities(entities)

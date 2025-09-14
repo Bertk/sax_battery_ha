@@ -13,7 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import BATTERY_IDS, CONF_BATTERY_IS_MASTER, CONF_BATTERY_PHASE, DOMAIN
 from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type
 from .enums import TypeConstants
@@ -27,19 +27,33 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SAX Battery switch platform."""
+    """Set up SAX Battery switch platform with multi-battery support."""
     integration_data = hass.data[DOMAIN][config_entry.entry_id]
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
     entities: list[SAXBatterySwitch] = []
 
-    # Create switch entities for each battery
+    # Create switch entities for each battery using new constants
     for battery_id, coordinator in coordinators.items():
-        if not isinstance(coordinator, SAXBatteryCoordinator):
+        # Validate battery_id
+        if battery_id not in BATTERY_IDS:
+            _LOGGER.warning("Invalid battery ID %s, skipping", battery_id)
             continue
 
-        # Use filter_items_by_type for consistent entity filtering
+        # Get battery configuration
+        battery_config = coordinator.battery_config
+        is_master = battery_config.get(CONF_BATTERY_IS_MASTER, False)
+        phase = battery_config.get(CONF_BATTERY_PHASE, "L1")
+
+        _LOGGER.debug(
+            "Setting up switches for %s battery %s (%s)",
+            "master" if is_master else "slave",
+            battery_id,
+            phase,
+        )
+
+        # Filter switch items for this battery
         switch_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.SWITCH,
@@ -48,7 +62,7 @@ async def async_setup_entry(
         )
 
         for modbus_item in switch_items:
-            if isinstance(modbus_item, ModbusItem):  # Type guard
+            if isinstance(modbus_item, ModbusItem):
                 entities.append(  # noqa: PERF401
                     SAXBatterySwitch(
                         coordinator=coordinator,
@@ -57,7 +71,7 @@ async def async_setup_entry(
                     )
                 )
 
-    _LOGGER.info("Added %d switch entities", len(entities))
+        _LOGGER.info("Added %d switch entities for %s", len(switch_items), battery_id)
 
     if entities:
         async_add_entities(entities, update_before_add=True)
