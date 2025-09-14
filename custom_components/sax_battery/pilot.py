@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import timedelta
 import logging
-import time
 from typing import Any
 
 from pymodbus import ModbusException
@@ -175,19 +174,6 @@ class SAXBatteryPilot:
 
     async def _async_update_pilot(self, now: Any = None) -> None:
         """Update the pilot calculations and send to battery."""
-        # Enhanced logging to track what's calling this method
-        caller_frame = inspect.currentframe()
-        caller_info = "unknown"
-        if caller_frame and caller_frame.f_back:
-            caller_info = f"{caller_frame.f_back.f_code.co_filename}:{caller_frame.f_back.f_lineno}"
-            caller_info = (
-                caller_info.split("/")[-1] if "/" in caller_info else caller_info
-            )
-
-        _LOGGER.info(
-            "Pilot update called from: %s, now parameter: %s", caller_info, now
-        )
-
         try:
             # Check if in manual mode
             if self.entry.data.get(CONF_MANUAL_CONTROL, False):
