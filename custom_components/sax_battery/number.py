@@ -176,7 +176,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             entity_name = entity_name.removeprefix("Sax ")
             self._attr_name = entity_name
         else:
-            clean_name = self._attr_name.replace("_", " ").title()
+            clean_name = item_name.replace("_", " ").title()
             self._attr_name = clean_name
 
         # Set device info for the specific battery (unchanged)
