@@ -188,10 +188,8 @@ class SAXBatteryCalculatedSensor(
         self._sax_item.set_coordinators(coordinators)
 
         # Generate unique ID using class name pattern (without "(Calculated)" suffix)
-        if self._sax_item.name.startswith("sax_"):
-            self._attr_unique_id = self._sax_item.name
-        else:
-            self._attr_unique_id = f"sax_{self._sax_item.name}"
+        item_name = self._sax_item.name.removeprefix("sax_")
+        self._attr_unique_id = f"sax_{self._sax_item.name}"
 
         # Set entity description from sax item if available
         if self._sax_item.entitydescription is not None:

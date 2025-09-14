@@ -158,11 +158,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._transaction_key = f"{battery_id}_pilot_control"
 
         # Generate unique ID using simple pattern (unchanged)
-        if self._modbus_item.name.startswith("sax_"):
-            item_name = self._modbus_item.name[4:]  # Remove "sax_" prefix
-        else:
-            item_name = self._modbus_item.name
-
+        item_name = self._modbus_item.name.removeprefix("sax_")
         self._attr_unique_id = f"sax_{battery_id}_{item_name}"
 
         # Set entity description from modbus item if available (unchanged)
@@ -180,7 +176,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             entity_name = entity_name.removeprefix("Sax ")
             self._attr_name = entity_name
         else:
-            clean_name = item_name.replace("_", " ").title()
+            clean_name = self._attr_name.replace("_", " ").title()
             self._attr_name = clean_name
 
         # Set device info for the specific battery (unchanged)

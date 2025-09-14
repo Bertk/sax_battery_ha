@@ -165,7 +165,7 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
 
 DESCRIPTION_SAX_NOMINAL_POWER = NumberEntityDescription(
     key=SAX_NOMINAL_POWER,
-    name="Pilot Power",
+    name="Nominal Power",
     mode=NumberMode.SLIDER,
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
