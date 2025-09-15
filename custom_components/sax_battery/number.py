@@ -228,18 +228,12 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # Set default values based on register type
         if self._modbus_item.name == SAX_MAX_CHARGE:
             # Get from config or use entity description default
-            battery_count = config_data.get("battery_count", 1)
-            default_value = (
-                LIMIT_MAX_CHARGE_PER_BATTERY * battery_count
-            )  # Default per battery
+            default_value = LIMIT_MAX_CHARGE_PER_BATTERY  # Default per battery
             self._local_value = float(config_data.get("max_charge", default_value))
 
         elif self._modbus_item.name == SAX_MAX_DISCHARGE:
             # Get from config or use entity description default
-            battery_count = config_data.get("battery_count", 1)
-            default_value = (
-                LIMIT_MAX_DISCHARGE_PER_BATTERY * battery_count
-            )  # Default per battery
+            default_value = LIMIT_MAX_DISCHARGE_PER_BATTERY  # Default per battery
             self._local_value = float(config_data.get("max_discharge", default_value))
 
         # Initialize pilot control items ONLY from config - no dangerous defaults
