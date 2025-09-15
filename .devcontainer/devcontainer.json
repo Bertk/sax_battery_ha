@@ -74,11 +74,21 @@
         "json.schemas": [
           {
             "fileMatch": [
-              "${containerWorkspaceFolder}/custom_components/sax_battery/manifest.json"
+              "${containerWorkspaceFolder}/components/*/manifest.json"
             ],
-            "url": "${containerWorkspaceFolder}/script/json_schemas/manifest_schema.json"
+            "url": "${containerWorkspaceFolder}/scripts/json_schemas/manifest_schema.json"
+          },
+          {
+            "fileMatch": [
+              "${containerWorkspaceFolder}/custom_components/*/manifest.json"
+            ],
+            "url": "${containerWorkspaceFolder}/scripts/json_schemas/hacs_manifest_schema.json"
           }
         ],
+        "yaml.schemas": {
+          "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.{yml,yaml}",
+          "https://json.schemastore.org/dependabot-2.0.json": ".github/dependabot.yml"
+        },
         "awesome-copilot.mcp.enabled": true,
         "awesome-copilot.mcp.configFile": "/workspaces/sax_battery_ha/.github/mcp-config.json"
       }

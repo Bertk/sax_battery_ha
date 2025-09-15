@@ -42,6 +42,7 @@
     }
   },
   "cSpell.words": [
+    "codeowners",
     "entitydescription",
     "mformat",
     "mtype",
@@ -56,4 +57,26 @@
   "awesome-copilot.mcp.enabled": true,
   "awesome-copilot.mcp.configFile": "${workspaceFolder}/.github/mcp-config.json",
   "awesome-copilot.mcp.timeout": 30000,
+  "[json]": {
+    "editor.formatOnSave": false
+  },
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "homeassistant/components/*/manifest.json"
+      ],
+      // This value differs between working with devcontainer and locally, therefor this value should NOT be in sync!
+      "url": "./scripts/json_schemas/manifest_schema.json"
+    },
+    {
+      "fileMatch": [
+        "${containerWorkspaceFolder}/custom_components/*/manifest.json"
+      ],
+      "url": "${containerWorkspaceFolder}/scripts/json_schemas/hacs_manifest_schema.json"
+    }
+  ],
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.{yml,yaml}",
+    "https://json.schemastore.org/dependabot-2.0.json": ".github/dependabot.yml"
+  },
 }
