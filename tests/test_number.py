@@ -10,6 +10,7 @@ from custom_components.sax_battery.const import (
     DESCRIPTION_SAX_MAX_CHARGE,
     DESCRIPTION_SAX_MAX_DISCHARGE,
     DESCRIPTION_SAX_MIN_SOC,
+    LIMIT_MAX_CHARGE_PER_BATTERY,
     PILOT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
@@ -23,7 +24,7 @@ from custom_components.sax_battery.number import (
     SAXBatteryModbusNumber,
 )
 from homeassistant.components.number import NumberEntityDescription, NumberMode
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
+from homeassistant.const import EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
 
 
@@ -98,17 +99,10 @@ def power_number_item_unique(mock_coordinator_number_temperature_unique):
     # Create the modbus item without _modbus_api in constructor
     item = ModbusItem(
         address=100,
-        name="sax_max_charge_power",
+        name=SAX_MAX_CHARGE,
         mtype=TypeConstants.NUMBER_WO,
         device=DeviceConstants.SYS,
-        entitydescription=NumberEntityDescription(
-            key="max_charge_power",
-            name="Maximum Charge Power",
-            native_min_value=0,
-            native_max_value=10000,
-            native_step=100,
-            native_unit_of_measurement="W",
-        ),
+        entitydescription=DESCRIPTION_SAX_MAX_CHARGE,
     )
     # Set the modbus API so writes work
     item._modbus_api = mock_coordinator_number_temperature_unique.modbus_api
@@ -121,17 +115,10 @@ def percentage_number_item_unique():
     """Create percentage number item for number tests."""
     return ModbusItem(
         address=101,
-        name="sax_min_soc",
+        name=SAX_MIN_SOC,
         mtype=TypeConstants.NUMBER_WO,
         device=DeviceConstants.SYS,
-        entitydescription=NumberEntityDescription(
-            key="min_soc",
-            name="Minimum State of Charge",
-            native_min_value=5,
-            native_max_value=95,
-            native_step=1,
-            native_unit_of_measurement=PERCENTAGE,
-        ),
+        entitydescription=DESCRIPTION_SAX_MIN_SOC,
     )
 
 
@@ -150,9 +137,9 @@ class TestSAXBatteryNumber:
 
         assert number._battery_id == "battery_a"
         assert number._modbus_item == power_number_item_unique
-        assert number.unique_id == "sax_battery_a_max_charge_power"
+        assert number.unique_id == "sax_battery_a_max_charge"
         # Name comes from entity description, not formatted with battery name
-        assert number.name == "Maximum Charge Power"
+        assert number.name == "Max Charge"
 
     def test_number_init_with_entity_description(
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
@@ -166,7 +153,9 @@ class TestSAXBatteryNumber:
 
         # Test that values come from entity description via _attr_* attributes
         assert number.entity_description.native_min_value == 0
-        assert number.entity_description.native_max_value == 10000
+        assert (
+            number.entity_description.native_max_value == LIMIT_MAX_CHARGE_PER_BATTERY
+        )
         assert number.entity_description.native_step == 100
         assert number.entity_description.native_unit_of_measurement == "W"
 
@@ -174,7 +163,7 @@ class TestSAXBatteryNumber:
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
     ) -> None:
         """Test number native value."""
-        mock_coordinator_number_temperature_unique.data["sax_max_charge_power"] = 5000
+        mock_coordinator_number_temperature_unique.data[SAX_MAX_CHARGE] = 3000
 
         number = SAXBatteryModbusNumber(
             coordinator=mock_coordinator_number_temperature_unique,
@@ -182,7 +171,7 @@ class TestSAXBatteryNumber:
             modbus_item=power_number_item_unique,
         )
 
-        assert number.native_value == 5000.0
+        assert number.native_value == 3000.0
 
     def test_number_native_value_missing_data(
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
@@ -257,7 +246,7 @@ class TestSAXBatteryNumber:
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
     ) -> None:
         """Test extra state attributes."""
-        mock_coordinator_number_temperature_unique.data["sax_max_charge_power"] = 5000
+        mock_coordinator_number_temperature_unique.data[SAX_MAX_CHARGE] = 3000
 
         number = SAXBatteryModbusNumber(
             coordinator=mock_coordinator_number_temperature_unique,
@@ -269,7 +258,7 @@ class TestSAXBatteryNumber:
         assert attributes is not None
         assert attributes["battery_id"] == "battery_a"
         assert attributes["modbus_address"] == 100
-        assert attributes["raw_value"] == 5000
+        assert attributes["raw_value"] == 3000
         assert attributes["entity_type"] == "modbus"
         assert "last_update" in attributes
 
@@ -385,7 +374,7 @@ class TestNumberEntityConfiguration:
 
         assert number.entity_description.native_unit_of_measurement == "%"
         # Name comes from entity description without battery prefix
-        assert number.name == "Minimum State of Charge"
+        assert number.name == "Minimum SOC"
 
     def test_number_name_formatting(
         self, mock_coordinator_number_temperature_unique

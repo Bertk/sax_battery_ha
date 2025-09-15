@@ -189,7 +189,7 @@ class SAXBatteryCalculatedSensor(
 
         # Generate unique ID using class name pattern (without "(Calculated)" suffix)
         item_name = self._sax_item.name.removeprefix("sax_")
-        self._attr_unique_id = f"sax_{self._sax_item.name}"
+        self._attr_unique_id = f"sax_{item_name}"
 
         # Set entity description from sax item if available
         if self._sax_item.entitydescription is not None:

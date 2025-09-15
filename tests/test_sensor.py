@@ -14,10 +14,15 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    DESCRIPTION_SAX_COMBINED_SOC,
+    DESCRIPTION_SAX_POWER,
+    DESCRIPTION_SAX_SOC,
+    DESCRIPTION_SAX_TEMPERATURE,
     DOMAIN,
     SAX_COMBINED_SOC,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
+from custom_components.sax_battery.entity_keys import SAX_POWER, SAX_SOC
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.sensor import (
@@ -30,7 +35,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfPower, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import async_generate_entity_id
 
@@ -64,14 +69,7 @@ def temperature_modbus_item_sensor():
         device=DeviceConstants.SYS,
         mtype=TypeConstants.SENSOR,
         address=40117,
-        entitydescription=SensorEntityDescription(
-            key="temperature",
-            name="Sax Temperature",
-            device_class=SensorDeviceClass.TEMPERATURE,
-            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-            state_class=SensorStateClass.MEASUREMENT,
-            suggested_display_precision=1,
-        ),
+        entitydescription=DESCRIPTION_SAX_TEMPERATURE,
     )
 
 
@@ -79,17 +77,11 @@ def temperature_modbus_item_sensor():
 def power_modbus_item_sensor():
     """Create power modbus item for testing."""
     return ModbusItem(
-        name="sax_power",
+        name=SAX_POWER,
         device=DeviceConstants.SYS,
         mtype=TypeConstants.SENSOR,
         address=40001,
-        entitydescription=SensorEntityDescription(
-            key="power",
-            name="Sax Power",
-            device_class=SensorDeviceClass.POWER,
-            native_unit_of_measurement=UnitOfPower.WATT,
-            state_class=SensorStateClass.MEASUREMENT,
-        ),
+        entitydescription=DESCRIPTION_SAX_POWER,
     )
 
 
@@ -97,17 +89,11 @@ def power_modbus_item_sensor():
 def percentage_modbus_item_sensor():
     """Create percentage modbus item for testing."""
     return ModbusItem(
-        name="sax_soc",
+        name=SAX_SOC,
         device=DeviceConstants.SYS,
         mtype=TypeConstants.SENSOR,
         address=40010,
-        entitydescription=SensorEntityDescription(
-            key="soc",
-            name="Sax SOC",
-            device_class=SensorDeviceClass.BATTERY,
-            native_unit_of_measurement=PERCENTAGE,
-            state_class=SensorStateClass.MEASUREMENT,
-        ),
+        entitydescription=DESCRIPTION_SAX_SOC,
     )
 
 
@@ -348,12 +334,7 @@ class TestSAXBatteryCalculatedSensor:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key=SAX_COMBINED_SOC,
-                name="Sax Combined SOC",
-                device_class=SensorDeviceClass.BATTERY,
-                native_unit_of_measurement=PERCENTAGE,
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
 
         coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
@@ -380,11 +361,7 @@ class TestSAXBatteryCalculatedSensor:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="sax_combined_soc",
-                name="Sax Combined SOC",
-                device_class=SensorDeviceClass.BATTERY,
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
 
         coordinators = {
@@ -409,10 +386,7 @@ class TestSAXBatteryCalculatedSensor:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="combined_soc",
-                name="Sax Combined SOC",
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
 
         coordinators = {
@@ -442,10 +416,7 @@ class TestSAXBatteryCalculatedSensor:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="combined_soc",
-                name="Sax Combined SOC",
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
 
         coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coordinator)}
@@ -617,11 +588,7 @@ class TestSensorPlatformSetup:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="combined_soc",
-                name="Sax Combined SOC",
-                device_class=SensorDeviceClass.BATTERY,
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
 
         # Mock the filter functions to return our test items
@@ -713,10 +680,7 @@ class TestSensorPlatformSetup:
             name=SAX_COMBINED_SOC,
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            entitydescription=SensorEntityDescription(
-                key="combined_soc",
-                name="Sax Combined SOC",
-            ),
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
         )
         non_calc_item = SAXItem(  # noqa: F841
             name="sax_test_switch_sax",
@@ -737,10 +701,7 @@ class TestSensorPlatformSetup:
                     name=SAX_COMBINED_SOC,
                     mtype=TypeConstants.SENSOR_CALC,
                     device=DeviceConstants.SYS,
-                    entitydescription=SensorEntityDescription(
-                        key="combined_soc",
-                        name="Sax Combined SOC",
-                    ),
+                    entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
                 )
                 return [calc_item]
             return []

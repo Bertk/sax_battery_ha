@@ -12,7 +12,11 @@ from custom_components.sax_battery.const import (
     CONF_MIN_SOC,
     DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
+    DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_NOMINAL_POWER,
+    DESCRIPTION_SAX_POWER,
+    DESCRIPTION_SAX_SOC,
+    DESCRIPTION_SAX_TEMPERATURE,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.entity_keys import (
@@ -22,13 +26,7 @@ from custom_components.sax_battery.entity_keys import (
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.modbusobject import ModbusAPI
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntityDescription,
-    SensorStateClass,
-)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfPower, UnitOfTemperature
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
@@ -277,14 +275,7 @@ def temperature_modbus_item():
         device=DeviceConstants.SYS,
         battery_slave_id=40,
         factor=10.0,
-        entitydescription=SensorEntityDescription(
-            key="temperature",
-            name="Sax Temperature",
-            device_class=SensorDeviceClass.TEMPERATURE,
-            state_class=SensorStateClass.MEASUREMENT,
-            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-            suggested_display_precision=1,
-        ),
+        entitydescription=DESCRIPTION_SAX_TEMPERATURE,
     )
 
 
@@ -298,13 +289,7 @@ def percentage_modbus_item():
         device=DeviceConstants.SYS,
         battery_slave_id=64,
         factor=1.0,
-        entitydescription=SensorEntityDescription(
-            key="soc",
-            name="Sax SOC",
-            device_class=SensorDeviceClass.BATTERY,
-            state_class=SensorStateClass.MEASUREMENT,
-            native_unit_of_measurement=PERCENTAGE,
-        ),
+        entitydescription=DESCRIPTION_SAX_SOC,
     )
 
 
@@ -318,13 +303,7 @@ def power_modbus_item():
         device=DeviceConstants.SYS,
         battery_slave_id=64,
         factor=1.0,
-        entitydescription=SensorEntityDescription(
-            key="power",
-            name="Sax Power",
-            device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT,
-            native_unit_of_measurement=UnitOfPower.WATT,
-        ),
+        entitydescription=DESCRIPTION_SAX_POWER,
     )
 
 
@@ -545,11 +524,5 @@ def calc_sax_item():
         name=SAX_COMBINED_SOC,
         mtype=TypeConstants.SENSOR_CALC,
         device=DeviceConstants.SYS,
-        entitydescription=SensorEntityDescription(
-            key="combined_soc",
-            name="Sax Combined SOC",
-            device_class=SensorDeviceClass.BATTERY,
-            native_unit_of_measurement=PERCENTAGE,
-            state_class=SensorStateClass.MEASUREMENT,
-        ),
+        entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
     )
