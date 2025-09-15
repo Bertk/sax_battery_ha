@@ -356,6 +356,5 @@ class TestSAXBatterySwitch:
             modbus_item=modbus_item_switch,
         )
 
-        # The implementation returns None for icon, meaning it uses the default
-        # Home Assistant switch icon behavior
+        # The implementation returns "mdi:battery" for icon
         assert switch.icon == "mdi:battery"

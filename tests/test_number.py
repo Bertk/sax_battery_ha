@@ -196,9 +196,10 @@ class TestSAXBatteryNumber:
         )
 
         # Mock the actual implementation behavior to handle ValueError
-        with patch(
-            "custom_components.sax_battery.number.SAXBatteryModbusNumber.native_value",
-            new_callable=lambda: property(lambda self: None),
+        with patch.object(
+            SAXBatteryModbusNumber,
+            "native_value",
+            new=property(lambda self: None),
         ):
             number = SAXBatteryModbusNumber(
                 coordinator=mock_coordinator_number_temperature_unique,
