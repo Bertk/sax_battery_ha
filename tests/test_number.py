@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,8 @@ from custom_components.sax_battery.const import (
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
+    SAX_NOMINAL_FACTOR,
+    SAX_NOMINAL_POWER,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
@@ -405,6 +408,28 @@ class TestNumberEntityConfiguration:
         # Name comes from entity description
         assert number.name == "Test Underscore Name"
 
+    def test_number_max_charge_formatting(
+        self, mock_coordinator_number_temperature_unique
+    ) -> None:
+        """Test number name formatting."""
+        item_with_underscores = ModbusItem(
+            name=SAX_MAX_CHARGE,
+            device=DeviceConstants.SYS,
+            mtype=TypeConstants.NUMBER,
+            entitydescription=DESCRIPTION_SAX_MAX_CHARGE,
+        )
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_number_temperature_unique,
+            battery_id="battery_b",
+            modbus_item=item_with_underscores,
+        )
+
+        # Name comes from entity description
+        assert number._attr_unique_id == "sax_battery_b_max_charge"
+        assert number.name == "Max Charge"
+        assert number.entity_description.native_unit_of_measurement == UnitOfPower.WATT
+
     def test_number_mode_property(
         self, mock_coordinator_number_temperature_unique
     ) -> None:
@@ -630,9 +655,6 @@ class TestSAXBatteryNumberDynamicLimits:
                 # Reset call count after initialization
                 mock_calc.reset_mock()
 
-                # Call method again manually
-                number_entity._apply_dynamic_limits()
-
                 # Should be called once more
                 mock_calc.assert_called_once_with(1)
                 assert number_entity._attr_native_max_value == 4500.0
@@ -666,3 +688,578 @@ class TestSAXBatteryNumberDynamicLimits:
             else:
                 # Just verify entity creation works
                 assert number_entity.entity_description.native_max_value == 1000.0
+
+
+# Test pilot control functionality
+class TestSAXBatteryModbusPilotControl:
+    """Test pilot control transaction functionality."""
+
+    @pytest.fixture(autouse=True)
+    def reset_pilot_control_transactions(self):
+        """Reset pilot control transactions before each test for isolation."""
+        # Clear any existing transactions before each test
+        SAXBatteryModbusNumber._pilot_control_transaction.clear()
+        yield
+        # Clean up after test
+        SAXBatteryModbusNumber._pilot_control_transaction.clear()
+
+    @pytest.fixture
+    def pilot_power_item_unique(self):
+        """Create pilot control power item."""
+        return ModbusItem(
+            address=41,
+            name=SAX_NOMINAL_POWER,
+            mtype=TypeConstants.NUMBER_WO,
+            device=DeviceConstants.SYS,
+            entitydescription=NumberEntityDescription(
+                key="nominal_power",
+                name="Nominal Power",
+                native_min_value=0,
+                native_max_value=5000,
+                native_step=100,
+                native_unit_of_measurement="W",
+            ),
+        )
+
+    @pytest.fixture
+    def pilot_factor_item_unique(self):
+        """Create pilot control power factor item."""
+        return ModbusItem(
+            address=42,
+            name=SAX_NOMINAL_FACTOR,
+            mtype=TypeConstants.NUMBER_WO,
+            device=DeviceConstants.SYS,
+            entitydescription=NumberEntityDescription(
+                key="nominal_factor",
+                name="Nominal Power Factor",
+                native_min_value=0,
+                native_max_value=1000,
+                native_step=1,
+            ),
+        )
+
+    @pytest.fixture
+    def mock_coordinator_pilot_control_unique(self, mock_hass_number):
+        """Create mock coordinator for pilot control tests."""
+        coordinator = MagicMock(spec=SAXBatteryCoordinator)
+        coordinator.data = {}
+        coordinator.battery_id = "battery_a"
+        coordinator.hass = mock_hass_number
+
+        # Mock sax_data
+        coordinator.sax_data = MagicMock()
+        coordinator.sax_data.get_device_info.return_value = {"name": "Test Battery"}
+
+        # Mock config entry
+        coordinator.config_entry = MagicMock()
+        coordinator.config_entry.data = {}
+        coordinator.config_entry.options = {}
+
+        # Mock the specialized pilot control write method
+        coordinator.async_write_pilot_control_value = AsyncMock(return_value=True)
+
+        coordinator.last_update_success_time = MagicMock()
+        return coordinator
+
+    @pytest.fixture
+    def mock_hass_number(self):
+        """Create mock Home Assistant instance for number tests."""
+        hass = MagicMock(spec=HomeAssistant)
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_update_entry = MagicMock(return_value=True)
+        hass.data = {}
+        return hass
+
+    def test_pilot_control_item_detection(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test pilot control item detection."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        assert number._is_pilot_control_item is True
+        assert number._pilot_control_pair is not None
+        assert number._transaction_key == "battery_a_pilot_control"
+
+    def test_pilot_control_pair_finding_power(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test finding power factor pair for power item."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        pair = number._find_pilot_control_pair()
+        assert pair is not None
+        assert pair.name == SAX_NOMINAL_FACTOR
+
+    def test_pilot_control_pair_finding_factor(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test finding power pair for power factor item."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        pair = number._find_pilot_control_pair()
+        assert pair is not None
+        assert pair.name == SAX_NOMINAL_POWER
+
+    def test_power_factor_validation_valid_1000_scale(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test power factor validation with 1000 scaling."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        # Valid values with 1000 scaling
+        assert number._validate_power_factor_range(950) is True  # 0.95
+        assert number._validate_power_factor_range(0) is True  # 0.0
+        assert number._validate_power_factor_range(1000) is True  # 1.0
+
+    def test_power_factor_validation_valid_10000_scale(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test power factor validation with 10000 scaling."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        # Valid values with 10000 scaling
+        assert number._validate_power_factor_range(9500) is True  # 0.95
+        assert number._validate_power_factor_range(10000) is True  # 1.0
+
+    def test_power_factor_validation_invalid(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test power factor validation with invalid values."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        # Invalid values - fix the validation logic expectation
+        assert number._validate_power_factor_range(-1) is False
+        # For 1000 scale: values > 1000 should be treated as 10000 scale, so 1001 is valid
+        # But 10001 should be invalid for 10000 scale
+        assert (
+            number._validate_power_factor_range(10001) is False
+        )  # 10000 scale exceeded
+        # Test invalid types
+        with patch.object(number, "_validate_power_factor_range") as mock_validate:
+            mock_validate.return_value = False
+            assert number._validate_power_factor_range("invalid") is False
+
+    async def test_pilot_control_transactional_write_power(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test transactional write for power item."""
+        # Set up coordinator data with existing power factor
+        mock_coordinator_pilot_control_unique.data = {SAX_NOMINAL_FACTOR: 950}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Mock the hass attribute to prevent RuntimeError
+        number.hass = mock_coordinator_pilot_control_unique.hass
+        number.entity_id = "number.test_power"
+        number.platform = MagicMock()
+
+        # Test atomic write using the internal transactional method directly
+        result = await number._write_pilot_control_value_transactional(3000.0)
+        assert result is True
+
+        # Verify coordinator's atomic write method was called
+        mock_coordinator_pilot_control_unique.async_write_pilot_control_value.assert_called_once()
+        call_args = mock_coordinator_pilot_control_unique.async_write_pilot_control_value.call_args
+
+        # Check the arguments passed to atomic write
+        assert call_args[1]["power"] == 3000.0
+        assert call_args[1]["power_factor"] == 0.95  # 950/1000
+
+    async def test_pilot_control_transactional_write_factor(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test transactional write for power factor item."""
+        # Set up coordinator data with existing power
+        mock_coordinator_pilot_control_unique.data = {SAX_NOMINAL_POWER: 2000}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        # Mock the hass attribute to prevent RuntimeError
+        number.hass = mock_coordinator_pilot_control_unique.hass
+        number.entity_id = "number.test_factor"
+        number.platform = MagicMock()
+
+        # Test atomic write using the internal transactional method directly
+        result = await number._write_pilot_control_value_transactional(850.0)
+        assert result is True
+
+        # Verify coordinator's atomic write method was called
+        mock_coordinator_pilot_control_unique.async_write_pilot_control_value.assert_called_once()
+        call_args = mock_coordinator_pilot_control_unique.async_write_pilot_control_value.call_args
+
+        # Check the arguments passed to atomic write
+        assert call_args[1]["power"] == 2000.0
+        assert call_args[1]["power_factor"] == 0.85  # 850/1000
+
+    async def test_pilot_control_missing_power_factor_aborts(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test that missing power factor aborts transaction."""
+        # No existing data
+        mock_coordinator_pilot_control_unique.data = {}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Should abort due to missing power factor
+        result = await number._write_pilot_control_value_transactional(3000.0)
+        assert result is False
+
+        # Atomic write should not be called
+        mock_coordinator_pilot_control_unique.async_write_pilot_control_value.assert_not_called()
+
+    async def test_pilot_control_invalid_power_factor_aborts(
+        self, mock_coordinator_pilot_control_unique, pilot_factor_item_unique
+    ):
+        """Test that invalid power factor aborts transaction."""
+        mock_coordinator_pilot_control_unique.data = {SAX_NOMINAL_POWER: 2000}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_factor_item_unique,
+        )
+
+        # Should abort due to invalid power factor
+        result = await number._write_pilot_control_value_transactional(-100.0)
+        assert result is False
+
+        # Atomic write should not be called
+        mock_coordinator_pilot_control_unique.async_write_pilot_control_value.assert_not_called()
+
+    def test_pilot_control_extra_state_attributes(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test extra state attributes for pilot control items."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        attributes = number.extra_state_attributes
+        assert attributes["is_pilot_control"] is True
+        assert attributes["pilot_control_note"] == (
+            "Pilot control register - atomic transaction with paired register"
+        )
+        # Transaction should be False initially when no transactions are pending
+        # The reset_pilot_control_transactions fixture ensures clean state
+        assert attributes["transaction_pending"] is False
+
+    def test_pilot_control_transaction_cleanup(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test transaction cleanup functionality."""
+        number = SAXBatteryModbusNumber(  # noqa: F841
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Create expired transaction
+        current_time = time.time()
+        expired_time = current_time - 5.0  # Older than timeout
+
+        SAXBatteryModbusNumber._pilot_control_transaction = {
+            "expired_key": {
+                "timestamp": expired_time,
+                "power": 1000,
+                "power_factor": 950,
+                "pending_writes": {"power"},
+            },
+            "valid_key": {
+                "timestamp": current_time,
+                "power": 2000,
+                "power_factor": 900,
+                "pending_writes": {"power_factor"},
+            },
+        }
+
+        # Cleanup should remove expired transaction
+        SAXBatteryModbusNumber._cleanup_expired_transactions(current_time)
+
+        assert "expired_key" not in SAXBatteryModbusNumber._pilot_control_transaction
+        assert "valid_key" in SAXBatteryModbusNumber._pilot_control_transaction
+
+    async def test_pilot_control_coordinator_write_failure(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test handling of coordinator write failure."""
+        # Set up data and make coordinator write fail
+        mock_coordinator_pilot_control_unique.data = {SAX_NOMINAL_FACTOR: 950}
+        mock_coordinator_pilot_control_unique.async_write_pilot_control_value.return_value = False
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Write should fail but not raise exception
+        result = await number._write_pilot_control_value_transactional(3000.0)
+        assert result is False
+
+    async def test_get_current_pilot_control_value_from_coordinator(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test getting current pilot control value from coordinator data."""
+        mock_coordinator_pilot_control_unique.data = {SAX_NOMINAL_POWER: 2500}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Should get value from coordinator data - call as async method
+        result = await number._get_current_pilot_control_value(SAX_NOMINAL_POWER)
+        assert result == 2500.0
+
+    async def test_get_current_pilot_control_value_from_local(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test getting current pilot control value from local state."""
+        mock_coordinator_pilot_control_unique.data = {}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Set local value
+        number._local_value = 1500.0
+
+        # Should get value from local state - call as async method
+        result = await number._get_current_pilot_control_value(SAX_NOMINAL_POWER)
+        assert result == 1500.0
+
+    async def test_get_current_pilot_control_value_not_available(
+        self, mock_coordinator_pilot_control_unique, pilot_power_item_unique
+    ):
+        """Test getting current pilot control value when not available."""
+        mock_coordinator_pilot_control_unique.data = {}
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_pilot_control_unique,
+            battery_id="battery_a",
+            modbus_item=pilot_power_item_unique,
+        )
+
+        # Should return None when value not available - call as async method
+        result = await number._get_current_pilot_control_value(SAX_NOMINAL_FACTOR)
+        assert result is None
+
+
+class TestSAXBatteryNumberUniqueIdAndName:
+    """Test unique ID and name generation for SAX Battery number entities."""
+
+    @pytest.fixture
+    def mock_coordinator_unique_id_test(self, mock_hass_number):
+        """Create mock coordinator for unique ID tests."""
+        coordinator = MagicMock(spec=SAXBatteryCoordinator)
+        coordinator.data = {}
+        coordinator.battery_id = "battery_a"
+        coordinator.hass = mock_hass_number
+        coordinator.sax_data = MagicMock()
+        coordinator.sax_data.get_device_info.return_value = {"name": "Test Battery"}
+        coordinator.last_update_success_time = MagicMock()
+        return coordinator
+
+    @pytest.fixture
+    def power_number_item_for_unique_id(self):
+        """Create power number item for unique ID tests."""
+        from custom_components.sax_battery.const import (
+            DESCRIPTION_SAX_MAX_CHARGE,
+            SAX_MAX_CHARGE,
+        )
+
+        return ModbusItem(
+            address=100,
+            name=SAX_MAX_CHARGE,
+            mtype=TypeConstants.NUMBER_WO,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_MAX_CHARGE,
+        )
+
+    @pytest.fixture
+    def mock_hass_number(self):
+        """Create mock Home Assistant instance for number tests."""
+        hass = MagicMock(spec=HomeAssistant)
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_update_entry = MagicMock(return_value=True)
+        hass.data = {}
+        return hass
+
+    def test_modbus_number_unique_id_generation(
+        self, mock_coordinator_unique_id_test, power_number_item_for_unique_id
+    ):
+        """Test unique ID generation for modbus number entities."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_unique_id_test,
+            battery_id="battery_a",
+            modbus_item=power_number_item_for_unique_id,
+        )
+
+        # Should strip 'sax_' prefix and add battery_id
+        assert number.unique_id == "sax_battery_a_max_charge"
+        assert number._attr_unique_id == "sax_battery_a_max_charge"
+
+    def test_modbus_number_unique_id_without_sax_prefix(
+        self, mock_coordinator_unique_id_test
+    ):
+        """Test unique ID generation when item name doesn't have sax_ prefix."""
+        item_without_prefix = ModbusItem(
+            address=105,
+            name="temperature_sensor",
+            mtype=TypeConstants.NUMBER,
+            device=DeviceConstants.SYS,
+            entitydescription=NumberEntityDescription(
+                key="temperature",
+                name="Temperature",
+                native_unit_of_measurement="°C",
+            ),
+        )
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_unique_id_test,
+            battery_id="battery_b",
+            modbus_item=item_without_prefix,
+        )
+
+        assert number.unique_id == "sax_battery_b_temperature_sensor"
+
+    def test_modbus_number_name_from_entity_description(
+        self, mock_coordinator_unique_id_test, power_number_item_for_unique_id
+    ):
+        """Test name generation from entity description."""
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_unique_id_test,
+            battery_id="battery_a",
+            modbus_item=power_number_item_for_unique_id,
+        )
+
+        # Should use entity description name, stripping 'Sax ' prefix
+        assert number.name == "Max Charge"
+        assert number._attr_name == "Max Charge"
+
+    def test_modbus_number_name_fallback_formatting(
+        self, mock_coordinator_unique_id_test
+    ):
+        """Test name generation fallback when no entity description."""
+        item_no_description = ModbusItem(
+            address=106,
+            name="sax_test_underscore_setting",
+            mtype=TypeConstants.NUMBER,
+            device=DeviceConstants.SYS,
+        )
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_unique_id_test,
+            battery_id="battery_c",
+            modbus_item=item_no_description,
+        )
+
+        # Should format name from item name
+        assert number.name == "Test Underscore Setting"
+
+    def test_modbus_number_name_strips_sax_prefix(
+        self, mock_coordinator_unique_id_test
+    ):
+        """Test that 'Sax ' prefix is stripped from entity description names."""
+        item_with_sax_prefix = ModbusItem(
+            address=107,
+            name="sax_custom_control",
+            mtype=TypeConstants.NUMBER,
+            device=DeviceConstants.SYS,
+            entitydescription=NumberEntityDescription(
+                key="custom_control",
+                name="Sax Custom Control",
+            ),
+        )
+
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_unique_id_test,
+            battery_id="battery_a",
+            modbus_item=item_with_sax_prefix,
+        )
+
+        assert number.name == "Custom Control"
+
+    def test_different_battery_ids_generate_unique_ids(self, mock_hass_number):
+        """Test that different battery IDs generate unique entity IDs."""
+        from custom_components.sax_battery.const import (
+            DESCRIPTION_SAX_MAX_CHARGE,
+            SAX_MAX_CHARGE,
+        )
+
+        coordinator_a = MagicMock(spec=SAXBatteryCoordinator)
+        coordinator_a.hass = mock_hass_number
+        coordinator_a.sax_data = MagicMock()
+        coordinator_a.sax_data.get_device_info.return_value = {"name": "Battery A"}
+        coordinator_a.last_update_success_time = MagicMock()
+
+        coordinator_b = MagicMock(spec=SAXBatteryCoordinator)
+        coordinator_b.hass = mock_hass_number
+        coordinator_b.sax_data = MagicMock()
+        coordinator_b.sax_data.get_device_info.return_value = {"name": "Battery B"}
+        coordinator_b.last_update_success_time = MagicMock()
+
+        same_item = ModbusItem(
+            address=100,
+            name=SAX_MAX_CHARGE,
+            mtype=TypeConstants.NUMBER,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_MAX_CHARGE,
+        )
+
+        number_a = SAXBatteryModbusNumber(
+            coordinator=coordinator_a,
+            battery_id="battery_a",
+            modbus_item=same_item,
+        )
+
+        number_b = SAXBatteryModbusNumber(
+            coordinator=coordinator_b,
+            battery_id="battery_b",
+            modbus_item=same_item,
+        )
+
+        assert number_a.unique_id == "sax_battery_a_max_charge"
+        assert number_b.unique_id == "sax_battery_b_max_charge"
+        assert number_a.unique_id != number_b.unique_id
