@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -249,18 +250,18 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                 self._local_value = float(config_data["nominal_factor"])
             # else: leave as None - no dangerous default for power factor
 
-    # @property
-    # def native_value(self) -> float | None:
-    #     """Return the current value (unchanged)."""
-    #     # For write-only registers, use local state
-    #     if self._is_write_only:
-    #         return self._local_value
+    @property
+    def native_value(self) -> float | None:
+        """Return the current value (unchanged)."""
+        # For write-only registers, use local state
+        if self._is_write_only:
+            return self._local_value
 
-    #     # For readable registers, use coordinator data
-    #     if not self.coordinator.data:
-    #         return None
-    #     value = self.coordinator.data.get(self._modbus_item.name)
-    #     return float(value) if value is not None else None
+        # For readable registers, use coordinator data
+        if not self.coordinator.data:
+            return None
+        value = self.coordinator.data.get(self._modbus_item.name)
+        return float(value) if value is not None else None
 
     @property
     def available(self) -> bool:
@@ -275,6 +276,69 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             and self.coordinator.data is not None
             and self._modbus_item.name in self.coordinator.data
         )
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the native value of the number entity.
+
+        This is the main method that Home Assistant calls when a user changes
+        the value of a number entity.
+
+        Args:
+            value: The new value to set
+
+        Raises:
+            HomeAssistantError: If the write operation fails
+
+        Security:
+            Validates input and uses secure write methods
+
+        Performance:
+            Uses optimized write paths for different register types
+
+        """
+        try:
+            _LOGGER.debug(
+                "Setting native value for %s to %s", self._modbus_item.name, value
+            )
+
+            # Check if this is a pilot control item requiring special handling
+            if self._is_pilot_control_item:
+                success = await self._write_pilot_control_value_transactional(value)
+            else:
+                # Standard number entity write using coordinator
+                success = await self.coordinator.async_write_number_value(
+                    self._modbus_item, value
+                )
+
+            if not success:
+                msg = f"Failed to write value {value} to {self._modbus_item.name}"
+                raise HomeAssistantError(msg)  # noqa: TRY301
+
+            # Update local value for write-only registers (immediate UI feedback)
+            if self._is_write_only:
+                self._local_value = value
+
+            # Update coordinator data immediately for UI responsiveness
+            if self.coordinator.data is not None:
+                self.coordinator.data[self._modbus_item.name] = value
+
+            # Schedule a coordinator refresh for the next update cycle
+            await self.coordinator.async_request_refresh()
+
+            # Write state immediately for UI feedback
+            self.async_write_ha_state()
+
+            _LOGGER.debug("Successfully set %s to %s", self._modbus_item.name, value)
+
+        except HomeAssistantError:
+            # Re-raise HomeAssistantError as-is
+            raise
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set %s to %s: %s", self._modbus_item.name, value, err
+            )
+            msg = f"Unexpected error setting {self._modbus_item.name}: {err}"
+            raise HomeAssistantError(msg) from err
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -298,18 +362,17 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
             # Add pilot control specific info
             if self._is_pilot_control_item:
-                attributes["pilot_control_note"] = (
-                    "Pilot control register - atomic transaction with paired register"
+                transaction_pending = (
+                    self._transaction_key in self._pilot_control_transaction
                 )
-
-                # Add transaction status for debugging
-                transaction = self._pilot_control_transaction.get(self._transaction_key)
-                if transaction:
-                    attributes["transaction_pending"] = True
-                    attributes["transaction_timestamp"] = transaction["timestamp"]
-                    attributes["pending_writes"] = list(transaction["pending_writes"])
-                else:
-                    attributes["transaction_pending"] = False
+                attributes.update(
+                    {
+                        "pilot_control_note": (
+                            "Pilot control register - atomic transaction with paired register"
+                        ),
+                        "transaction_pending": transaction_pending,
+                    }
+                )
         else:
             raw_value = (
                 self.coordinator.data.get(self._modbus_item.name)
@@ -375,6 +438,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             elif self._modbus_item.name == SAX_NOMINAL_FACTOR:
                 # Validate power factor range before staging
                 if not self._validate_power_factor_range(value):
+                    _LOGGER.error(
+                        "Transaction aborted: Invalid power factor value %s", value
+                    )
+                    self._pilot_control_transaction.pop(self._transaction_key, None)
                     return False
 
                 transaction["power_factor"] = value
@@ -393,7 +460,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                     SAX_NOMINAL_POWER
                 )
                 if power_value is None:
-                    power_value = 0.0  # Safe default for power
+                    _LOGGER.debug(
+                        "Transaction deferred: Missing power value for atomic write"
+                    )
+                    return True  # Transaction staged, waiting for paired value
                 transaction["power"] = power_value
 
             if power_factor_value is None:
@@ -401,13 +471,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                     SAX_NOMINAL_FACTOR
                 )
                 if power_factor_value is None:
-                    _LOGGER.warning(
-                        "Transaction aborted: Power factor value not available. "
-                        "Both power and power factor required for atomic pilot control write."
+                    _LOGGER.debug(
+                        "Transaction deferred: Missing power factor value for atomic write"
                     )
-                    # Clean up incomplete transaction
-                    self._pilot_control_transaction.pop(self._transaction_key, None)
-                    return False
+                    return True  # Transaction staged, waiting for paired value
                 transaction["power_factor"] = power_factor_value
 
             # Security: Validate all values before atomic write
@@ -456,13 +523,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             if success:
                 # Update local state for both values (performance: immediate UI feedback)
                 if self._is_write_only:
-                    # Update local value for this entity
                     self._local_value = value
-
-                    # Update coordinator data for both values (atomic state update)
-                    if self.coordinator.data:
-                        self.coordinator.data[SAX_NOMINAL_POWER] = power_value
-                        self.coordinator.data[SAX_NOMINAL_FACTOR] = power_factor_value
 
                 _LOGGER.debug(
                     "Transaction completed successfully: power=%s W, power_factor=%s",
@@ -582,29 +643,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             _LOGGER.debug("Cleaning up expired pilot control transaction: %s", key)
             cls._pilot_control_transaction.pop(key, None)
 
-    # async def _save_write_only_value_to_config(self, value: float) -> None:
-    #     """Save write-only register value to config entry for persistence (unchanged)."""
-    #     if not self.coordinator.config_entry:
-    #         return
-
-    #     new_data = dict(self.coordinator.config_entry.data)
-
-    #     # Map register names to config keys
-    #     if self._modbus_item.name == SAX_MAX_CHARGE:
-    #         new_data["max_charge"] = value
-    #     elif self._modbus_item.name == SAX_MAX_DISCHARGE:
-    #         new_data["max_discharge"] = value
-    #     elif self._modbus_item.name == SAX_NOMINAL_POWER:
-    #         new_data["nominal_power"] = value
-    #     elif self._modbus_item.name == SAX_NOMINAL_FACTOR:
-    #         new_data["nominal_factor"] = value
-
-    #     # Update config entry
-    #     self.hass.config_entries.async_update_entry(
-    #         self.coordinator.config_entry,
-    #         data=new_data,
-    #     )
-
     async def async_added_to_hass(self) -> None:
         """Call entity after it is added to hass (unchanged)."""
         await super().async_added_to_hass()
@@ -674,24 +712,24 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
     async def async_set_native_value(self, value: float) -> None:
         """Set new value using SAXItem communication."""
         try:
+            _LOGGER.debug(
+                "Setting config value for %s to %s", self._sax_item.name, value
+            )
+
             # Use SAXItem's write method for system configuration
             success = await self._sax_item.async_write_value(value)
             if not success:
-                # Fallback for specific items like SAX_MIN_SOC
-                if self._sax_item.name == SAX_MIN_SOC and self.coordinator.config_entry:
-                    new_data = dict(self.coordinator.config_entry.data)
-                    new_data["min_soc"] = int(value)
-                    self.hass.config_entries.async_update_entry(
-                        self.coordinator.config_entry,
-                        data=new_data,
-                    )
-                    self.async_write_ha_state()
-                    return
+                msg = f"Failed to write config value {value} to {self._sax_item.name}"
+                raise HomeAssistantError(msg)  # noqa: TRY301
 
-                _LOGGER.error(
-                    "Failed to write value %s to %s", value, self._sax_item.name
-                )
+            _LOGGER.debug(
+                "Successfully set config %s to %s", self._sax_item.name, value
+            )
 
+        except HomeAssistantError:
+            # Re-raise HomeAssistantError as-is
+            raise
         except Exception as err:
             _LOGGER.error("Failed to set %s to %s: %s", self._sax_item.name, value, err)
-            raise
+            msg = f"Unexpected error setting {self._sax_item.name}: {err}"
+            raise HomeAssistantError(msg) from err

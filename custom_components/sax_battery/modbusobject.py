@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ModbusException
+from pymodbus.exceptions import ConnectionException, ModbusException, ModbusIOException
 
 if TYPE_CHECKING:
     from .items import ModbusItem
@@ -18,8 +18,8 @@ _LOGGER = logging.getLogger(__name__)
 class ModbusAPI:
     """Streamlined Modbus API for SAX Battery communication.
 
-    Integrates directly with ModbusItem objects for efficient communication.
-    No longer uses ModbusObject wrapper for better performance.
+    Handles SAX Battery Modbus transaction ID bug by using no_response_expected=True
+    and implementing robust connection recovery for dropped connections.
     """
 
     def __init__(self, host: str, port: int, battery_id: str) -> None:
@@ -29,6 +29,9 @@ class ModbusAPI:
         self._battery_id = battery_id
         self._modbus_client: ModbusTcpClient | None = None
         self._connect_pending = False
+        self._connection_retries = 0
+        self._max_retries = 3
+        self._retry_delay = 1.0
 
     async def connect(self, startup: bool = False) -> bool:
         """Connect to the modbus device."""
@@ -44,6 +47,7 @@ class ModbusAPI:
             ):
                 if self._modbus_client.connected:
                     _LOGGER.debug("Connected to modbus device %s", self._battery_id)
+                    self._connection_retries = 0  # Reset retry counter on success
                     return True
 
             # Connection failed
@@ -71,16 +75,61 @@ class ModbusAPI:
             self._modbus_client = None
         return True
 
+    def is_connected(self) -> bool:
+        """Check if modbus client is connected."""
+        return (
+            self._modbus_client is not None
+            and hasattr(self._modbus_client, "connected")
+            and self._modbus_client.connected
+        )
+
+    async def _ensure_connection(self) -> bool:
+        """Ensure modbus connection is established with retry logic."""
+        if self.is_connected():
+            return True
+
+        _LOGGER.debug(
+            "Connection lost for %s, attempting to reconnect", self._battery_id
+        )
+
+        for attempt in range(self._max_retries):
+            if await self.connect():
+                _LOGGER.debug(
+                    "Reconnected to %s on attempt %d/%d",
+                    self._battery_id,
+                    attempt + 1,
+                    self._max_retries,
+                )
+                return True
+
+            if attempt < self._max_retries - 1:
+                delay = self._retry_delay * (2**attempt)  # Exponential backoff
+                _LOGGER.debug(
+                    "Connection attempt %d/%d failed for %s, retrying in %.1fs",
+                    attempt + 1,
+                    self._max_retries,
+                    self._battery_id,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+
+        _LOGGER.error(
+            "Failed to reconnect to %s after %d attempts",
+            self._battery_id,
+            self._max_retries,
+        )
+        return False
+
     async def read_holding_registers(
         self, count: int, modbus_item: ModbusItem
     ) -> int | float | bool | None:
         """Read holding registers with SAX Battery specific data conversion."""
-        if self._modbus_client is None or not self._modbus_client.connected:
+        if not await self._ensure_connection():
             return None
 
         def _read() -> int | float | bool | None:
             try:
-                # Type guard already handled above
+                # Type guard already handled by _ensure_connection
                 assert self._modbus_client is not None
 
                 result = self._modbus_client.read_holding_registers(
@@ -90,6 +139,14 @@ class ModbusAPI:
                 )
 
                 if result.isError() or not result.registers:
+                    # Check for connection-related errors
+                    if self._is_connection_error(result):
+                        _LOGGER.warning(
+                            "Connection error reading register %d for %s",
+                            modbus_item.address,
+                            self._battery_id,
+                        )
+                        self._close_connection()
                     return None
 
                 # Handle data conversion for SAX Battery specific types
@@ -116,6 +173,15 @@ class ModbusAPI:
 
                 return None  # noqa: TRY300
 
+            except (ConnectionException, ModbusIOException) as exc:
+                _LOGGER.warning(
+                    "Connection lost reading register %d for %s: %s",
+                    modbus_item.address,
+                    self._battery_id,
+                    exc,
+                )
+                self._close_connection()
+                return None
             except (ModbusException, ValueError, TypeError) as exc:
                 _LOGGER.error("Error reading register %d: %s", modbus_item.address, exc)
                 return None
@@ -123,13 +189,16 @@ class ModbusAPI:
         return await asyncio.get_event_loop().run_in_executor(None, _read)
 
     async def write_registers(self, value: float, modbus_item: ModbusItem) -> bool:
-        """Write to holding register with SAX Battery specific conversion."""
-        if self._modbus_client is None or not self._modbus_client.connected:
+        """Write to holding register with SAX Battery specific conversion and connection recovery.
+
+        Uses no_response_expected=True to work around SAX Battery transaction ID bug.
+        """
+        if not await self._ensure_connection():
             return False
 
         def _write() -> bool:
             try:
-                # Type guard already handled above
+                # Type guard already handled by _ensure_connection
                 assert self._modbus_client is not None
 
                 # Convert value using SAX Battery data type
@@ -141,13 +210,13 @@ class ModbusAPI:
                     if isinstance(converted_data, (list, tuple)):
                         raw_values = list(converted_data)
                     else:
-                        raw_values = [int(converted_data)]  # type: ignore[unreachable]
+                        raw_values = [int(converted_data)]
                 else:
-                    # Fallback conversion
-                    raw_values = [int(value)]
+                    # Fallback conversion with proper scaling
+                    scaled_value = (value / modbus_item.factor) + modbus_item.offset
+                    raw_values = [int(scaled_value)]
 
-                # Always use array for Write registers (code 0x10)
-
+                # Use no_response_expected=True to work around SAX Battery transaction ID bug
                 result = self._modbus_client.write_registers(
                     address=modbus_item.address,
                     values=raw_values,
@@ -164,14 +233,45 @@ class ModbusAPI:
                     result,
                 )
 
-                # For write-only registers, ExceptionResponse(0xff) with exception_code=0 is success
-                if result.isError() and result.function_code == 0xFF:
-                    # Check if this is the "no response expected" success case
-                    if hasattr(result, "exception_code") and result.exception_code == 0:
+                # Handle SAX Battery specific success conditions
+                if result.isError():
+                    # ExceptionResponse(0xff) with exception_code=0 is success for write-only registers
+                    if (
+                        result.function_code == 0xFF
+                        and hasattr(result, "exception_code")
+                        and result.exception_code == 0
+                    ):
                         return True
 
-                return not result.isError()
+                    # Check for connection-related errors
+                    if self._is_connection_error(result):
+                        _LOGGER.warning(
+                            "Connection error writing to register %d for %s",
+                            modbus_item.address,
+                            self._battery_id,
+                        )
+                        self._close_connection()
+                        return False
 
+                    _LOGGER.warning(
+                        "Write failed for register %d: function_code=%s, exception_code=%s",
+                        modbus_item.address,
+                        getattr(result, "function_code", "unknown"),
+                        getattr(result, "exception_code", "unknown"),
+                    )
+                    return False
+
+                return True  # noqa: TRY300
+
+            except (ConnectionException, ModbusIOException) as exc:
+                _LOGGER.warning(
+                    "Connection lost writing to register %d for %s: %s",
+                    modbus_item.address,
+                    self._battery_id,
+                    exc,
+                )
+                self._close_connection()
+                return False
             except (ModbusException, ValueError, TypeError) as exc:
                 _LOGGER.error(
                     "Error writing to register %d: %s", modbus_item.address, exc
@@ -185,6 +285,9 @@ class ModbusAPI:
     ) -> bool:
         """Write nominal power value to holding register with specific power factor.
 
+        Uses no_response_expected=True to work around SAX Battery transaction ID bug.
+        Implements automatic connection recovery for dropped connections.
+
         Args:
             value: The nominal power value to write
             power_factor: Power factor as scaled integer (e.g., 9500 for 0.95)
@@ -193,14 +296,8 @@ class ModbusAPI:
         Returns:
             bool: True if write was successful, False otherwise
 
-        Security:
-            Validates inputs and address restrictions
-
-        Performance:
-            Single Modbus transaction for both registers
-
         """
-        if self._modbus_client is None or not self._modbus_client.connected:
+        if not await self._ensure_connection():
             return False
 
         def _write() -> bool:
@@ -225,7 +322,7 @@ class ModbusAPI:
 
                 # Convert power to integer for Modbus (security: input validation)
                 if not isinstance(value, (int, float)):
-                    raise ValueError("Power value must be numeric")  # noqa: TRY004, TRY301
+                    raise TypeError("Power value must be numeric")  # noqa: TRY301
                 power_int = int(value) & 0xFFFF
 
                 # Power factor is already scaled integer (security: validate range)
@@ -241,7 +338,7 @@ class ModbusAPI:
                 if self._modbus_client is None:
                     return False
 
-                # Performance: Single write operation for both registers
+                # Use no_response_expected=True to work around SAX Battery transaction ID bug
                 result = self._modbus_client.write_registers(
                     address=address,
                     values=[power_int, pf_int],
@@ -257,14 +354,42 @@ class ModbusAPI:
                     result.isError(),
                 )
 
-                # For write-only registers, ExceptionResponse(0xff) with exception_code=0 is success
-                if result.isError() and result.function_code == 0xFF:
-                    # Check if this is the "no response expected" success case
-                    if hasattr(result, "exception_code") and result.exception_code == 0:
+                # Handle SAX Battery specific success conditions
+                if result.isError():
+                    # ExceptionResponse(0xff) with exception_code=0 is success for write-only registers
+                    if (
+                        result.function_code == 0xFF
+                        and hasattr(result, "exception_code")
+                        and result.exception_code == 0
+                    ):
                         return True
 
-                return not result.isError()
+                    # Check for connection-related errors
+                    if self._is_connection_error(result):
+                        _LOGGER.warning(
+                            "Connection error writing pilot control for %s",
+                            self._battery_id,
+                        )
+                        self._close_connection()
+                        return False
 
+                    _LOGGER.warning(
+                        "Pilot control write failed: function_code=%s, exception_code=%s",
+                        getattr(result, "function_code", "unknown"),
+                        getattr(result, "exception_code", "unknown"),
+                    )
+                    return False
+
+                return True  # noqa: TRY300
+
+            except (ConnectionException, ModbusIOException) as exc:
+                _LOGGER.warning(
+                    "Connection lost during pilot control write for %s: %s",
+                    self._battery_id,
+                    exc,
+                )
+                self._close_connection()
+                return False
             except ModbusException as exc:
                 _LOGGER.error("Modbus error during nominal power write: %s", exc)
                 return False
@@ -275,6 +400,44 @@ class ModbusAPI:
                 return False
 
         return await asyncio.get_event_loop().run_in_executor(None, _write)
+
+    def _is_connection_error(self, result) -> bool:
+        """Check if the result indicates a connection error.
+
+        Args:
+            result: Modbus result object
+
+        Returns:
+            bool: True if this appears to be a connection error
+        """
+        # Check for common connection error indicators
+        if hasattr(result, "message") and result.message:
+            error_msg = str(result.message).lower()
+            connection_indicators = [
+                "connection",
+                "closed",
+                "timeout",
+                "disconnected",
+                "network",
+                "socket",
+                "reset",
+                "broken pipe",
+            ]
+            return any(indicator in error_msg for indicator in connection_indicators)
+
+        # Check for specific error codes that indicate connection issues
+        if hasattr(result, "exception_code"):
+            # Exception codes that typically indicate connection problems
+            connection_error_codes = [
+                1,
+                4,
+                6,
+                10,
+                11,
+            ]  # Common connection-related codes
+            return result.exception_code in connection_error_codes
+
+        return False
 
     def _convert_sax_battery_data(
         self, registers: list[int], modbus_item: ModbusItem
@@ -354,7 +517,7 @@ class ModbusAPI:
 
     def _apply_sax_battery_conversion(
         self,
-        value: int | float | bool,  # noqa: PYI041
+        value: float | bool,
         modbus_item: ModbusItem,
     ) -> int | float | bool | None:
         """Apply SAX Battery specific conversions (factor/offset).
@@ -367,20 +530,9 @@ class ModbusAPI:
             Converted value with proper typing
 
         """
-
         # Boolean values should not have factor/offset applied
         if isinstance(value, bool):
             return value
-
-        # # Validate numeric value for factor/offset calculation
-        # if not isinstance(value, (int, float)):
-        #     _LOGGER.warning(
-        #         "Cannot apply factor/offset to non-numeric value %s (%s) for register %d",
-        #         value,
-        #         type(value).__name__,
-        #         modbus_item.address,
-        #     )
-        #     return None
 
         try:
             # Apply factor and offset: result = (raw_value - offset) * factor
@@ -416,15 +568,6 @@ class ModbusAPI:
             Processed value or None if invalid
 
         """
-        # if not isinstance(raw_value, int):
-        #     _LOGGER.warning(
-        #         "Expected integer register value, got %s (%s) for address %d",
-        #         raw_value,
-        #         type(raw_value).__name__,
-        #         modbus_item.address,
-        #     )
-        #     return None
-
         # Handle boolean registers (typically 0/1 values)
         if (
             hasattr(modbus_item, "data_type")
