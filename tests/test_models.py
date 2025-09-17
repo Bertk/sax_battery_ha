@@ -49,35 +49,6 @@ class TestBatteryModel:
         assert battery.get_value("power") == 1500
         assert battery.get_value("nonexistent") is None
 
-        # Test update data
-        battery.update_data({"voltage": 48.2, "current": 31.25})
-
-        assert battery.get_value("voltage") == 48.2
-        assert battery.get_value("current") == 31.25
-
-    def test_battery_model_convenience_properties(
-        self, battery_model_data_basic, battery_data_values
-    ) -> None:
-        """Test BatteryModel convenience properties."""
-        battery = BatteryModel(
-            device_id=battery_model_data_basic["device_id"],
-            name=battery_model_data_basic["name"],
-        )
-
-        # Test properties return None when no data
-        assert battery.soc is None
-        assert battery.power is None
-        assert battery.voltage_l1 is None
-        assert battery.current_l1 is None
-
-        # Set some data using fixture data
-        battery.update_data(battery_data_values)
-
-        assert battery.soc == 75.0
-        assert battery.power == 2000.0
-        assert battery.voltage_l1 == 48.5
-        assert battery.current_l1 == 41.2
-
     def test_battery_model_modbus_items_master(
         self, mock_config_entry_pilot_enabled
     ) -> None:
@@ -177,16 +148,6 @@ class TestSAXBatteryData:
         assert battery_b.is_master is False
         assert battery_a.host == "192.168.1.100"
         assert battery_b.host == "192.168.1.101"
-
-    def test_sax_battery_data_is_battery_connected(
-        self, mock_hass, mock_config_entry_dual_battery
-    ) -> None:
-        """Test is_battery_connected method."""
-        sax_data = SAXBatteryData(mock_hass, mock_config_entry_dual_battery)
-
-        assert sax_data.is_battery_connected("battery_a") is True
-        assert sax_data.is_battery_connected("battery_b") is True
-        assert sax_data.is_battery_connected("battery_c") is False
 
     def test_sax_battery_data_should_poll_smart_meter(
         self, mock_hass, mock_config_entry_dual_battery
@@ -298,21 +259,6 @@ class TestSAXBatteryData:
         ]
         assert len(calc_sensors) > 0
 
-    def test_sax_battery_data_battery_data_operations(
-        self, mock_hass, mock_config_entry_dual_battery, battery_data_values
-    ) -> None:
-        """Test battery data operations in SAXBatteryData."""
-        sax_data = SAXBatteryData(mock_hass, mock_config_entry_dual_battery)
-
-        # Update battery data
-        battery_a = sax_data.batteries["battery_a"]
-        battery_a.update_data(battery_data_values)
-
-        # Verify data was set correctly
-        assert battery_a.soc == 75.0
-        assert battery_a.power == 2000.0
-        assert battery_a.get_value("sax_temperature") == 25.5
-
     def test_sax_battery_data_master_slave_separation(
         self, mock_hass, mock_config_entry_dual_battery
     ) -> None:
@@ -374,7 +320,6 @@ class TestSAXBatteryData:
         assert sax_data.master_battery_id is None
 
         # Should handle requests for non-existent batteries gracefully
-        assert sax_data.is_battery_connected("any_battery") is False
         assert sax_data.should_poll_smart_meter("any_battery") is False
         assert len(sax_data.get_modbus_items_for_battery("any_battery")) == 0
         assert len(sax_data.get_sax_items_for_battery("any_battery")) == 0

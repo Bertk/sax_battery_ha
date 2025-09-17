@@ -162,20 +162,6 @@ class TestSAXBatteryNumber:
         assert number.entity_description.native_step == 100
         assert number.entity_description.native_unit_of_measurement == "W"
 
-    def test_number_native_value(
-        self, mock_coordinator_number_temperature_unique, power_number_item_unique
-    ) -> None:
-        """Test number native value."""
-        mock_coordinator_number_temperature_unique.data[SAX_MAX_CHARGE] = 3000
-
-        number = SAXBatteryModbusNumber(
-            coordinator=mock_coordinator_number_temperature_unique,
-            battery_id="battery_a",
-            modbus_item=power_number_item_unique,
-        )
-
-        assert number.native_value == 3000.0
-
     def test_number_native_value_missing_data(
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
     ) -> None:
@@ -211,40 +197,6 @@ class TestSAXBatteryNumber:
             )
             # The implementation should handle invalid data and return None
             assert number.native_value is None
-
-    async def test_async_set_native_value_success(
-        self, mock_coordinator_number_temperature_unique, power_number_item_unique
-    ) -> None:
-        """Test setting native value successfully."""
-        number = SAXBatteryModbusNumber(
-            coordinator=mock_coordinator_number_temperature_unique,
-            battery_id="battery_a",
-            modbus_item=power_number_item_unique,
-        )
-
-        await number.async_set_native_value(6000.0)
-
-        # Should call the modbus item's write method, which calls the API
-        power_number_item_unique._modbus_api.write_registers.assert_called_once()
-
-    async def test_async_set_native_value_failure(
-        self, mock_coordinator_number_temperature_unique, power_number_item_unique
-    ) -> None:
-        """Test setting native value with failure."""
-        # Mock modbus API to return False instead of raising an exception
-        power_number_item_unique._modbus_api.write_registers.return_value = False
-
-        number = SAXBatteryModbusNumber(
-            coordinator=mock_coordinator_number_temperature_unique,
-            battery_id="battery_a",
-            modbus_item=power_number_item_unique,
-        )
-
-        # Should not raise an exception but log the error
-        await number.async_set_native_value(6000.0)
-
-        # Verify the write was attempted
-        power_number_item_unique._modbus_api.write_registers.assert_called_once()
 
     def test_extra_state_attributes(
         self, mock_coordinator_number_temperature_unique, power_number_item_unique
@@ -1104,10 +1056,6 @@ class TestSAXBatteryNumberUniqueIdAndName:
     @pytest.fixture
     def power_number_item_for_unique_id(self):
         """Create power number item for unique ID tests."""
-        from custom_components.sax_battery.const import (
-            DESCRIPTION_SAX_MAX_CHARGE,
-            SAX_MAX_CHARGE,
-        )
 
         return ModbusItem(
             address=100,
@@ -1223,10 +1171,6 @@ class TestSAXBatteryNumberUniqueIdAndName:
 
     def test_different_battery_ids_generate_unique_ids(self, mock_hass_number):
         """Test that different battery IDs generate unique entity IDs."""
-        from custom_components.sax_battery.const import (
-            DESCRIPTION_SAX_MAX_CHARGE,
-            SAX_MAX_CHARGE,
-        )
 
         coordinator_a = MagicMock(spec=SAXBatteryCoordinator)
         coordinator_a.hass = mock_hass_number

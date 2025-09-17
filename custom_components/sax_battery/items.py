@@ -80,36 +80,36 @@ class BaseItem(ABC):
     async def async_write_value(self, value: float) -> bool:
         """Write value to data source."""
 
-    def validate_value(self, value: Any) -> int | float | bool | None:
-        """Validate a value for this item."""
-        if self.is_invalid or value is None:
-            return None
+    # def validate_value(self, value: Any) -> int | float | bool | None:
+    #     """Validate a value for this item."""
+    #     if self.is_invalid or value is None:
+    #         return None
 
-        # Convert and validate based on type
-        try:
-            if self.mtype in (
-                TypeConstants.SENSOR,
-                TypeConstants.NUMBER,
-                TypeConstants.NUMBER_RO,
-            ):
-                if isinstance(value, (int, float)):
-                    return float(value)
-                if isinstance(value, str):
-                    return float(value)
-                return None
-            elif self.mtype in (TypeConstants.SWITCH,):  # noqa: RET505
-                if isinstance(value, bool):
-                    return value
-                if isinstance(value, (int, str)):
-                    return bool(int(value))
-                return None
-            else:
-                # For other types, return as-is if numeric or bool
-                if isinstance(value, (int, float, bool)):
-                    return value
-                return None
-        except (ValueError, TypeError):
-            return None
+    #     # Convert and validate based on type
+    #     try:
+    #         if self.mtype in (
+    #             TypeConstants.SENSOR,
+    #             TypeConstants.NUMBER,
+    #             TypeConstants.NUMBER_RO,
+    #         ):
+    #             if isinstance(value, (int, float)):
+    #                 return float(value)
+    #             if isinstance(value, str):
+    #                 return float(value)
+    #             return None
+    #         elif self.mtype in (TypeConstants.SWITCH,):
+    #             if isinstance(value, bool):
+    #                 return value
+    #             if isinstance(value, (int, str)):
+    #                 return bool(int(value))
+    #             return None
+    #         else:
+    #             # For other types, return as-is if numeric or bool
+    #             if isinstance(value, (int, float, bool)):
+    #                 return value
+    #             return None
+    #     except (ValueError, TypeError):
+    #         return None
 
 
 @dataclass
@@ -123,9 +123,19 @@ class ModbusItem(BaseItem):
     offset: int = 0
     _modbus_api: Any = field(default=None, init=False)  # Will be set via set_api()
 
-    def set_api(self, modbus_api: Any) -> None:
-        """Set the ModbusAPI instance for this item."""
+    @property
+    def modbus_api(self) -> Any:
+        """Get the ModbusAPI instance."""
+        return self._modbus_api
+
+    @modbus_api.setter
+    def modbus_api(self, modbus_api: Any) -> None:
+        """Set the ModbusAPI instance."""
         self._modbus_api = modbus_api
+
+    # def set_api(self, modbus_api: Any) -> None:
+    #     """Set the ModbusAPI instance for this item."""
+    #     self._modbus_api = modbus_api
 
     async def async_read_value(self) -> int | float | bool | None:
         """Read value from physical modbus register."""
@@ -249,13 +259,13 @@ class ModbusItem(BaseItem):
         """Get the value to write for switch off state."""
         return 1
 
-    def is_writable(self) -> bool:
-        """Check if this item can be written to (legacy compatibility)."""
-        return self.mtype not in (
-            TypeConstants.SENSOR,
-            TypeConstants.NUMBER_RO,
-            TypeConstants.SENSOR_CALC,
-        )
+    # def is_writable(self) -> bool:
+    #     """Check if this item can be written to (legacy compatibility)."""
+    #     return self.mtype not in (
+    #         TypeConstants.SENSOR,
+    #         TypeConstants.NUMBER_RO,
+    #         TypeConstants.SENSOR_CALC,
+    #     )
 
 
 @dataclass
@@ -266,9 +276,9 @@ class SAXItem(BaseItem):
     configuration that doesn't correspond to a single physical register.
     """
 
-    description: str = ""
+    # description: str = ""
     default_value: Any = None
-    is_system_entity: bool = True
+    # is_system_entity: bool = True
     _coordinators: dict[str, Any] = field(default_factory=dict, init=False)
 
     def set_coordinators(self, coordinators: dict[str, Any]) -> None:
@@ -410,59 +420,59 @@ class WebAPIItem(BaseItem):
 
 
 # Helper functions for type checking using TypeConstants directly
-def is_sensor_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item is a sensor type."""
-    return item.mtype in (TypeConstants.SENSOR, TypeConstants.SENSOR_CALC)
+# def is_sensor_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item is a sensor type."""
+#     return item.mtype in (TypeConstants.SENSOR, TypeConstants.SENSOR_CALC)
 
 
-def is_number_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item is a number type."""
-    return item.mtype in (
-        TypeConstants.NUMBER,
-        TypeConstants.NUMBER_WO,
-        TypeConstants.NUMBER_RO,
-    )
+# def is_number_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item is a number type."""
+#     return item.mtype in (
+#         TypeConstants.NUMBER,
+#         TypeConstants.NUMBER_WO,
+#         TypeConstants.NUMBER_RO,
+#     )
 
 
-def is_switch_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item is a switch type."""
-    return item.mtype == TypeConstants.SWITCH
+# def is_switch_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item is a switch type."""
+#     return item.mtype == TypeConstants.SWITCH
 
 
-def is_readonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item is read-only using TypeConstants."""
-    return item.mtype in (
-        TypeConstants.SENSOR,
-        TypeConstants.NUMBER_RO,
-        TypeConstants.SENSOR_CALC,
-    )
+# def is_readonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item is read-only using TypeConstants."""
+#     return item.mtype in (
+#         TypeConstants.SENSOR,
+#         TypeConstants.NUMBER_RO,
+#         TypeConstants.SENSOR_CALC,
+#     )
 
 
-def is_writeonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item is write-only using TypeConstants."""
-    return item.mtype == TypeConstants.NUMBER_WO
+# def is_writeonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item is write-only using TypeConstants."""
+#     return item.mtype == TypeConstants.NUMBER_WO
 
 
-def is_readable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item supports reading using TypeConstants."""
-    return item.mtype != TypeConstants.NUMBER_WO
+# def is_readable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item supports reading using TypeConstants."""
+#     return item.mtype != TypeConstants.NUMBER_WO
 
 
-def is_writable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-    """Check if item supports writing using TypeConstants."""
-    return item.mtype not in (
-        TypeConstants.SENSOR,
-        TypeConstants.NUMBER_RO,
-        TypeConstants.SENSOR_CALC,
-    )
+# def is_writable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
+#     """Check if item supports writing using TypeConstants."""
+#     return item.mtype not in (
+#         TypeConstants.SENSOR,
+#         TypeConstants.NUMBER_RO,
+#         TypeConstants.SENSOR_CALC,
+#     )
 
 
-def get_item_category(item: ModbusItem | SAXItem | WebAPIItem) -> str:
-    """Get item category for grouping purposes."""
-    if isinstance(item, ModbusItem):
-        return "modbus"
-    if isinstance(item, SAXItem):
-        return "system"
-    if isinstance(item, WebAPIItem):
-        return "webapi"
-    return "unknown"  # type:ignore[unreachable]
+# def get_item_category(item: ModbusItem | SAXItem | WebAPIItem) -> str:
+#     """Get item category for grouping purposes."""
+#     if isinstance(item, ModbusItem):
+#         return "modbus"
+#     if isinstance(item, SAXItem):
+#         return "system"
+#     if isinstance(item, WebAPIItem):
+#         return "webapi"
+#     return "unknown"  # type:ignore[unreachable]

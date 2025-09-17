@@ -15,53 +15,7 @@ from custom_components.sax_battery.entity_keys import (
     SAX_SOC,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import (
-    ModbusItem,
-    SAXItem,
-    WebAPIItem,
-    get_item_category,
-)
-
-
-class TestBaseItem:
-    """Test BaseItem functionality through concrete implementations."""
-
-    def test_validate_value_sensor(self):
-        """Test value validation for sensor items."""
-        item = ModbusItem(
-            name="test_sensor",
-            address=100,
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.SYS,
-        )
-
-        # Test valid values
-        assert item.validate_value(10) == 10.0
-        assert item.validate_value(10.5) == 10.5
-        assert item.validate_value("15") == 15.0
-
-        # Test invalid values
-        assert item.validate_value(None) is None
-        assert item.validate_value("invalid") is None
-
-    def test_validate_value_switch(self):
-        """Test value validation for switch items."""
-        item = ModbusItem(
-            name="test_switch",
-            address=100,
-            mtype=TypeConstants.SWITCH,
-            device=DeviceConstants.SYS,
-        )
-
-        # Test valid values
-        assert item.validate_value(True) is True
-        assert item.validate_value(False) is False
-        assert item.validate_value(1) is True
-        assert item.validate_value(0) is False
-        assert item.validate_value("1") is True
-
-        # Test invalid values
-        assert item.validate_value(None) is None
+from custom_components.sax_battery.items import ModbusItem, SAXItem, WebAPIItem
 
 
 class TestModbusItem:
@@ -102,7 +56,7 @@ class TestModbusItem:
         self, modbus_item, mock_modbus_api_for_item
     ):
         """Test successful read operation."""
-        modbus_item.set_api(mock_modbus_api_for_item)
+        modbus_item.modbus_api = mock_modbus_api_for_item
 
         value = await modbus_item.async_read_value()
         assert value == 100
@@ -123,7 +77,7 @@ class TestModbusItem:
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.SYS,
         )
-        item.set_api(mock_modbus_api_for_item)
+        item.modbus_api = mock_modbus_api_for_item
 
         value = await item.async_read_value()
         assert value is None
@@ -137,7 +91,7 @@ class TestModbusItem:
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
         )
-        item.set_api(mock_modbus_api_for_item)
+        item.modbus_api = mock_modbus_api_for_item
 
         result = await item.async_write_value(50.0)
         assert result is True
@@ -149,7 +103,7 @@ class TestModbusItem:
         self, modbus_item, mock_modbus_api_for_item
     ):
         """Test write operation on read-only item."""
-        modbus_item.set_api(mock_modbus_api_for_item)
+        modbus_item.modbus_api = mock_modbus_api_for_item
 
         result = await modbus_item.async_write_value(50.0)
         assert result is False
@@ -159,18 +113,6 @@ class TestModbusItem:
         """Test switch on/off values."""
         assert modbus_item.get_switch_on_value() == 2
         assert modbus_item.get_switch_off_value() == 1
-
-    def test_is_writable_legacy(self, modbus_item):
-        """Test legacy is_writable method."""
-        assert modbus_item.is_writable() is False
-
-        writable_item = ModbusItem(
-            name="writable",
-            address=100,
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.SYS,
-        )
-        assert writable_item.is_writable() is True
 
 
 class TestSAXItem:
@@ -202,7 +144,6 @@ class TestSAXItem:
             name="sax_test_calculation",
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            description="Test calculation item",
         )
 
     def test_initialization(self, sax_item):
@@ -210,8 +151,6 @@ class TestSAXItem:
         assert sax_item.name == "sax_test_calculation"
         assert sax_item.mtype == TypeConstants.SENSOR_CALC
         assert sax_item.device == DeviceConstants.SYS
-        assert sax_item.description == "Test calculation item"
-        assert sax_item.is_system_entity is True
 
     def test_is_invalid_always_false(self, sax_item):
         """Test SAXItem is never invalid."""
@@ -535,9 +474,3 @@ class TestHelperFunctions:
 
         numbers = [item for item in test_items if item.mtype == TypeConstants.NUMBER]
         assert len(numbers) == 1  # number1
-
-    def test_get_item_category(self, test_items):
-        """Test getting item categories."""
-        assert get_item_category(test_items[0]) == "modbus"  # ModbusItem
-        assert get_item_category(test_items[3]) == "system"  # SAXItem
-        assert get_item_category(test_items[4]) == "webapi"  # WebAPIItem

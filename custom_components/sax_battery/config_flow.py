@@ -387,6 +387,15 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle reconfiguration of the integration."""
+        # Validate entry ID first - before processing any input
+        entry_id = self.context.get("entry_id")
+        if entry_id is None:
+            return self.async_abort(reason="unknown")
+
+        entry = self.hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            return self.async_abort(reason="unknown")
+
         # Get existing entry data
         if user_input is not None:
             # Debug logging for reconfiguration
@@ -398,14 +407,6 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Load existing configuration data
-        entry_id = self.context.get("entry_id")
-        if entry_id is None:
-            return self.async_abort(reason="unknown")
-
-        entry = self.hass.config_entries.async_get_entry(entry_id)
-        if entry is None:
-            return self.async_abort(reason="unknown")
-
         # Copy existing data to allow modification
         self._data = dict(entry.data)
         self._battery_count = self._data.get(CONF_BATTERY_COUNT, 1)

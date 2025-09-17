@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymodbus import ModbusException
 from pymodbus.client.mixin import ModbusClientMixin
@@ -102,7 +102,7 @@ class TestSAXBatteryCoordinator:
             offset=0,
         )
         # Set the modbus API - this is how coordinator will call it
-        switch_item.set_api(mock_modbus_api_coord_unique)
+        switch_item.modbus_api = mock_modbus_api_coord_unique
         return switch_item
 
     @pytest.fixture
@@ -120,7 +120,7 @@ class TestSAXBatteryCoordinator:
             offset=0,
         )
         # Set the modbus API - this is how coordinator will call it
-        number_item.set_api(mock_modbus_api_coord_unique)
+        number_item.modbus_api = mock_modbus_api_coord_unique
         return number_item
 
     @pytest.fixture
@@ -138,7 +138,7 @@ class TestSAXBatteryCoordinator:
             offset=0,
         )
         # Set the modbus API - this is how coordinator will call it
-        sensor_item.set_api(mock_modbus_api_coord_unique)
+        sensor_item.modbus_api = mock_modbus_api_coord_unique
         return sensor_item
 
     async def test_update_success(
@@ -338,27 +338,28 @@ class TestSAXBatteryCoordinator:
         assert slave_coordinator.battery_config[CONF_BATTERY_IS_MASTER] is False
         assert slave_coordinator.battery_config[CONF_BATTERY_PHASE] == "L2"
 
+    @patch.object(SAXItem, "calculate_value")
     async def test_sax_item_data_handling(
         self,
+        mock_calculate_value,
         sax_battery_coordinator_instance_unique,
         mock_sax_data_coord_unique,
         mock_modbus_api_coord_unique,
     ) -> None:
         """Test coordinator handling of SAXItem calculated values."""
+        # Configure the mock to return the desired value
+        mock_calculate_value.return_value = 75.5
+
         # Create a real SAXItem for testing
         sax_item = SAXItem(
             name="sax_combined_soc",
             mtype=TypeConstants.SENSOR_CALC,
             device=DeviceConstants.SYS,
-            description="Combined SOC across all batteries",
         )
 
         # Mock the SAX data to return our test items
         mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = []
         mock_sax_data_coord_unique.get_sax_items_for_battery.return_value = [sax_item]
-
-        # Mock the calculate_value method
-        sax_item.calculate_value = MagicMock(return_value=75.5)
 
         # Test update
         result = await sax_battery_coordinator_instance_unique._async_update_data()
@@ -368,7 +369,7 @@ class TestSAXBatteryCoordinator:
         assert "sax_combined_soc" in result
         assert result["sax_combined_soc"] == 75.5
         # Verify the calculate_value method was called
-        sax_item.calculate_value.assert_called_once()
+        mock_calculate_value.assert_called_once()
 
     async def test_coordinator_smart_meter_handling(
         self,
@@ -388,7 +389,7 @@ class TestSAXBatteryCoordinator:
             factor=1.0,
             offset=0,
         )
-        smart_meter_item.set_api(mock_modbus_api_coord_unique)
+        smart_meter_item.modbus_api = mock_modbus_api_coord_unique
 
         # Mock smart meter data return and read result
         mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = []

@@ -62,7 +62,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Set up ModbusItems with API reference for direct communication."""
         for item in self.sax_data.get_modbus_items_for_battery(self.battery_id):
             if isinstance(item, ModbusItem):
-                item.set_api(self.modbus_api)
+                item.modbus_api = self.modbus_api  # Set API reference
 
         # Set up SAXItems with coordinator references
         for sax_item in self.sax_data.get_sax_items_for_battery(self.battery_id):
@@ -106,8 +106,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for item in self.sax_data.get_smart_meter_items():
                 if isinstance(item, ModbusItem):
                     # Set API reference if not already set
-                    if item._modbus_api is None:  # noqa: SLF001
-                        item.set_api(self.modbus_api)
+                    if item.modbus_api is None:
+                        item.modbus_api = self.modbus_api
 
                     value = await item.async_read_value()
                     data[item.name] = value
@@ -125,8 +125,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Write number value using direct ModbusItem communication."""
         if isinstance(item, ModbusItem):
             # Ensure API is set
-            if item._modbus_api is None:  # noqa: SLF001
-                item.set_api(self.modbus_api)
+            if item.modbus_api is None:
+                item.modbus_api = self.modbus_api
             return await item.async_write_value(value)
         return False  # type:ignore[unreachable]
 
@@ -134,8 +134,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Write switch value using direct ModbusItem communication."""
         if isinstance(item, ModbusItem):
             # Ensure API is set
-            if item._modbus_api is None:  # noqa: SLF001
-                item.set_api(self.modbus_api)
+            if item.modbus_api is None:
+                item.modbus_api = self.modbus_api
 
             # Convert boolean to appropriate switch value
             write_value = (

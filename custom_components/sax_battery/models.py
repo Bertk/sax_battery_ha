@@ -18,11 +18,7 @@ from .const import (
     MODBUS_SMARTMETER_BASIC_ITEMS,
     MODBUS_SMARTMETER_PHASE_ITEMS,
     PILOT_ITEMS,
-    SAX_CURRENT_L1,
-    SAX_POWER,
     SAX_SMARTMETER_TOTAL_POWER,
-    SAX_SOC,
-    SAX_VOLTAGE_L1,
 )
 from .items import ModbusItem, SAXItem
 from .modbusobject import ModbusAPI
@@ -50,9 +46,9 @@ class BaseModel(ABC):
         """Set value for a specific key."""
         self._data[key] = value
 
-    def update_data(self, new_data: dict[str, Any]) -> None:
-        """Update multiple data values."""
-        self._data.update(new_data)
+    # def update_data(self, new_data: dict[str, Any]) -> None:
+    #     """Update multiple data values."""
+    #     self._data.update(new_data)
 
     @abstractmethod
     def get_device_info(self) -> DeviceInfo:
@@ -71,7 +67,7 @@ class BaseModel(ABC):
 class BatteryModel(BaseModel):
     """Battery model using predefined items from const.py."""
 
-    slave_id: int = 1
+    # slave_id: int = 1
     host: str = ""
     port: int = 502
     is_master: bool = False
@@ -114,29 +110,29 @@ class BatteryModel(BaseModel):
         return items
 
     # Convenience properties for common battery values
-    @property
-    def soc(self) -> float | None:
-        """Get battery state of charge."""
-        value = self.get_value(SAX_SOC)
-        return float(value) if value is not None else None
+    # @property
+    # def soc(self) -> float | None:
+    #     """Get battery state of charge."""
+    #     value = self.get_value(SAX_SOC)
+    #     return float(value) if value is not None else None
 
-    @property
-    def power(self) -> float | None:
-        """Get battery power."""
-        value = self.get_value(SAX_POWER)
-        return float(value) if value is not None else None
+    # @property
+    # def power(self) -> float | None:
+    #     """Get battery power."""
+    #     value = self.get_value(SAX_POWER)
+    #     return float(value) if value is not None else None
 
-    @property
-    def voltage_l1(self) -> float | None:
-        """Get L1 voltage."""
-        value = self.get_value(SAX_VOLTAGE_L1)
-        return float(value) if value is not None else None
+    # @property
+    # def voltage_l1(self) -> float | None:
+    #     """Get L1 voltage."""
+    #     value = self.get_value(SAX_VOLTAGE_L1)
+    #     return float(value) if value is not None else None
 
-    @property
-    def current_l1(self) -> float | None:
-        """Get L1 current."""
-        value = self.get_value(SAX_CURRENT_L1)
-        return float(value) if value is not None else None
+    # @property
+    # def current_l1(self) -> float | None:
+    #     """Get L1 current."""
+    #     value = self.get_value(SAX_CURRENT_L1)
+    #     return float(value) if value is not None else None
 
 
 @dataclass
@@ -206,7 +202,6 @@ class SAXBatteryData:
             battery = BatteryModel(
                 device_id=battery_id,
                 name=f"SAX Battery {battery_id.split('_')[1].upper()}",
-                slave_id=1,
                 host=host,
                 port=port,
                 is_master=is_master,
@@ -215,14 +210,10 @@ class SAXBatteryData:
 
             self.batteries[battery_id] = battery
 
-    async def async_initialize(self) -> None:
-        """Initialize the SAX Battery data."""
-        # Initialize modbus connections and data structures
-        pass  # noqa: PIE790
-
-    def is_battery_connected(self, battery_id: str) -> bool:
-        """Check if a battery is connected."""
-        return battery_id in self.batteries
+    # async def async_initialize(self) -> None:
+    #     """Initialize the SAX Battery data."""
+    #     # Initialize modbus connections and data structures
+    #     pass
 
     def should_poll_smart_meter(self, battery_id: str) -> bool:
         """Check if this battery should poll smart meter data."""
@@ -243,9 +234,9 @@ class SAXBatteryData:
         """Get smart meter modbus items."""
         return list(MODBUS_SMARTMETER_BASIC_ITEMS) + list(MODBUS_SMARTMETER_PHASE_ITEMS)
 
-    def get_modbus_api(self) -> ModbusAPI | None:
-        """Get the modbus API instance."""
-        return self.modbus_api
+    # def get_modbus_api(self) -> ModbusAPI | None:
+    #     """Get the modbus API instance."""
+    #     return self.modbus_api
 
     def get_device_info(self, battery_id: str) -> DeviceInfo:
         """Get device info for a specific battery."""
