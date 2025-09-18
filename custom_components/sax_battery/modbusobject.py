@@ -8,9 +8,22 @@ from typing import TYPE_CHECKING
 
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException, ModbusIOException
+from pymodbus.pdu import ExceptionResponse
+from pymodbus.pdu.pdu import ModbusPDU
+from pymodbus.pdu.register_message import (
+    ReadHoldingRegistersResponse,
+    WriteMultipleRegistersResponse,
+)
 
 if TYPE_CHECKING:
     from .items import ModbusItem
+
+ModbusResponse = (
+    ReadHoldingRegistersResponse
+    | WriteMultipleRegistersResponse
+    | ExceptionResponse
+    | ModbusPDU
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -210,7 +223,7 @@ class ModbusAPI:
                     if isinstance(converted_data, (list, tuple)):
                         raw_values = list(converted_data)
                     else:
-                        raw_values = [int(converted_data)]
+                        raw_values = [int(converted_data)]  # type:ignore[unreachable]
                 else:
                     # Fallback conversion with proper scaling
                     scaled_value = (value / modbus_item.factor) + modbus_item.offset
@@ -401,41 +414,114 @@ class ModbusAPI:
 
         return await asyncio.get_event_loop().run_in_executor(None, _write)
 
-    def _is_connection_error(self, result) -> bool:
+    def _is_connection_error(self, result: ModbusResponse) -> bool:
         """Check if the result indicates a connection error.
 
+        Analyzes Modbus response objects to determine if errors are connection-related
+        rather than protocol or data errors. Uses multiple detection strategies for
+        robust error classification.
+
         Args:
-            result: Modbus result object
+            result: Modbus result object (any response or exception type)
 
         Returns:
             bool: True if this appears to be a connection error
+
+        Security Note:
+            Input validation through hasattr() checks prevents attribute access errors.
+            String analysis is limited to lowercase conversion to prevent injection.
         """
-        # Check for common connection error indicators
-        if hasattr(result, "message") and result.message:
-            error_msg = str(result.message).lower()
-            connection_indicators = [
-                "connection",
-                "closed",
-                "timeout",
-                "disconnected",
-                "network",
-                "socket",
-                "reset",
+        # Strategy 1: Check for Modbus exception codes
+        if hasattr(result, "exception_code"):
+            try:
+                exception_code = int(result.exception_code)
+                # Modbus exception codes indicating connection/communication issues
+                # Reference: Modbus Application Protocol Specification V1.1b3
+                connection_error_codes = [
+                    1,  # Illegal Function - device may be unreachable
+                    4,  # Slave Device Failure - device communication failure
+                    6,  # Slave Device Busy - device temporarily unavailable
+                    10,  # Gateway Path Unavailable - network routing issue
+                    11,  # Gateway Target Device Failed to Respond - timeout/unreachable
+                ]
+
+                if exception_code in connection_error_codes:
+                    _LOGGER.debug(
+                        "Connection error detected via exception code %d",
+                        exception_code,
+                    )
+                    return True
+
+            except (ValueError, TypeError, AttributeError) as exc:
+                _LOGGER.debug("Failed to parse exception_code: %s", exc)
+
+        # Strategy 2: Check error status and analyze string representation
+        if hasattr(result, "isError"):
+            try:
+                if callable(result.isError) and result.isError():
+                    # Safely convert to string and analyze for connection keywords
+                    result_str = str(result).lower()
+
+                    # Connection-related error patterns
+                    connection_indicators = [
+                        "connection",
+                        "closed",
+                        "timeout",
+                        "disconnected",
+                        "network",
+                        "socket",
+                        "reset",
+                        "broken pipe",
+                        "refused",
+                        "unreachable",
+                        "timed out",
+                        "connection lost",
+                        "connection refused",
+                        "no route to host",
+                        "network unreachable",
+                        "connection reset",
+                        "connection aborted",
+                        "host unreachable",
+                        "connection failed",
+                    ]
+
+                    for indicator in connection_indicators:
+                        if indicator in result_str:
+                            _LOGGER.debug(
+                                "Connection error detected via string analysis: %s",
+                                indicator,
+                            )
+                            return True
+
+            except (AttributeError, TypeError) as exc:
+                _LOGGER.debug("Failed to analyze result error status: %s", exc)
+
+        # Strategy 3: Fallback string analysis for any object
+        try:
+            result_str = str(result).lower()
+            # Look for critical connection failure keywords
+            critical_indicators = [
+                "connection refused",
+                "connection reset",
+                "connection timeout",
+                "network unreachable",
+                "host unreachable",
+                "connection failed",
+                "connection closed",
+                "socket error",
                 "broken pipe",
             ]
-            return any(indicator in error_msg for indicator in connection_indicators)
 
-        # Check for specific error codes that indicate connection issues
-        if hasattr(result, "exception_code"):
-            # Exception codes that typically indicate connection problems
-            connection_error_codes = [
-                1,
-                4,
-                6,
-                10,
-                11,
-            ]  # Common connection-related codes
-            return result.exception_code in connection_error_codes
+            for indicator in critical_indicators:
+                if indicator in result_str:
+                    _LOGGER.debug(
+                        "Connection error detected via fallback analysis: %s", indicator
+                    )
+                    return True
+
+        except Exception as exc:  # noqa: BLE001
+            # Catch-all for any unexpected errors during string conversion
+            _LOGGER.debug("Failed to convert result to string: %s", exc)
 
         return False
 
