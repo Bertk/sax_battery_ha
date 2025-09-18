@@ -48,3 +48,6 @@ SAX_SMARTMETER_VOLTAGE_L1 = "smartmeter_voltage_l1"
 SAX_SMARTMETER_VOLTAGE_L2 = "smartmeter_voltage_l2"
 SAX_SMARTMETER_VOLTAGE_L3 = "smartmeter_voltage_l3"
 SAX_STORAGE_STATUS = "storage_status"
+
+SOLAR_CHARGING_SWITCH = "solar_charging_switch"
+MANUAL_CONTROL_SWITCH = "manual_control_switch"

@@ -80,37 +80,6 @@ class BaseItem(ABC):
     async def async_write_value(self, value: float) -> bool:
         """Write value to data source."""
 
-    # def validate_value(self, value: Any) -> int | float | bool | None:
-    #     """Validate a value for this item."""
-    #     if self.is_invalid or value is None:
-    #         return None
-
-    #     # Convert and validate based on type
-    #     try:
-    #         if self.mtype in (
-    #             TypeConstants.SENSOR,
-    #             TypeConstants.NUMBER,
-    #             TypeConstants.NUMBER_RO,
-    #         ):
-    #             if isinstance(value, (int, float)):
-    #                 return float(value)
-    #             if isinstance(value, str):
-    #                 return float(value)
-    #             return None
-    #         elif self.mtype in (TypeConstants.SWITCH,):
-    #             if isinstance(value, bool):
-    #                 return value
-    #             if isinstance(value, (int, str)):
-    #                 return bool(int(value))
-    #             return None
-    #         else:
-    #             # For other types, return as-is if numeric or bool
-    #             if isinstance(value, (int, float, bool)):
-    #                 return value
-    #             return None
-    #     except (ValueError, TypeError):
-    #         return None
-
 
 @dataclass
 class ModbusItem(BaseItem):
@@ -252,20 +221,100 @@ class ModbusItem(BaseItem):
             return False
 
     def get_switch_on_value(self) -> int:
-        """Get the value to write for switch on state."""
-        return 2
+        """Get the value that represents the switch being 'on'.
+
+        Returns:
+            int: Value representing switch on state (default: 2 for SAX Battery)
+
+        Security: Returns safe default value for switch logic
+        Performance: Simple attribute access with fallback
+        """
+        # Security: Use safe default for switch logic - SAX Battery uses 2 for "on"
+        return getattr(self, "switch_on_value", 2)
 
     def get_switch_off_value(self) -> int:
-        """Get the value to write for switch off state."""
-        return 1
+        """Get the value that represents the switch being 'off'.
 
-    # def is_writable(self) -> bool:
-    #     """Check if this item can be written to (legacy compatibility)."""
-    #     return self.mtype not in (
-    #         TypeConstants.SENSOR,
-    #         TypeConstants.NUMBER_RO,
-    #         TypeConstants.SENSOR_CALC,
-    #     )
+        Returns:
+            int: Value representing switch off state (default: 1 for SAX Battery)
+
+        Security: Returns safe default value for switch logic
+        Performance: Simple attribute access with fallback
+        """
+        # Security: Use safe default for switch logic - SAX Battery uses 1 for "off"
+        return getattr(self, "switch_off_value", 1)
+
+    def get_switch_connected_value(self) -> int:
+        """Get the value that represents the switch being 'connected'.
+
+        Returns:
+            int: Value representing switch connected state (3 for SAX Battery)
+
+        Security: Returns safe default value for switch logic
+        Performance: Simple attribute access with fallback
+        """
+        # SAX Battery uses 3 for "connected" state
+        return getattr(self, "switch_connected_value", 3)
+
+    def get_switch_standby_value(self) -> int:
+        """Get the value that represents the switch being in 'standby'.
+
+        Returns:
+            int: Value representing switch standby state (4 for SAX Battery)
+
+        Security: Returns safe default value for switch logic
+        Performance: Simple attribute access with fallback
+        """
+        # SAX Battery uses 4 for "standby" state
+        return getattr(self, "switch_standby_value", 4)
+
+    def is_tri_state_switch(self) -> bool:
+        """Check if this switch supports tri-state operation.
+
+        Returns:
+            bool: True if switch supports connected state
+
+        Performance: Efficient attribute check
+        """
+        return getattr(self, "supports_connected_state", True)
+
+    def get_switch_state_name(self, value: int) -> str:
+        """Get human-readable name for switch state value.
+
+        Args:
+            value: Numeric switch state value
+
+        Returns:
+            str: Human-readable state name
+
+        Security: Input validation with safe fallback
+        """
+        if not isinstance(value, int):
+            return "unknown"  # type:ignore [unreachable]
+
+        state_map = {
+            self.get_switch_off_value(): "off",
+            self.get_switch_on_value(): "on",
+            self.get_switch_connected_value(): "connected",
+            self.get_switch_standby_value(): "standby",
+        }
+
+        return state_map.get(value, "unknown")
+
+    def is_read_only(self) -> bool:
+        """Check if this item is read-only.
+
+        Returns:
+            bool: True if item is read-only, False if writable
+
+        Performance: Efficient read-only check for optimization
+        """
+        # Performance: Quick check for read-only items to skip unnecessary reads
+        return getattr(self, "read_only", False) or self.mtype in (
+            TypeConstants.SENSOR,
+            TypeConstants.NUMBER_RO,
+            TypeConstants.SENSOR_CALC,
+        )
 
 
 @dataclass
@@ -279,7 +328,7 @@ class SAXItem(BaseItem):
     # description: str = ""
     default_value: Any = None
     # is_system_entity: bool = True
-    _coordinators: dict[str, Any] = field(default_factory=dict, init=False)
+    coordinators: dict[str, Any] = field(default_factory=dict, init=False)
 
     def set_coordinators(self, coordinators: dict[str, Any]) -> None:
         """Set coordinators for multi-battery calculations."""

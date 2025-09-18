@@ -147,7 +147,12 @@ class TestSAXBatterySwitch:
         self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
     ) -> None:
         """Test switch is_on returns True when value matches on_value."""
-        mock_coordinator_switch.data = {"test_switch": 1}
+        # Set data to match SAX Battery "on" value (2)
+        mock_coordinator_switch.data = {"test_switch": 2}
+
+        # Security: Ensure ModbusItem has proper switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
 
         switch = SAXBatterySwitch(
             coordinator=mock_coordinator_switch,
@@ -155,13 +160,22 @@ class TestSAXBatterySwitch:
             modbus_item=modbus_item_switch,
         )
 
+        # Performance: Direct property access test
         assert switch.is_on is True
+
+        # Verify the switch methods were called
+        modbus_item_switch.get_switch_on_value.assert_called_once()
 
     def test_switch_is_on_false(
         self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
     ) -> None:
         """Test switch is_on returns False when value matches off_value."""
-        mock_coordinator_switch.data = {"test_switch": 0}
+        # Set data to match SAX Battery "off" value (1)
+        mock_coordinator_switch.data = {"test_switch": 1}
+
+        # Security: Ensure ModbusItem has proper switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
 
         switch = SAXBatterySwitch(
             coordinator=mock_coordinator_switch,
@@ -269,21 +283,104 @@ class TestSAXBatterySwitch:
         assert switch.is_on is None
         assert switch.available is False
 
-    def test_switch_string_values(
+    def test_switch_is_on_connected_state(
         self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
     ) -> None:
-        """Test switch with string values."""
+        """Test switch is_on returns True when value is connected (3)."""
+        # Set data to match SAX Battery "connected" value (3)
+        mock_coordinator_switch.data = {"test_switch": 3}
+
+        # Security: Ensure ModbusItem has proper switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
+        modbus_item_switch.get_switch_connected_value = MagicMock(return_value=3)
+        modbus_item_switch.get_switch_standby_value = MagicMock(return_value=4)
+        modbus_item_switch.get_switch_state_name = MagicMock(return_value="connected")
+
+        switch = SAXBatterySwitch(
+            coordinator=mock_coordinator_switch,
+            battery_id="battery_1",
+            modbus_item=modbus_item_switch,
+        )
+
+        # "Connected" (3) should be considered "on" in Home Assistant
+        assert switch.is_on is True
+
+        # Verify the switch methods were called
+        modbus_item_switch.get_switch_connected_value.assert_called_once()
+
+    def test_switch_is_on_standby_state(
+        self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
+    ) -> None:
+        """Test switch is_on returns False when value is standby (4)."""
+        # Set data to match SAX Battery "standby" value (4)
+        mock_coordinator_switch.data = {"test_switch": 4}
+
+        # Security: Ensure ModbusItem has proper switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
+        modbus_item_switch.get_switch_connected_value = MagicMock(return_value=3)
+        modbus_item_switch.get_switch_standby_value = MagicMock(return_value=4)
+        modbus_item_switch.get_switch_state_name = MagicMock(return_value="standby")
+
+        switch = SAXBatterySwitch(
+            coordinator=mock_coordinator_switch,
+            battery_id="battery_1",
+            modbus_item=modbus_item_switch,
+        )
+
+        # "Standby" (4) should be considered "off" in Home Assistant
+        assert switch.is_on is False
+
+    def test_switch_state_attributes(
+        self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
+    ) -> None:
+        """Test switch state attributes include detailed state information."""
+        # Set data to connected state
+        mock_coordinator_switch.data = {"test_switch": 3}
+
+        # Mock switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
+        modbus_item_switch.get_switch_connected_value = MagicMock(return_value=3)
+        modbus_item_switch.get_switch_standby_value = MagicMock(return_value=4)
+        modbus_item_switch.get_switch_state_name = MagicMock(return_value="connected")
+
+        switch = SAXBatterySwitch(
+            coordinator=mock_coordinator_switch,
+            battery_id="battery_1",
+            modbus_item=modbus_item_switch,
+        )
+
+        attrs = switch.extra_state_attributes
+        states = switch.state_attributes
+        assert attrs is not None
+        assert attrs["raw_value"] == 3
+        assert states is not None
+        assert states["detailed_state"] == "connected"
+        assert "switch_states" in states
+        assert states["switch_states"]["connected"] == 3
+
+    def test_switch_string_values_with_connected(
+        self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
+    ) -> None:
+        """Test switch with string values including connected state."""
+        # Ensure ModbusItem has proper switch methods
+        modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)
+        modbus_item_switch.get_switch_off_value = MagicMock(return_value=1)
+        modbus_item_switch.get_switch_connected_value = MagicMock(return_value=3)
+        modbus_item_switch.get_switch_standby_value = MagicMock(return_value=4)
+
         test_cases = [
             ("on", True),
             ("off", False),
+            ("connected", True),  # New test case
             ("true", True),
             ("false", False),
-            ("1", True),
-            ("0", False),
-            ("yes", True),
-            ("no", False),
-            ("ON", True),
-            ("OFF", False),
+            ("1", False),  # SAX "off" value
+            ("2", True),  # SAX "on" value
+            ("3", True),  # SAX "connected" value
+            ("4", False),  # SAX "standby" value
         ]
 
         switch = SAXBatterySwitch(
@@ -294,7 +391,10 @@ class TestSAXBatterySwitch:
 
         for string_value, expected_bool in test_cases:
             mock_coordinator_switch.data = {"test_switch": string_value}
-            assert switch.is_on is expected_bool, f"Failed for '{string_value}'"
+            result = switch.is_on
+            assert result is expected_bool, (
+                f"Failed for '{string_value}': expected {expected_bool}, got {result}"
+            )
 
     async def test_switch_turn_off_success(
         self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
@@ -357,4 +457,4 @@ class TestSAXBatterySwitch:
         )
 
         # The implementation returns "mdi:battery" for icon
-        assert switch.icon == "mdi:battery"
+        assert switch.icon == "mdi:battery-off"

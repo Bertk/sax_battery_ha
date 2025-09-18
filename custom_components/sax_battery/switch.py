@@ -15,33 +15,33 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import BATTERY_IDS, CONF_BATTERY_IS_MASTER, CONF_BATTERY_PHASE, DOMAIN
 from .coordinator import SAXBatteryCoordinator
-from .entity_utils import filter_items_by_type
+from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
-from .items import ModbusItem
+from .items import ModbusItem, SAXItem
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SAX Battery switch platform with multi-battery support."""
-    integration_data = hass.data[DOMAIN][config_entry.entry_id]
+    integration_data = hass.data[DOMAIN][entry.entry_id]
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
-    entities: list[SAXBatterySwitch] = []
+    entities: list[SwitchEntity] = []
 
-    # Create switch entities for each battery using new constants
+    # Create switches for each battery using new constants
     for battery_id, coordinator in coordinators.items():
-        # Validate battery_id
+        # Validate battery_id is in allowed list
         if battery_id not in BATTERY_IDS:
             _LOGGER.warning("Invalid battery ID %s, skipping", battery_id)
             continue
 
-        # Get battery configuration
+        # Get battery-specific configuration
         battery_config = coordinator.battery_config
         is_master = battery_config.get(CONF_BATTERY_IS_MASTER, False)
         phase = battery_config.get(CONF_BATTERY_PHASE, "L1")
@@ -57,28 +57,61 @@ async def async_setup_entry(
         switch_items = filter_items_by_type(
             sax_data.get_modbus_items_for_battery(battery_id),
             TypeConstants.SWITCH,
-            config_entry,
+            entry,
             battery_id,
         )
 
-        for modbus_item in switch_items:
-            if isinstance(modbus_item, ModbusItem):
-                entities.append(  # noqa: PERF401
-                    SAXBatterySwitch(
-                        coordinator=coordinator,
-                        battery_id=battery_id,
-                        modbus_item=modbus_item,
-                    )
+        entities.extend(
+            [
+                SAXBatterySwitch(
+                    coordinator=coordinator,
+                    battery_id=battery_id,
+                    modbus_item=modbus_item,
                 )
+                for modbus_item in switch_items
+                if isinstance(modbus_item, ModbusItem)
+            ]
+        )
 
-        _LOGGER.info("Added %d switch entities for %s", len(switch_items), battery_id)
+        _LOGGER.info(
+            "Added %d modbus switch entities for %s", len(switch_items), battery_id
+        )
+
+    # Create system-wide control switches only once (using master battery coordinator)
+    master_coordinators = {
+        battery_id: coordinator
+        for battery_id, coordinator in coordinators.items()
+        if coordinator.battery_config.get(CONF_BATTERY_IS_MASTER, False)
+    }
+
+    if master_coordinators:
+        master_coordinator = next(iter(master_coordinators.values()))
+
+        system_switch_items = filter_sax_items_by_type(
+            sax_data.get_sax_items_for_battery("battery_a"),
+            TypeConstants.SWITCH,
+        )
+
+        entities.extend(
+            [
+                SAXBatteryControlSwitch(
+                    coordinator=master_coordinator,
+                    sax_item=sax_item,
+                    coordinators=coordinators,
+                )
+                for sax_item in system_switch_items
+                if isinstance(sax_item, SAXItem)
+            ]
+        )
+
+        _LOGGER.info("Added %d control switch entities", len(system_switch_items))
 
     if entities:
-        async_add_entities(entities, update_before_add=True)
+        async_add_entities(entities)
 
 
 class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
-    """SAX Battery switch entity."""
+    """SAX Battery switch entity for individual battery control."""
 
     _attr_has_entity_name = True
 
@@ -128,26 +161,192 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if switch is on."""
-        if not self.coordinator.data or not self.available:
+        """Return True if entity is on."""
+        # Security: Safe data access with proper validation
+        if not self.coordinator.data:
+            return None
+
+        value = self.coordinator.data.get(self._modbus_item.name)
+        if value is None:
+            return None
+
+        # Performance: Direct comparison for boolean determination
+        try:
+            # Handle string values by converting them
+            if isinstance(value, str):
+                # Security: Normalize string input to prevent injection
+                normalized_value = value.strip().lower()
+
+                # First try to convert numeric strings to integers for SAX Battery comparison
+                try:
+                    int_value = int(normalized_value)
+                    return self._evaluate_switch_state(int_value)
+                except (ValueError, TypeError):
+                    # If not numeric, handle common boolean string representations
+                    if normalized_value in ("true", "on", "yes"):
+                        return True
+                    if normalized_value in ("false", "off", "no"):
+                        return False
+                    if normalized_value == "connected":
+                        # For Home Assistant binary switch, "connected" is considered "on"
+                        return True
+                    _LOGGER.warning(
+                        "Invalid string value '%s' for switch %s",
+                        value,
+                        self._modbus_item.name,
+                    )
+                    return None
+
+            # Convert to int for comparison
+            if isinstance(value, (int, float)):
+                int_value = int(value)
+                return self._evaluate_switch_state(int_value)
+
+            # Handle boolean values directly
+            if isinstance(value, bool):
+                return value
+
+            return None  # noqa: TRY300
+
+        except (ValueError, TypeError) as err:
+            _LOGGER.warning(
+                "Error determining switch state for %s: %s", self._modbus_item.name, err
+            )
+            return None
+
+    def _evaluate_switch_state(self, int_value: int) -> bool:
+        """Evaluate switch state based on SAX Battery values.
+
+        Args:
+            int_value: Integer value from the switch
+
+        Returns:
+            bool: True for on/connected states, False for off/standby states
+
+        Security: Validates input and provides safe evaluation
+        Performance: Efficient state comparison
+        """
+        on_value = self._modbus_item.get_switch_on_value()  # 2 = on
+        connected_value = (
+            self._modbus_item.get_switch_connected_value()
+        )  # 3 = connected
+
+        # Both "on" (2) and "connected" (3) are considered "True" for HA switch
+        if int_value in (on_value, connected_value):
+            return True
+
+        # All other values (1=off, 4=standby) are considered "False"
+        return False
+
+    @property
+    def state_attributes(self) -> dict[str, Any] | None:
+        """Return state attributes including detailed switch state."""
+        if not self.coordinator.data:
             return None
 
         raw_value = self.coordinator.data.get(self._modbus_item.name)
         if raw_value is None:
             return None
 
-        # Handle different value types
-        if isinstance(raw_value, bool):
-            return raw_value
-
-        if isinstance(raw_value, str):
-            return raw_value.lower() in ("on", "true", "1", "yes")
-
         try:
-            # Numeric values: 0 = off, non-zero = on
-            return bool(int(raw_value))
+            int_value = int(raw_value)
+            state_name = self._modbus_item.get_switch_state_name(int_value)
+
+            return {
+                "raw_state_value": int_value,
+                "detailed_state": state_name,
+                "switch_states": {
+                    "off": self._modbus_item.get_switch_off_value(),
+                    "on": self._modbus_item.get_switch_on_value(),
+                    "connected": self._modbus_item.get_switch_connected_value(),
+                    "standby": self._modbus_item.get_switch_standby_value(),
+                },
+            }
         except (ValueError, TypeError):
-            return None
+            return {"raw_state_value": raw_value, "detailed_state": "unknown"}
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra state attributes."""
+        base_attributes = {
+            "battery_id": self._battery_id,
+            "modbus_address": self._modbus_item.address,
+            "last_update": getattr(self.coordinator, "last_update_success_time", None),
+            "raw_value": self.coordinator.data.get(self._modbus_item.name)
+            if self.coordinator.data
+            else None,
+        }
+
+        # Add detailed state information
+        state_attrs = self.state_attributes
+        if state_attrs:
+            base_attributes.update(state_attrs)
+
+        return base_attributes
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the switch (set to 'on' state, value 2)."""
+        # When user clicks "turn on", we want the battery to be actively "on" (value 2)
+        # not just "connected" (value 3)
+        success = await self.coordinator.async_write_switch_value(
+            self._modbus_item,
+            True,  # This will write the "on" value (2)
+        )
+
+        if not success:
+            msg = f"Failed to turn on {self.name}"
+            raise HomeAssistantError(msg)
+
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the switch (set to 'off' state, value 1)."""
+        success = await self.coordinator.async_write_switch_value(
+            self._modbus_item,
+            False,  # This will write the "off" value (1)
+        )
+
+        if not success:
+            msg = f"Failed to turn off {self.name}"
+            raise HomeAssistantError(msg)
+
+        await self.coordinator.async_request_refresh()
+
+    @property
+    def icon(self) -> str | None:
+        """Return icon based on current switch state."""
+        if (
+            hasattr(self, "entity_description")
+            and self.entity_description
+            and hasattr(self.entity_description, "icon")
+        ):
+            # Use entity description icon as base
+            base_icon = self.entity_description.icon
+        else:
+            base_icon = "mdi:battery"
+
+        # Override icon based on detailed state if available
+        if self.coordinator.data:
+            raw_value = self.coordinator.data.get(self._modbus_item.name)
+            if raw_value is not None:
+                try:
+                    int_value = int(raw_value)
+                    state_name = self._modbus_item.get_switch_state_name(int_value)
+
+                    # Custom icons for different states
+                    state_icons = {
+                        "off": "mdi:battery-off",
+                        "on": "mdi:battery",
+                        "connected": "mdi:battery-plus",
+                        "standby": "mdi:battery-clock",
+                        "unknown": "mdi:battery-unknown",
+                    }
+
+                    return state_icons.get(state_name, base_icon)
+                except (ValueError, TypeError):
+                    pass
+
+        return base_icon
 
     @property
     def available(self) -> bool:
@@ -169,49 +368,124 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
             return self.entity_description.entity_category
         return EntityCategory.CONFIG  # Default for switch entities
 
-    @property
-    def icon(self) -> str | None:
-        """Return icon."""
+
+class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
+    """SAX Battery control switch entity for system-wide settings."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: SAXBatteryCoordinator,
+        sax_item: SAXItem,
+        coordinators: dict[str, SAXBatteryCoordinator],
+    ) -> None:
+        """Initialize the control switch."""
+        super().__init__(coordinator)
+        self._sax_item = sax_item
+        self._coordinators = coordinators
+
+        # Set coordinators on the SAX item for calculations
+        self._sax_item.set_coordinators(coordinators)
+
+        # Generate unique ID using simple pattern
+        item_name = self._sax_item.name.removeprefix("sax_")
+        self._attr_unique_id = f"sax_{item_name}"
+
+        # Set entity description from sax item if available
+        if self._sax_item.entitydescription is not None:
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
+
+        # Set entity name
         if (
             hasattr(self, "entity_description")
             and self.entity_description
-            and hasattr(self.entity_description, "icon")
+            and hasattr(self.entity_description, "name")
+            and isinstance(self.entity_description.name, str)
         ):
-            return self.entity_description.icon
-        return None  # Use default Home Assistant switch icon
+            entity_name = str(self.entity_description.name)
+            self._attr_name = entity_name
+        else:
+            # Fallback: use clean item name without prefixes
+            clean_name = item_name.replace("_", " ").title()
+            self._attr_name = clean_name
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the switch."""
-        success = await self.coordinator.async_write_switch_value(
-            self._modbus_item, True
+        # Set cluster device info
+        self._attr_device_info = coordinator.sax_data.get_device_info("cluster")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if switch is on."""
+        # OWASP A05: Security misconfiguration - Validate config entry exists
+        if self.coordinator.config_entry is None:
+            _LOGGER.warning(
+                "Config entry is None for control switch %s", self._sax_item.name
+            )
+            return None
+
+        # Get state from config entry or SAX item calculation
+        if self._sax_item.name == "solar_charging_switch":
+            return bool(
+                self.coordinator.config_entry.data.get("enable_solar_charging", True)
+            )
+        if self._sax_item.name == "manual_control_switch":
+            return bool(self.coordinator.config_entry.data.get("manual_control", False))
+
+        # Default SAX item calculation
+        return bool(self._sax_item.calculate_value(self._coordinators))
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.config_entry is not None
         )
 
-        if not success:
-            msg = f"Failed to turn on {self.name}"
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the control switch."""
+        # OWASP A05: Security misconfiguration - Validate config entry exists
+        if self.coordinator.config_entry is None:
+            msg = f"Cannot turn on {self.name}: config entry is None"
             raise HomeAssistantError(msg)
+
+        # Update config entry for control switches
+        if self._sax_item.name == "solar_charging_switch":
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    "enable_solar_charging": True,
+                },
+            )
+        elif self._sax_item.name == "manual_control_switch":
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={**self.coordinator.config_entry.data, "manual_control": True},
+            )
 
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the switch."""
-        success = await self.coordinator.async_write_switch_value(
-            self._modbus_item, False
-        )
-
-        if not success:
-            msg = f"Failed to turn off {self.name}"
+        """Turn off the control switch."""
+        # OWASP A05: Security misconfiguration - Validate config entry exists
+        if self.coordinator.config_entry is None:
+            msg = f"Cannot turn off {self.name}: config entry is None"
             raise HomeAssistantError(msg)
 
-        await self.coordinator.async_request_refresh()
+        # Update config entry for control switches
+        if self._sax_item.name == "solar_charging_switch":
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    "enable_solar_charging": False,
+                },
+            )
+        elif self._sax_item.name == "manual_control_switch":
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={**self.coordinator.config_entry.data, "manual_control": False},
+            )
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return extra state attributes."""
-        return {
-            "battery_id": self._battery_id,
-            "modbus_address": self._modbus_item.address,
-            "last_update": getattr(self.coordinator, "last_update_success_time", None),
-            "raw_value": self.coordinator.data.get(self._modbus_item.name)
-            if self.coordinator.data
-            else None,
-        }
+        await self.coordinator.async_request_refresh()

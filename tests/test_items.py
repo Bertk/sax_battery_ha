@@ -111,6 +111,7 @@ class TestModbusItem:
 
     def test_switch_values(self, modbus_item):
         """Test switch on/off values."""
+        # SAX Battery uses 2 for "on" and 1 for "off" by default
         assert modbus_item.get_switch_on_value() == 2
         assert modbus_item.get_switch_off_value() == 1
 

@@ -45,30 +45,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
     try:
         # Initialize SAX Battery Data
         sax_data = SAXBatteryData(hass, entry)
-
         # Get battery configurations using new constants
         batteries_config = await _get_battery_configurations(entry)
-
         if not batteries_config:
             raise ConfigEntryNotReady("No valid battery configurations found")  # noqa: TRY301
 
         # Initialize coordinators for each battery
         coordinators: dict[str, SAXBatteryCoordinator] = {}
-
         for battery_id, battery_config in batteries_config.items():
             if not battery_config.get(CONF_BATTERY_ENABLED, True):
                 _LOGGER.debug("Skipping disabled battery %s", battery_id)
                 continue
-
             coordinator = await _setup_battery_coordinator(
                 hass, entry, sax_data, battery_id, battery_config
             )
             coordinators[battery_id] = coordinator
 
         if not coordinators:
-            raise ConfigEntryNotReady(  # noqa: TRY301
-                "No battery coordinators successfully initialized"
-            )
+            raise ConfigEntryNotReady("No batteries enabled")  # noqa: TRY301
 
         # Store coordinators and data using consistent structure
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -76,22 +70,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
             "sax_data": sax_data,
             "config": entry.data,
         }
-
         # Update sax_data with coordinators for cross-battery calculations
+
         sax_data.coordinators = coordinators
 
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
         # Log successful setup
         _log_setup_summary(coordinators, dict(entry.data))
-
         return True  # noqa: TRY300
 
     except ConfigEntryNotReady:
         raise
     except Exception as err:
-        # OWASP A05: Security Misconfiguration - Don't include error details in logs that could expose sensitive info
         _LOGGER.exception("Failed to setup SAX Battery integration")
         raise ConfigEntryNotReady(f"Unexpected error during setup: {err}") from err
 

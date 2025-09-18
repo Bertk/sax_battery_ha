@@ -15,6 +15,7 @@ from .const import (
     DEFAULT_DEVICE_INFO,
     MODBUS_BATTERY_SMARTMETER_ITEMS,
     MODBUS_BATTERY_STATIC_ITEMS,
+    MODBUS_BATTERY_SWITCH_ITEMS,
     MODBUS_SMARTMETER_BASIC_ITEMS,
     MODBUS_SMARTMETER_PHASE_ITEMS,
     PILOT_ITEMS,
@@ -91,6 +92,7 @@ class BatteryModel(BaseModel):
         # All batteries get realtime and static items
         items = list(get_battery_realtime_items(access_config))
         items.extend(MODBUS_BATTERY_STATIC_ITEMS)
+        items.extend(MODBUS_BATTERY_SWITCH_ITEMS)
 
         # Master battery also gets smart meter items
         if self.is_master:

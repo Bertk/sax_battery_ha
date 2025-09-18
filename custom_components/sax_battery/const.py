@@ -27,6 +27,7 @@ from homeassistant.const import (
 )
 
 from .entity_keys import (
+    MANUAL_CONTROL_SWITCH,
     SAX_AC_POWER_TOTAL,
     SAX_APPARENT_POWER,
     SAX_BATTERY_SWITCH,
@@ -68,6 +69,7 @@ from .entity_keys import (
     SAX_VOLTAGE_L1,
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
+    SOLAR_CHARGING_SWITCH,
 )
 from .enums import DeviceConstants, TypeConstants
 from .items import ModbusItem, SAXItem
@@ -189,19 +191,21 @@ DESCRIPTION_SAX_BATTERY_SWITCH = SwitchEntityDescription(
     key=SAX_BATTERY_SWITCH,
     name="Sax On/Off",
     icon="mdi:battery",
+    # Add extra context for tri-state switch
+    entity_registry_enabled_default=True,
 )
 
-# DESCRIPTION_SOLAR_CHARGING_SWITCH = SwitchEntityDescription(
-#     key="solar_charging_switch",
-#     name="Solar Charging Switch",
-#     icon="mdi:solar-power",
-# )
+DESCRIPTION_SOLAR_CHARGING_SWITCH = SwitchEntityDescription(
+    key=SOLAR_CHARGING_SWITCH,
+    name="Solar Charging Switch",
+    icon="mdi:solar-power",
+)
 
-# DESCRIPTION_MANUAL_CONTROL_SWITCH = SwitchEntityDescription(
-#     key="manual_control_switch",
-#     name="Manual Control Switch",
-#     icon="mdi:hand",
-# )
+DESCRIPTION_MANUAL_CONTROL_SWITCH = SwitchEntityDescription(
+    key=MANUAL_CONTROL_SWITCH,
+    name="Manual Control Switch",
+    icon="mdi:hand",
+)
 
 DESCRIPTION_SAX_SOC = SensorEntityDescription(
     key=SAX_SOC,
@@ -580,8 +584,8 @@ AGGREGATED_ITEMS: list[SAXItem] = [
 ]
 # Pilot items - switches for manual control and solar charging
 PILOT_ITEMS: list[SAXItem] = [
-    # SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH),
-    # SAXItem(name=MANUAL_CONTROL_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_MANUAL_CONTROL_SWITCH),
+    SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH),
+    SAXItem(name=MANUAL_CONTROL_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_MANUAL_CONTROL_SWITCH),
     SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC, translation_key="sax_min_soc")
 ]
 # fmt: on
