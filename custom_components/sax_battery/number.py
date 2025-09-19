@@ -150,6 +150,11 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             item.name == modbus_item.name for item in MODBUS_BATTERY_PILOT_CONTROL_ITEMS
         )
 
+        # Set entity registry enabled state
+        self._attr_entity_registry_enabled_default = getattr(
+            self._modbus_item, "enabled_by_default", True
+        )
+
         # Store reference to paired pilot control item for coordinated writes
         self._pilot_control_pair: ModbusItem | None = None
         if self._is_pilot_control_item:

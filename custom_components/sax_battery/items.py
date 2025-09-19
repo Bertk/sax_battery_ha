@@ -21,7 +21,6 @@ from .entity_keys import (
     SAX_CUMULATIVE_ENERGY_PRODUCED,
     SAX_ENERGY_CONSUMED,
     SAX_ENERGY_PRODUCED,
-    SAX_MIN_SOC,
     SAX_SOC,
 )
 from .enums import DeviceConstants, TypeConstants
@@ -90,6 +89,7 @@ class ModbusItem(BaseItem):
     data_type: ModbusClientMixin.DATATYPE = ModbusClientMixin.DATATYPE.UINT16
     factor: float = 1.0
     offset: int = 0
+    enabled_by_default: bool = True
     _modbus_api: Any = field(default=None, init=False)  # Will be set via set_api()
 
     @property
@@ -101,10 +101,6 @@ class ModbusItem(BaseItem):
     def modbus_api(self, modbus_api: Any) -> None:
         """Set the ModbusAPI instance."""
         self._modbus_api = modbus_api
-
-    # def set_api(self, modbus_api: Any) -> None:
-    #     """Set the ModbusAPI instance for this item."""
-    #     self._modbus_api = modbus_api
 
     async def async_read_value(self) -> int | float | bool | None:
         """Read value from physical modbus register."""
@@ -332,11 +328,11 @@ class SAXItem(BaseItem):
 
     def set_coordinators(self, coordinators: dict[str, Any]) -> None:
         """Set coordinators for multi-battery calculations."""
-        self._coordinators = coordinators
+        self.coordinators = coordinators
 
     async def async_read_value(self) -> int | float | bool | None:
         """Calculate system-wide value from multiple battery coordinators."""
-        return self.calculate_value(self._coordinators)
+        return self.calculate_value(self.coordinators)
 
     async def async_write_value(self, value: float) -> bool:
         """Write system configuration value."""
@@ -353,16 +349,34 @@ class SAXItem(BaseItem):
     def calculate_value(self, coordinators: dict[str, Any]) -> float | int | None:
         """Calculate system-wide value from multiple battery coordinators."""
         try:
+            # Early return for non-calculable types
+            if self.mtype in (TypeConstants.SWITCH, TypeConstants.NUMBER_WO):
+                _LOGGER.debug(
+                    "Skipping calculation for %s entity type %s",
+                    self.name,
+                    self.mtype.value,
+                )
+                return None
+
+            # Existing calculation logic for sensors and numbers
             if self.name == SAX_COMBINED_SOC:
                 return self._calculate_combined_soc(coordinators)
             if self.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
                 return self._calculate_cumulative_energy_produced(coordinators)
             if self.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
                 return self._calculate_cumulative_energy_consumed(coordinators)
-            # Default: return None for unknown calculation types
-            if self.name != SAX_MIN_SOC:
+
+            # Only log warning for unexpected sensor/number types
+            if self.mtype in (
+                TypeConstants.SENSOR,
+                TypeConstants.SENSOR_CALC,
+                TypeConstants.NUMBER,
+                TypeConstants.NUMBER_RO,
+            ):
                 _LOGGER.warning("Unknown calculation type for SAXItem: %s", self.name)
+
             return None  # noqa: TRY300
+
         except (ValueError, TypeError, KeyError) as exc:
             _LOGGER.error("Error calculating value for %s: %s", self.name, exc)
             return None
@@ -466,62 +480,3 @@ class WebAPIItem(BaseItem):
         # Future implementation
         _LOGGER.debug("Web API write not yet implemented for %s", self.name)
         return False
-
-
-# Helper functions for type checking using TypeConstants directly
-# def is_sensor_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item is a sensor type."""
-#     return item.mtype in (TypeConstants.SENSOR, TypeConstants.SENSOR_CALC)
-
-
-# def is_number_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item is a number type."""
-#     return item.mtype in (
-#         TypeConstants.NUMBER,
-#         TypeConstants.NUMBER_WO,
-#         TypeConstants.NUMBER_RO,
-#     )
-
-
-# def is_switch_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item is a switch type."""
-#     return item.mtype == TypeConstants.SWITCH
-
-
-# def is_readonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item is read-only using TypeConstants."""
-#     return item.mtype in (
-#         TypeConstants.SENSOR,
-#         TypeConstants.NUMBER_RO,
-#         TypeConstants.SENSOR_CALC,
-#     )
-
-
-# def is_writeonly_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item is write-only using TypeConstants."""
-#     return item.mtype == TypeConstants.NUMBER_WO
-
-
-# def is_readable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item supports reading using TypeConstants."""
-#     return item.mtype != TypeConstants.NUMBER_WO
-
-
-# def is_writable_item(item: ModbusItem | SAXItem | WebAPIItem) -> bool:
-#     """Check if item supports writing using TypeConstants."""
-#     return item.mtype not in (
-#         TypeConstants.SENSOR,
-#         TypeConstants.NUMBER_RO,
-#         TypeConstants.SENSOR_CALC,
-#     )
-
-
-# def get_item_category(item: ModbusItem | SAXItem | WebAPIItem) -> str:
-#     """Get item category for grouping purposes."""
-#     if isinstance(item, ModbusItem):
-#         return "modbus"
-#     if isinstance(item, SAXItem):
-#         return "system"
-#     if isinstance(item, WebAPIItem):
-#         return "webapi"
-#     return "unknown"  # type:ignore[unreachable]

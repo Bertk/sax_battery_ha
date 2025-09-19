@@ -19,6 +19,7 @@ from .const import (
     BATTERY_POLL_SLAVE_INTERVAL,
     CONF_BATTERY_IS_MASTER,
 )
+from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
 from .modbusobject import ModbusAPI
 from .models import SAXBatteryData
@@ -530,47 +531,61 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Args:
             data: Dictionary to store the calculated values
 
-        Performance: Uses efficient dictionary operations
+        Performance: Uses efficient dictionary operations with type filtering
         Security: Validates all calculations for numeric bounds
         """
         try:
             # Get SAX items for this battery
-            sax_items = self.sax_data.get_sax_items_for_battery(self.battery_id)
+            all_sax_items = self.sax_data.get_sax_items_for_battery(self.battery_id)
+
+            # Performance optimization: Filter calculable items using list comprehension
+            calculable_items = [
+                sax_item
+                for sax_item in all_sax_items
+                if isinstance(sax_item, SAXItem)
+                and sax_item.mtype
+                in (
+                    TypeConstants.SENSOR,
+                    TypeConstants.SENSOR_CALC,
+                    TypeConstants.NUMBER,
+                    TypeConstants.NUMBER_RO,
+                )
+            ]
 
             # Performance optimization: Use dictionary update pattern
-            calculated_values: dict[
-                str, Any
-            ] = {}  # Fix: Use Any instead of float | int
-            for sax_item in sax_items:
-                if isinstance(sax_item, SAXItem):
-                    try:
-                        # Security: Validate coordinators are available
-                        if (
-                            not hasattr(sax_item, "coordinators")
-                            or not sax_item.coordinators
-                        ):
-                            sax_item.set_coordinators(self.sax_data.coordinators)
+            calculated_values: dict[str, Any] = {}
 
-                        value = sax_item.calculate_value(self.sax_data.coordinators)
-                        if value is not None:
-                            calculated_values[sax_item.name] = value
-                            _LOGGER.debug("Calculated %s: %s", sax_item.name, value)
-                        else:
-                            # Security: Explicitly set None for failed calculations
-                            calculated_values[sax_item.name] = None
-                            _LOGGER.debug(
-                                "Calculation returned None for %s", sax_item.name
-                            )
+            for sax_item in calculable_items:
+                try:
+                    # Security: Validate coordinators are available
+                    if (
+                        not hasattr(sax_item, "coordinators")
+                        or not sax_item.coordinators
+                    ):
+                        sax_item.set_coordinators(self.sax_data.coordinators)
 
-                    except (ValueError, TypeError, ZeroDivisionError) as err:
-                        _LOGGER.warning(
-                            "Failed to calculate %s: %s", sax_item.name, err
-                        )
-                        # Security: Set None for calculation errors to maintain data consistency
+                    value = sax_item.calculate_value(self.sax_data.coordinators)
+                    if value is not None:
+                        calculated_values[sax_item.name] = value
+                        _LOGGER.debug("Calculated %s: %s", sax_item.name, value)
+                    else:
+                        # Security: Explicitly set None for failed calculations
                         calculated_values[sax_item.name] = None
+                        _LOGGER.debug("Calculation returned None for %s", sax_item.name)
+
+                except (ValueError, TypeError, ZeroDivisionError) as err:
+                    _LOGGER.warning("Failed to calculate %s: %s", sax_item.name, err)
+                    # Security: Set None for calculation errors to maintain data consistency
+                    calculated_values[sax_item.name] = None
 
             # Performance: Single update operation
             data.update(calculated_values)
+
+            _LOGGER.debug(
+                "Updated %d calculated values, skipped %d non-calculable items",
+                len(calculated_values),
+                len(all_sax_items) - len(calculable_items),
+            )
 
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Error updating calculated values: %s", err)

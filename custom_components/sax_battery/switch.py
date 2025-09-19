@@ -139,8 +139,12 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         if self._modbus_item.entitydescription is not None:
             self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
 
-        # Set entity name - let HA combine with device name automatically
-        # Don't add battery prefix since device already provides it
+        # Set entity registry enabled state
+        self._attr_entity_registry_enabled_default = getattr(
+            self._modbus_item, "enabled_by_default", True
+        )
+
+        # Set entity name - remove redundant "Sax" prefix since device already provides context
         if (
             hasattr(self, "entity_description")
             and self.entity_description
@@ -160,11 +164,26 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         self._attr_device_info = coordinator.sax_data.get_device_info(battery_id)
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and self._modbus_item.name in self.coordinator.data
+        )
+
+    @property
     def is_on(self) -> bool | None:
         """Return True if entity is on."""
         # Security: Safe data access with proper validation
         if not self.coordinator.data:
+            _LOGGER.debug(
+                "No value found for switch %s in coordinator data",
+                self._modbus_item.name,
+            )
             return None
+
+        # _LOGGER.debug("Switch %s raw value: %s (type: %s)", self._modbus_item.name, raw_value, type(value))
 
         value = self.coordinator.data.get(self._modbus_item.name)
         if value is None:
@@ -347,15 +366,6 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
                     pass
 
         return base_icon
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and self._modbus_item.name in self.coordinator.data
-        )
 
     @property
     def entity_category(self) -> EntityCategory | None:
