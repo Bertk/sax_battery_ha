@@ -9,13 +9,10 @@ from typing import Any
 
 from pymodbus import ModbusException
 
-from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_AUTO_PILOT_INTERVAL,
@@ -29,10 +26,16 @@ from .const import (
     DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DOMAIN,
+    LIMIT_MAX_CHARGE_PER_BATTERY,
+    LIMIT_MAX_DISCHARGE_PER_BATTERY,
     SAX_COMBINED_SOC,
+    SAX_MAX_CHARGE,
+    SAX_MAX_DISCHARGE,
+    SAX_NOMINAL_FACTOR,
+    SAX_NOMINAL_POWER,
 )
 from .coordinator import SAXBatteryCoordinator
-from .enums import DeviceConstants
+from .items import ModbusItem
 from .models import SAXBatteryData
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,8 +51,6 @@ async def async_setup_entry(
     coordinators = integration_data["coordinators"]
     sax_data = integration_data["sax_data"]
 
-    entities: list[NumberEntity] = []
-
     # Create pilot entities only for master battery
     master_battery_id = sax_data.master_battery_id
     if master_battery_id and master_battery_id in coordinators:
@@ -57,21 +58,14 @@ async def async_setup_entry(
         pilot = SAXBatteryPilot(hass, sax_data, coordinator)
 
         # Store pilot instance in sax_data for access by other components
-        # Add pilot attribute to SAXBatteryData model
         setattr(sax_data, "pilot", pilot)
-
-        # Add power control entity if pilot from HA is enabled
-        if config_entry.data.get(CONF_PILOT_FROM_HA, False):
-            entities.append(
-                SAXBatteryPilotPowerEntity(pilot, coordinator, master_battery_id)
-            )
 
         # Start automatic pilot service if enabled
         if config_entry.data.get(CONF_PILOT_FROM_HA, False):
             await pilot.async_start()
 
-    if entities:
-        async_add_entities(entities, update_before_add=True)
+    # Note: Pilot power entity will be created by the number platform
+    # using SAXBatteryConfigNumber with the sax_pilot_power SAXItem
 
 
 class SAXBatteryPilot:
@@ -102,8 +96,8 @@ class SAXBatteryPilot:
 
         # Calculated values
         self.calculated_power = 0.0
-        self.max_discharge_power = self.battery_count * 3600
-        self.max_charge_power = self.battery_count * 4500
+        self.max_discharge_power = self.battery_count * LIMIT_MAX_CHARGE_PER_BATTERY
+        self.max_charge_power = self.battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
 
         # Track state
         self._remove_interval_update: Callable[[], None] | None = None
@@ -419,33 +413,38 @@ class SAXBatteryPilot:
         return power_value
 
     async def send_power_command(self, power: float, power_factor: float) -> None:
-        """Send power command to battery using write_nominal_power."""
+        """Send power command to battery using coordinator's write method."""
         try:
             _LOGGER.debug(
                 "Sending power command: power=%s, power_factor=%s", power, power_factor
             )
 
-            # Get the nominal power setpoint item (address 41)
-            power_item = self._get_modbus_item("sax_nominal_power_setpoint")
+            # Find the nominal power item using updated constant
+            power_item = self._get_modbus_item_by_name(SAX_NOMINAL_POWER)
+            power_factor_item = self._get_modbus_item_by_name(SAX_NOMINAL_FACTOR)
 
             if not power_item:
                 _LOGGER.error(
-                    "Could not find nominal power setpoint item for battery %s",
+                    "Could not find nominal power item for battery %s",
+                    self.coordinator.battery_id,
+                )
+                return
+            if not power_factor_item:
+                _LOGGER.error(
+                    "Could not find nominal power factor item for battery %s",
                     self.coordinator.battery_id,
                 )
                 return
 
-            # Use write_nominal_power which handles both power and power_factor
-            # Convert power_factor to int as expected by write_nominal_power
-            success = await self.coordinator.modbus_api.write_nominal_power(
-                value=power, power_factor=int(power_factor), modbus_item=power_item
+            # Use coordinator's write_nominal_power which handles power and power_factor
+            success = await self.coordinator.async_write_pilot_control_value(
+                power_item, power_factor_item, power, int(power_factor)
             )
 
-            if not success:
+            if success:
+                _LOGGER.debug("Nominal power command sent successfully")
+            else:
                 _LOGGER.error("Failed to write nominal power command")
-                return
-
-            _LOGGER.debug("Nominal power command sent successfully")
 
         except ModbusException as e:
             _LOGGER.error("Modbus error sending power command: %s", e)
@@ -465,24 +464,18 @@ class SAXBatteryPilot:
         _LOGGER.info("Manual power set to %sW", power_value)
 
     async def set_charge_power_limit(self, power_limit: int) -> bool:
-        """Set the maximum charge power limit."""
+        """Set the maximum charge power limit using coordinator."""
         try:
             _LOGGER.debug("Setting charge power limit to %s W", power_limit)
 
-            # Find the charge power limit item
-            charge_items = [
-                item
-                for item in self.sax_data.get_modbus_items_for_battery(
-                    self.coordinator.battery_id
-                )
-                if item.name == "sax_max_charge_power"
-            ]
+            # Find the charge power limit item using updated constant
+            charge_item = self._get_modbus_item_by_name(SAX_MAX_CHARGE)
 
-            if not charge_items:
+            if not charge_item:
                 _LOGGER.error("Could not find charge power limit item")
                 return False
 
-            charge_item = charge_items[0]
+            # Use coordinator's write method
             success = await self.coordinator.async_write_number_value(
                 charge_item, float(power_limit)
             )
@@ -505,24 +498,18 @@ class SAXBatteryPilot:
             return False
 
     async def set_discharge_power_limit(self, power_limit: int) -> bool:
-        """Set the maximum discharge power limit."""
+        """Set the maximum discharge power limit using coordinator."""
         try:
             _LOGGER.debug("Setting discharge power limit to %s W", power_limit)
 
-            # Find the discharge power limit item
-            discharge_items = [
-                item
-                for item in self.sax_data.get_modbus_items_for_battery(
-                    self.coordinator.battery_id
-                )
-                if item.name == "sax_max_discharge_power"
-            ]
+            # Find the discharge power limit item using updated constant
+            discharge_item = self._get_modbus_item_by_name(SAX_MAX_DISCHARGE)
 
-            if not discharge_items:
+            if not discharge_item:
                 _LOGGER.error("Could not find discharge power limit item")
                 return False
 
-            discharge_item = discharge_items[0]
+            # Use coordinator's write method
             success = await self.coordinator.async_write_number_value(
                 discharge_item, float(power_limit)
             )
@@ -544,17 +531,24 @@ class SAXBatteryPilot:
             _LOGGER.error("Data error setting discharge power limit: %s", e)
             return False
 
-    def _get_modbus_item(self, item_name: str) -> Any | None:
-        """Get modbus item by name for backwards compatibility."""
+    def _get_modbus_item_by_name(self, item_name: str) -> ModbusItem | None:
+        """Get modbus item by name using sax_data."""
         # Get modbus items for master battery
-        api_items = self.sax_data.get_modbus_items_for_battery(
+        modbus_items = self.sax_data.get_modbus_items_for_battery(
             self.coordinator.battery_id
         )
 
-        for item in api_items:
-            if hasattr(item, "name") and item.name == item_name:
-                return item
+        # Filter by name and type
+        matching_items = [
+            item
+            for item in modbus_items
+            if hasattr(item, "name") and item.name == item_name
+        ]
 
+        if matching_items:
+            return matching_items[0]
+
+        _LOGGER.warning("Could not find modbus item with name: %s", item_name)
         return None
 
     def get_solar_charging_enabled(self) -> bool:
@@ -564,78 +558,3 @@ class SAXBatteryPilot:
     def get_manual_control_enabled(self) -> bool:
         """Get manual control state."""
         return bool(self.entry.data.get(CONF_MANUAL_CONTROL, True))
-
-
-class SAXBatteryPilotPowerEntity(
-    CoordinatorEntity[SAXBatteryCoordinator], NumberEntity
-):
-    """Entity showing current calculated pilot power."""
-
-    def __init__(
-        self,
-        pilot: SAXBatteryPilot,
-        coordinator: SAXBatteryCoordinator,
-        battery_id: str,
-    ) -> None:
-        """Initialize the entity."""
-        super().__init__(coordinator)
-        self._pilot = pilot
-        self._battery_id = battery_id
-
-        # Generate unique ID
-        self._attr_unique_id = f"sax_{battery_id}_pilot_power"
-        self._attr_name = (
-            f"Sax {battery_id.replace('battery_', 'Battery ').title()} Pilot Power"
-        )
-
-        # Set number entity properties
-        self._attr_native_min_value = -self._pilot.max_discharge_power
-        self._attr_native_max_value = self._pilot.max_charge_power
-        self._attr_native_step = 100
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_mode = NumberMode.BOX
-        self._attr_entity_category = EntityCategory.CONFIG
-
-    @property
-    def device_info(self) -> Any:
-        """Return device info."""
-        return self.coordinator.sax_data.get_device_info(
-            self._battery_id, DeviceConstants.SYS
-        )
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current calculated power."""
-        return (
-            float(self._pilot.calculated_power)
-            if self._pilot.calculated_power is not None
-            else None
-        )
-
-    @property
-    def icon(self) -> str | None:
-        """Return the icon to use for the entity."""
-        if self._pilot.calculated_power > 0:
-            return "mdi:battery-charging"
-        if self._pilot.calculated_power < 0:
-            return "mdi:battery-minus"
-        return "mdi:battery"
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Handle manual override of calculated power."""
-        await self._pilot.set_manual_power(value)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return extra state attributes."""
-        if not self.coordinator.last_update_success:
-            return None
-
-        return {
-            "battery_id": self._battery_id,
-            "solar_charging_enabled": self._pilot.get_solar_charging_enabled(),
-            "manual_control_enabled": self._pilot.get_manual_control_enabled(),
-            "max_charge_power": self._pilot.max_charge_power,
-            "max_discharge_power": self._pilot.max_discharge_power,
-            "last_updated": self.coordinator.last_update_success_time,
-        }
