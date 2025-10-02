@@ -553,7 +553,12 @@ class SAXBatteryPilot:
 
     def get_solar_charging_enabled(self) -> bool:
         """Get solar charging state."""
-        return bool(self.entry.data.get(CONF_ENABLE_SOLAR_CHARGING, True))
+        # ✅ Only enable if both pilot and solar charging are enabled
+        pilot_enabled = bool(self.entry.data.get(CONF_PILOT_FROM_HA, False))
+        solar_enabled = bool(
+            self.entry.data.get(CONF_ENABLE_SOLAR_CHARGING, False)
+        )  # Changed default to False
+        return pilot_enabled and solar_enabled
 
     def get_manual_control_enabled(self) -> bool:
         """Get manual control state."""
