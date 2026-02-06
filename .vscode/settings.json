@@ -1,4 +1,5 @@
 {
+  "intellicode.enabled": false,
   "chat.modeFilesLocations": {
     "chatmodes": true
   },
@@ -36,20 +37,31 @@
   "python.linting.ruffEnabled": true,
   "python.formatting.provider": "ruff",
   "[python]": {
-    "editor.formatOnSave": true,
+    "editor.formatOnSave": false,
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
     }
   },
   "cSpell.words": [
+    "caplog",
     "codeowners",
+    "Cooldown",
+    "ECONNRESET",
     "entitydescription",
+    "EPIPE",
+    "hostnames",
     "mformat",
     "mtype",
     "Mult",
     "mypy",
+    "pylint",
     "pymodbus",
-    "STATUSANZEIGE"
+    "pyproject",
+    "pytest",
+    "roundtrips",
+    "setpoint",
+    "STATUSANZEIGE",
+    "venv"
   ],
   "workbench.editor.restoreViewState": false,
   "workbench.editor.enablePreview": true,
