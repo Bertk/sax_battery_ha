@@ -463,9 +463,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
             if self._modbus_item.name in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]:
                 # Pilot registers (41-42): check CONF_PILOT_FROM_HA
-                pilot_enabled = bool(
-                    config_entry.data.get(CONF_PILOT_FROM_HA, False)
-                )
+                pilot_enabled = bool(config_entry.data.get(CONF_PILOT_FROM_HA, False))
                 _LOGGER.debug(
                     "Pilot register %s enabled by config: %s",
                     self._modbus_item.name,

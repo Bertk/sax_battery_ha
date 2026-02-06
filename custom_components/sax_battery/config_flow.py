@@ -937,9 +937,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         if not integration_data:
-            _LOGGER.error(
-                "Integration data not found, cannot update SOC manager state"
-            )
+            _LOGGER.error("Integration data not found, cannot update SOC manager state")
             return
 
         coordinators = integration_data.get("coordinators", {})
