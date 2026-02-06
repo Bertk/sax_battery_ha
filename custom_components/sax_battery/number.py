@@ -20,9 +20,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     BATTERY_IDS,
+    CONF_BATTERY_COUNT,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_LIMIT_POWER,
+    CONF_MANUAL_CONTROL,
     CONF_MIN_SOC,
     CONF_PILOT_FROM_HA,
     DOMAIN,
@@ -442,11 +444,15 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 self._modbus_item.address,
             )
 
+            config_entry = self.coordinator.config_entry
+            if config_entry is None:
+                return True
+
             # Check if the corresponding feature is enabled
             if self._modbus_item.name in [SAX_MAX_DISCHARGE, SAX_MAX_CHARGE]:
                 # Power limit registers (43-44): check CONF_LIMIT_POWER
-                limit_power_enabled = self.coordinator.config_entry.data.get(
-                    CONF_LIMIT_POWER, False
+                limit_power_enabled = bool(
+                    config_entry.data.get(CONF_LIMIT_POWER, False)
                 )
                 _LOGGER.debug(
                     "Power limit register %s enabled by config: %s",
@@ -457,8 +463,8 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
             if self._modbus_item.name in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]:
                 # Pilot registers (41-42): check CONF_PILOT_FROM_HA
-                pilot_enabled = self.coordinator.config_entry.data.get(
-                    CONF_PILOT_FROM_HA, False
+                pilot_enabled = bool(
+                    config_entry.data.get(CONF_PILOT_FROM_HA, False)
                 )
                 _LOGGER.debug(
                     "Pilot register %s enabled by config: %s",
@@ -467,8 +473,36 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 )
                 return pilot_enabled
 
-        # Default: enable entity
         return True
+
+    def _get_battery_count(self) -> int:
+        """Get the number of configured batteries.
+
+        Returns:
+            Number of batteries configured in the config entry.
+            Defaults to 1 if not configured.
+
+        Security:
+            OWASP A05: Validates config entry exists before access
+        """
+        config_entry = self.coordinator.config_entry
+        if config_entry is not None:
+            return int(config_entry.data.get(CONF_BATTERY_COUNT, 1))
+        return 1
+
+    def _is_manual_control_enabled(self) -> bool:
+        """Check if manual control is enabled in config.
+
+        Returns:
+            True if manual control is enabled, False otherwise.
+
+        Security:
+            OWASP A05: Validates config entry exists before access
+        """
+        config_entry = self.coordinator.config_entry
+        if config_entry is not None:
+            return bool(config_entry.data.get(CONF_MANUAL_CONTROL, False))
+        return False
 
     @property
     def native_value(self) -> int | None:
