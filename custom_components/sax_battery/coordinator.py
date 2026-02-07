@@ -44,6 +44,11 @@ BATTERY_POLL_SLAVE_INTERVAL = 30  # slave battery data polling (SOC, Power, Stat
 CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3  # Open circuit after N consecutive failures
 CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60  # Wait 60s before attempting reconnection
 
+# Performance monitoring constants
+CYCLE_TIME_HISTORY_SIZE = 100  # Number of cycle times to keep for statistics
+ERROR_HISTORY_SIZE = 1000  # Number of error events to keep for diagnostics
+CYCLE_STATS_LOG_INTERVAL = 240  # Log cycle statistics every N updates (~1 hour)
+
 
 class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """SAX Battery data update coordinator."""
@@ -87,8 +92,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._pending_writes: dict[str, int] = {}
 
         # Performance monitoring: Cycle time tracking
-        # Store last 100 cycle times for statistics (FIFO)
-        self._cycle_times: deque[float] = deque(maxlen=100)
+        # Store last N cycle times for statistics (FIFO)
+        self._cycle_times: deque[float] = deque(maxlen=CYCLE_TIME_HISTORY_SIZE)
         self._cycle_start_time: float | None = None
         self._last_cycle_duration: float | None = None
         self._total_updates: int = 0
@@ -97,9 +102,9 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Error statistics collected from ModbusAPI
         # Error tracking with timestamps for "errors per hour" calculation
-        # Store (timestamp, error_type) tuples for last 60 minutes
+        # Store (timestamp, error_type, register_address) tuples
         self._error_history: deque[tuple[datetime, str, int | None]] = deque(
-            maxlen=1000
+            maxlen=ERROR_HISTORY_SIZE
         )
 
         # Circuit breaker state
@@ -273,8 +278,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             self._consecutive_failures = 0
 
-            # Log cycle time statistics periodically (every 240 updates, ~1 hour)
-            if self._total_updates % 240 == 0:
+            # Log cycle time statistics periodically
+            if self._total_updates % CYCLE_STATS_LOG_INTERVAL == 0:
                 self._log_cycle_statistics()
 
             # Security: Update successful polling timestamp

@@ -1,6 +1,6 @@
 -r requirements.txt
 homeassistant==2026.2.0
-colorlog==6.9.0
+colorlog
 ruff
 mypy
 pylint-per-file-ignores

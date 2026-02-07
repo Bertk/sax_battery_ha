@@ -1214,9 +1214,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         Returns:
             True if entity is available, False otherwise
         """
-        # ToDo: Check number.sax_cluster_pilot_power which is not calculated
-        # Could need special available response
-
         # Entities depend on coordinator state for calculated values
         return super().available and self.coordinator.last_update_success
 
@@ -1329,10 +1326,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # Validate coordinator and SOC manager availability
         if not self.coordinator.soc_manager:
             raise HomeAssistantError("SOC manager not available")
-
-        # Apply SOC constraints to power value
-        # _LOGGER.debug("Applying SOC constraints to pilot power: %sW", power_value)
-        # ToDo: not sure whether this is required
 
         # Derive nominal_power (same as pilot power)
         nominal_power: int = power_value
