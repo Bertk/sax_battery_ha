@@ -222,7 +222,9 @@ class CircuitBreaker:
         self._last_failure_time = datetime.now()
 
         # Record error in history for diagnostics
-        self._error_history.append((datetime.now(), f"{type(error).__name__}: {error}", None))
+        self._error_history.append(
+            (datetime.now(), f"{type(error).__name__}: {error}", None)
+        )
 
         if self._consecutive_failures >= self._failure_threshold:
             if self._state != CircuitBreakerState.OPEN:
