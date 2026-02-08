@@ -403,7 +403,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if not status.success and status.error_type:
             # Include all 3 tuple elements (timestamp, error_type, register_address)
-            self._error_history.append(
+            self._circuit_breaker.error_history.append(
                 (
                     status.timestamp or datetime.now(),
                     status.error_type,
@@ -420,7 +420,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Security:
             OWASP A05: Time-windowed error tracking prevents unbounded growth
         """
-        if not self._error_history:
+        if not self._circuit_breaker.error_history:
             return 0.0
 
         now = datetime.now()
@@ -428,14 +428,14 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Only count errors within last hour (automatic decay)
         recent_error_count = sum(
-            1 for timestamp, _, _ in self._error_history if timestamp >= one_hour_ago
+            1 for timestamp, _, _ in self._circuit_breaker.error_history if timestamp >= one_hour_ago
         )
 
         # Clean up old errors beyond 1 hour to prevent unbounded growth
         # This ensures the deque doesn't fill with ancient errors
         cutoff_time = now - timedelta(hours=2)  # Keep 2 hours for safety margin
-        while self._error_history and self._error_history[0][0] < cutoff_time:
-            self._error_history.popleft()
+        while self._circuit_breaker.error_history and self._circuit_breaker.error_history[0][0] < cutoff_time:
+            self._circuit_breaker.error_history.popleft()
 
         return float(recent_error_count)
 
@@ -451,26 +451,26 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Security:
             OWASP A05: Performance monitoring for anomaly detection
         """
-        if not self._cycle_times:
+        if not self._circuit_breaker.cycle_times:
             return
 
-        avg_time = mean(self._cycle_times)
-        min_time = min(self._cycle_times)
-        max_time = max(self._cycle_times)
-        std_dev = stdev(self._cycle_times) if len(self._cycle_times) > 1 else 0.0
+        avg_time = mean(self._circuit_breaker.cycle_times)
+        min_time = min(self._circuit_breaker.cycle_times)
+        max_time = max(self._circuit_breaker.cycle_times)
+        std_dev = stdev(self._circuit_breaker.cycle_times) if len(self._circuit_breaker.cycle_times) > 1 else 0.0
         errors_per_hour = self._calculate_errors_per_hour()
 
         _LOGGER.info(
             "%s: Cycle stats (n=%d): avg=%.2fs, min=%.2fs, max=%.2fs, "
             "stddev=%.2fs, errors/hr=%.1f, circuit_breaker=%s",
             self.battery_id,
-            len(self._cycle_times),
+            len(self._circuit_breaker.cycle_times),
             avg_time,
             min_time,
             max_time,
             std_dev,
             errors_per_hour,
-            "OPEN" if self._circuit_breaker.is_open() else "CLOSED",
+            "OPEN" if self._circuit_breaker.is_open else "CLOSED",
         )
         # Log detailed error breakdown
         self._log_error_statistics()
@@ -481,7 +481,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Security:
             OWASP A05: Structured error logging for monitoring and alerts
         """
-        if not self._error_history:
+        if not self._circuit_breaker.error_history:
             return
 
         now = datetime.now()
@@ -491,7 +491,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_counts: dict[str, int] = {}
         register_errors: dict[int, int] = {}
 
-        for timestamp, error_type, register_address in self._error_history:
+        for timestamp, error_type, register_address in self._circuit_breaker.error_history:
             # Only count errors in last hour
             if timestamp < one_hour_ago:
                 continue
@@ -550,14 +550,14 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_counts: dict[str, int] = {}
         failed_registers: dict[int, int] = {}
 
-        for _, error_type, register_address in self._error_history:
+        for _, error_type, register_address in self._circuit_breaker.error_history:
             error_counts[error_type] = error_counts.get(error_type, 0) + 1
             if register_address is not None:
                 failed_registers[register_address] = (
                     failed_registers.get(register_address, 0) + 1
                 )
 
-        if not self._cycle_times:
+        if not self._circuit_breaker.cycle_times:
             return {
                 "average": 0.0,
                 "min": 0.0,
@@ -571,26 +571,26 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "timeout_errors": error_counts.get("timeout", 0),
                 "failed_registers": failed_registers,
                 "last_error_time": (
-                    self._error_history[-1][0].isoformat()
-                    if self._error_history
+                    self._circuit_breaker.error_history[-1][0].isoformat()
+                    if self._circuit_breaker.error_history
                     else None
                 ),
             }
 
         return {
-            "average": mean(self._cycle_times),
-            "min": min(self._cycle_times),
-            "max": max(self._cycle_times),
-            "stddev": stdev(self._cycle_times) if len(self._cycle_times) > 1 else 0.0,
+            "average": mean(self._circuit_breaker.cycle_times),
+            "min": min(self._circuit_breaker.cycle_times),
+            "max": max(self._circuit_breaker.cycle_times),
+            "stddev": stdev(self._circuit_breaker.cycle_times) if len(self._circuit_breaker.cycle_times) > 1 else 0.0,
             "last": self._last_cycle_duration or 0.0,
             "errors_per_hour": self._calculate_errors_per_hour(),
-            "circuit_breaker_open": 1.0 if self._circuit_breaker.is_open() else 0.0,
+            "circuit_breaker_open": 1.0 if self._circuit_breaker.is_open else 0.0,
             "modbus_errors": error_counts.get("modbus", 0),
             "network_errors": error_counts.get("network", 0),
             "timeout_errors": error_counts.get("timeout", 0),
             "failed_registers": failed_registers,
             "last_error_time": (
-                self._error_history[-1][0].isoformat() if self._error_history else None
+                self._circuit_breaker.error_history[-1][0].isoformat() if self._circuit_breaker.error_history else None
             ),
         }
 

@@ -80,7 +80,7 @@ class CircuitBreaker:
         self._total_failures: int = 0
         self._total_successes: int = 0
         self._total_blocked: int = 0
-        self._error_history: deque[tuple[datetime, str]] = deque(
+        self._error_history: deque[tuple[datetime, str, int | None]] = deque(
             maxlen=ERROR_HISTORY_SIZE
         )
 
@@ -118,7 +118,7 @@ class CircuitBreaker:
         return self._total_blocked
 
     @property
-    def error_history(self) -> deque[tuple[datetime, str]]:
+    def error_history(self) -> deque[tuple[datetime, str, int | None]]:
         """Return error history for diagnostics."""
         return self._error_history
 
@@ -222,7 +222,7 @@ class CircuitBreaker:
         self._last_failure_time = datetime.now()
 
         # Record error in history for diagnostics
-        self._error_history.append((datetime.now(), f"{type(error).__name__}: {error}"))
+        self._error_history.append((datetime.now(), f"{type(error).__name__}: {error}", None))
 
         if self._consecutive_failures >= self._failure_threshold:
             if self._state != CircuitBreakerState.OPEN:

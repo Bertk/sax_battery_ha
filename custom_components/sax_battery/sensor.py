@@ -710,7 +710,7 @@ class SAXBatteryCoordinatorCycleSensor(
                 "stddev": round(stats.get("stddev", 0.0), 3),
                 "total_updates": self.coordinator._total_updates,  # noqa: SLF001
                 "failed_updates": self.coordinator._failed_updates,  # noqa: SLF001
-                "consecutive_failures": self.coordinator._consecutive_failures,  # noqa: SLF001
+                "consecutive_failures": self.coordinator._circuit_breaker.consecutive_failures,  # noqa: SLF001
             }
 
         if self.entity_description.key == COORDINATOR_ERROR_RATE:
@@ -722,7 +722,7 @@ class SAXBatteryCoordinatorCycleSensor(
                 timestamp,  # noqa: B007
                 error_type,
                 register_address,
-            ) in self.coordinator._error_history:  # noqa: SLF001
+            ) in self.coordinator._circuit_breaker.error_history:  # noqa: SLF001
                 # Count errors by type
                 error_counts[error_type] = error_counts.get(error_type, 0) + 1
 
@@ -739,15 +739,15 @@ class SAXBatteryCoordinatorCycleSensor(
                 "total_errors_last_hour": int(stats.get("errors_per_hour", 0)),
                 "failed_registers": failed_registers,
                 "last_error_time": (
-                    self.coordinator._error_history[-1][0].isoformat()  # noqa: SLF001
-                    if self.coordinator._error_history  # noqa: SLF001
+                    self.coordinator._circuit_breaker.error_history[-1][0].isoformat()  # noqa: SLF001
+                    if self.coordinator._circuit_breaker.error_history  # noqa: SLF001
                     else None
                 ),
             }
 
         if self.entity_description.key == COORDINATOR_CIRCUIT_BREAKER:
             return {
-                "consecutive_failures": self.coordinator._consecutive_failures,  # noqa: SLF001
+                "consecutive_failures": self.coordinator._circuit_breaker.consecutive_failures,  # noqa: SLF001
                 "failure_threshold": CIRCUIT_BREAKER_FAILURE_THRESHOLD,
                 "cooldown_seconds": CIRCUIT_BREAKER_COOLDOWN_SECONDS,
             }

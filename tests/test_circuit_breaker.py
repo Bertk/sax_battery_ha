@@ -220,8 +220,9 @@ class TestCircuitBreakerRecordFailure:
         cb.record_failure(error)
 
         assert len(cb.error_history) == 1
-        timestamp, message = cb.error_history[0]
+        timestamp, message, number = cb.error_history[0]
         assert isinstance(timestamp, datetime)
+        assert number == None
         assert "OSError" in message
         assert "Connection refused" in message
 
@@ -282,7 +283,7 @@ class TestCircuitBreakerFullCycle:
             cb.record_failure(OSError(f"Failure {i + 1}"))
 
         # Phase 2: Verify OPEN
-        assert cb.state == CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN # type: ignore[comparison-overlap]
         assert cb.pre_update_check() is False  # blocked
 
         # Phase 3: Simulate cooldown expiry → HALF_OPEN
@@ -318,7 +319,7 @@ class TestCircuitBreakerFullCycle:
 
         # Failure in half-open → back to OPEN
         cb.record_failure(OSError("Still failing"))
-        assert cb.state == CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN # type: ignore[comparison-overlap]
         assert cb.consecutive_failures == CIRCUIT_BREAKER_FAILURE_THRESHOLD + 1
 
     def test_intermittent_failures_reset_on_success(self) -> None:
