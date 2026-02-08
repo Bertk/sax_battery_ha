@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
-from collections import deque
+from collections.abc import Coroutine
 from datetime import datetime, timedelta
 import logging
 from statistics import mean, stdev
@@ -18,6 +18,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .circuit_breaker import (
+    CIRCUIT_BREAKER_COOLDOWN_SECONDS,
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    CircuitBreaker,
+)
 from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_LIMIT_POWER,
@@ -39,10 +44,6 @@ _LOGGER = logging.getLogger(__name__)
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 15  # master battery data polling (SOC, Power, Status)
 BATTERY_POLL_SLAVE_INTERVAL = 30  # slave battery data polling (SOC, Power, Status)
-
-# Circuit breaker thresholds
-CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3  # Open circuit after N consecutive failures
-CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60  # Wait 60s before attempting reconnection
 
 # Performance monitoring constants
 CYCLE_TIME_HISTORY_SIZE = 100  # Number of cycle times to keep for statistics
@@ -93,23 +94,18 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Performance monitoring: Cycle time tracking
         # Store last N cycle times for statistics (FIFO)
-        self._cycle_times: deque[float] = deque(maxlen=CYCLE_TIME_HISTORY_SIZE)
         self._cycle_start_time: float | None = None
         self._last_cycle_duration: float | None = None
         self._total_updates: int = 0
         self._failed_updates: int = 0
-        self._consecutive_failures: int = 0
 
-        # Error statistics collected from ModbusAPI
-        # Error tracking with timestamps for "errors per hour" calculation
-        # Store (timestamp, error_type, register_address) tuples
-        self._error_history: deque[tuple[datetime, str, int | None]] = deque(
-            maxlen=ERROR_HISTORY_SIZE
+        # Circuit breaker for Modbus communication protection
+        # Security (OWASP A05): Prevents resource exhaustion
+        self._circuit_breaker = CircuitBreaker(
+            name=battery_id,
+            failure_threshold=CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            cooldown_seconds=CIRCUIT_BREAKER_COOLDOWN_SECONDS,
         )
-
-        # Circuit breaker state
-        self._circuit_breaker_open: bool = False
-        self._circuit_breaker_open_time: datetime | None = None
 
         # Track nominal power atomic write state
         self._nominal_power_pending: dict[str, int] = {}  # {power: int, factor: int}
@@ -141,6 +137,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Return the circuit breaker instance for diagnostics."""
+        return self._circuit_breaker
+
+    @property
     def is_master(self) -> bool:
         """Check if this is the master battery coordinator."""
         return bool(self.battery_config.get(CONF_BATTERY_IS_MASTER, False))
@@ -152,6 +153,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Processes write queue before reads to minimize Modbus roundtrips
         Security:
             OWASP A05: Single-threaded Modbus access prevents device resets
+            Circuit breaker pattern prevents overwhelming unresponsive devices
         """
         # Security: Initialize with proper type annotation
         data: dict[str, Any] = {}
@@ -160,28 +162,14 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cycle_start_time = time.monotonic()
 
         # Check circuit breaker state
-        if self._circuit_breaker_open:
-            if self._circuit_breaker_open_time:
-                time_since_open = (
-                    datetime.now() - self._circuit_breaker_open_time
-                ).total_seconds()
-
-                if time_since_open < CIRCUIT_BREAKER_COOLDOWN_SECONDS:
-                    # Circuit still open, skip update
-                    cycle_duration = time.monotonic() - self._cycle_start_time
-                    self._cycle_times.append(cycle_duration)
-
-                    raise UpdateFailed(
-                        f"Circuit breaker open (cooldown: {CIRCUIT_BREAKER_COOLDOWN_SECONDS - time_since_open:.0f}s remaining)"
-                    )
-
-                # Cooldown period expired, attempt half-open state
-                _LOGGER.info(
-                    "%s: Circuit breaker entering half-open state (cooldown expired)",
-                    self.battery_id,
-                )
-                self._circuit_breaker_open = False
-                self._circuit_breaker_open_time = None
+        if not self._circuit_breaker.pre_update_check():
+            cycle_duration = time.monotonic() - self._cycle_start_time
+            self._circuit_breaker.record_cycle_time(cycle_duration)
+            raise UpdateFailed(
+                f"Circuit breaker open"
+                f" (cooldown: {self._circuit_breaker.cooldown_remaining:.0f}s"
+                f" remaining)"
+            )
 
         try:
             # STEP 1: Process write queue first (before reads)
@@ -194,17 +182,13 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             enabled_items = await self._get_enabled_modbus_items(entity_registry)
 
             # remove items which were just written
-            enabled_items = [
-                item
-                for item in enabled_items
-                if item.name not in data  # Compare item.name (str) to data keys (str)
-            ]
+            enabled_items = [item for item in enabled_items if item.name not in data]
 
             # Batch polls by device for efficiency
             device_batches = self._group_items_by_device(enabled_items)
 
             # Performance: Use extend pattern for collecting tasks
-            polling_tasks = []
+            polling_tasks: list[Coroutine[Any, Any, dict[str, Any]]] = []
             polling_tasks.extend(
                 [
                     self._poll_device_batch(device, items)
@@ -216,16 +200,21 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             batch_results = await asyncio.gather(*polling_tasks, return_exceptions=True)
 
             # Process results and update data dictionary
+            batch_failure_count = 0
+            batch_total_count = len(device_batches)
+            last_batch_error: Exception | None = None
+
             for device, result in zip(
                 device_batches.keys(), batch_results, strict=True
             ):
                 if isinstance(result, Exception):
+                    batch_failure_count += 1
+                    last_batch_error = result
                     _LOGGER.warning("Failed to poll device %s: %s", device, result)
                     continue
 
-                # Security: Type check before dictionary update to ensure result is a dict
+                # Security: Type check before dictionary update
                 if isinstance(result, dict):
-                    # Performance: Single dictionary update per device
                     data.update(result)
                 else:
                     _LOGGER.warning(
@@ -233,6 +222,22 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         device,
                         type(result),
                     )
+
+            # Security (OWASP A05): If ALL batches failed, trigger
+            # circuit breaker to protect against unresponsive devices
+            if batch_total_count > 0 and batch_failure_count == batch_total_count:
+                self._failed_updates += 1
+                self._circuit_breaker.record_failure(
+                    last_batch_error or OSError("All device batches failed")
+                )
+
+                if self._cycle_start_time:
+                    cycle_duration = time.monotonic() - self._cycle_start_time
+                    self._circuit_breaker.record_cycle_time(cycle_duration)
+
+                raise UpdateFailed(  # noqa: TRY301
+                    f"All {batch_total_count} device batches failed: {last_batch_error}"
+                )
 
             # Update calculated values for enabled SAX items only
             await self._update_enabled_calculated_values(data, entity_registry)
@@ -252,7 +257,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         combined_soc,
                         self.soc_manager.min_soc,
                     )
-                    # Enforcement happens asynchronously
                     self.hass.async_create_task(
                         self.soc_manager.check_and_enforce_discharge_limit()
                     )
@@ -265,18 +269,12 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Calculate cycle time
             cycle_duration = time.monotonic() - self._cycle_start_time
-            self._cycle_times.append(cycle_duration)
+            self._circuit_breaker.record_cycle_time(cycle_duration)
             self._last_cycle_duration = cycle_duration
             self._total_updates += 1
 
-            # Reset consecutive failure counter on success
-            if self._consecutive_failures > 0:
-                _LOGGER.info(
-                    "%s: Connection recovered after %d consecutive failures",
-                    self.battery_id,
-                    self._consecutive_failures,
-                )
-            self._consecutive_failures = 0
+            # Record success in circuit breaker
+            self._circuit_breaker.record_success()
 
             # Log cycle time statistics periodically
             if self._total_updates % CYCLE_STATS_LOG_INTERVAL == 0:
@@ -287,7 +285,29 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             return data  # noqa: TRY300
 
+        except UpdateFailed:
+            # Re-raise UpdateFailed (from all-batches-failed or circuit
+            # breaker check). Circuit breaker already handled above.
+            raise
+
+        except (ModbusException, OSError, builtins.TimeoutError) as err:
+            self._failed_updates += 1
+            self._circuit_breaker.record_failure(err)
+
+            if self._cycle_start_time:
+                cycle_duration = time.monotonic() - self._cycle_start_time
+                self._circuit_breaker.record_cycle_time(cycle_duration)
+
+            raise UpdateFailed(f"Modbus communication error: {err}") from err
+
         except Exception as err:
+            # Unexpected errors don't trigger circuit breaker
+            self._failed_updates += 1
+
+            if self._cycle_start_time:
+                cycle_duration = time.monotonic() - self._cycle_start_time
+                self._circuit_breaker.record_cycle_time(cycle_duration)
+
             _LOGGER.exception(
                 "Unexpected error during data update: %s",
                 self.battery_id,
@@ -366,10 +386,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except builtins.TimeoutError:
                     break  # No more pending writes
                 except Exception as err:  # noqa: BLE001
-                    if item is not None:
+                    if item is not None:  # pyright: ignore[reportPossiblyUnboundVariable]
                         _LOGGER.error(
                             "Write queue error for %s: %s",
-                            item.name if "item" in locals() else "unknown",
+                            item.name if "item" in locals() else "unknown",  # pyright: ignore[reportPossiblyUnboundVariable]
                             err,
                         )
 
@@ -450,7 +470,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             max_time,
             std_dev,
             errors_per_hour,
-            "OPEN" if self._circuit_breaker_open else "CLOSED",
+            "OPEN" if self._circuit_breaker.is_open() else "CLOSED",
         )
         # Log detailed error breakdown
         self._log_error_statistics()
@@ -564,7 +584,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "stddev": stdev(self._cycle_times) if len(self._cycle_times) > 1 else 0.0,
             "last": self._last_cycle_duration or 0.0,
             "errors_per_hour": self._calculate_errors_per_hour(),
-            "circuit_breaker_open": 1.0 if self._circuit_breaker_open else 0.0,
+            "circuit_breaker_open": 1.0 if self._circuit_breaker.is_open() else 0.0,
             "modbus_errors": error_counts.get("modbus", 0),
             "network_errors": error_counts.get("network", 0),
             "timeout_errors": error_counts.get("timeout", 0),
