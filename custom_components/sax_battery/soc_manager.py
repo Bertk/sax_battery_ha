@@ -1,10 +1,15 @@
-"""SOC constraint management for SAX Battery integration.
+"""SOC constraint management for SAX Battery integration - REFACTORED VERSION.
+
+This is the proposed refactored implementation based on GitHub Issue #40.
+DO NOT USE DIRECTLY - This is a reference implementation for review.
 
 Security:
     OWASP A05: Implements resource protection to prevent battery damage
+    OWASP A01: Enforces master-only access control with isolated validation
 
 Performance:
-    Efficient SOC checking with caching to minimize coordinator queries
+    Efficient SOC checking with guard clauses for early returns
+    Minimizes coordinator queries through cached validation results
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -20,6 +26,7 @@ from .const import (
     SAX_COMBINED_SOC,
     SAX_MAX_DISCHARGE,
 )
+from .items import ModbusItem
 
 if TYPE_CHECKING:
     from .coordinator import SAXBatteryCoordinator
@@ -28,7 +35,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class SOCManager:
-    """Manager for SOC-based battery protection constraints."""
+    """Manager for SOC-based battery protection constraints.
+
+    Refactored to reduce complexity and improve testability.
+    See GitHub Issue #40 for rationale.
+    """
 
     def __init__(
         self,
@@ -36,7 +47,16 @@ class SOCManager:
         min_soc: int,
         enabled: bool = True,
     ) -> None:
-        """Initialize SOC manager."""
+        """Initialize SOC manager.
+
+        Args:
+            coordinator: SAX Battery coordinator instance
+            min_soc: Minimum SOC threshold (0-100)
+            enabled: Whether constraint enforcement is enabled
+
+        Security:
+            OWASP A05: Validates min_soc range to prevent invalid configurations
+        """
         self.coordinator = coordinator
         self.hass = coordinator.hass
         self.config_entry = coordinator.config_entry
@@ -51,7 +71,14 @@ class SOCManager:
 
     @min_soc.setter
     def min_soc(self, value: int) -> None:
-        """Set minimum SOC threshold with validation."""
+        """Set minimum SOC threshold with validation.
+
+        Args:
+            value: New minimum SOC (0-100)
+
+        Security:
+            OWASP A05: Validates and clamps input to safe range
+        """
         old_value = self._min_soc
         self._min_soc = max(0, min(100, value))
         _LOGGER.debug("Min SOC updated to %s%%", self._min_soc)
@@ -71,75 +98,75 @@ class SOCManager:
 
     @enabled.setter
     def enabled(self, value: bool) -> None:
-        """Set constraint enabled state."""
+        """Set constraint enabled state.
+
+        Args:
+            value: New enabled state
+        """
         self._enabled = bool(value)
         _LOGGER.debug("SOC constraints %s", "enabled" if self._enabled else "disabled")
 
-    async def check_and_enforce_discharge_limit(self) -> bool:
-        """Check and enforce discharge limit based on combined SOC.
+    def _validate_enforcement_prerequisites(self) -> tuple[bool, str, float | None]:
+        """Validate prerequisites for SOC enforcement.
+
+        Uses guard clauses to check all requirements before enforcement.
+        Early returns improve readability and reduce nesting.
 
         Returns:
-            bool: True if enforcement was applied, False otherwise
+            Tuple of (can_enforce, reason, combined_soc):
+                - can_enforce: True if enforcement should proceed
+                - reason: Human-readable explanation of validation result
+                - combined_soc: Current SOC value if available, None otherwise
 
         Security:
-            OWASP A05: Validates coordinator state before hardware writes
-            OWASP A01: Uses is_master property to ensure proper access control
+            OWASP A05: Validates system state before hardware operations
+            OWASP A01: Enforces master-only access control
+
+        Performance:
+            Early returns avoid unnecessary validation steps
         """
-        # Add early logging for debugging
-        _LOGGER.debug(
-            "SOC enforcement check: enabled=%s, coordinator_data=%s, is_master=%s",
-            self.enabled,
-            bool(self.coordinator.data),
-            self.coordinator.is_master
-            if hasattr(self.coordinator, "is_master")
-            else "N/A",
-        )
-
+        # Guard clause: Check if enforcement is enabled
         if not self.enabled:
-            _LOGGER.debug("Cannot enforce discharge limit - SOC protection disabled")
-            return False
+            return False, "SOC protection disabled", None
 
-        # Validate coordinator has required data
+        # Guard clause: Validate coordinator has data
         if not self.coordinator.data:
-            _LOGGER.warning("Coordinator data not available for SOC enforcement")
-            return False
+            return False, "Coordinator data not available", None
 
-        # CRITICAL: Only master coordinator can enforce discharge limits
+        # Guard clause: Only master can enforce (security critical)
         if not self.coordinator.is_master:
-            _LOGGER.debug(
-                "SOC enforcement skipped - coordinator %s is not master",
-                self.coordinator.battery_id,
+            return (
+                False,
+                f"Coordinator {self.coordinator.battery_id} is not master",
+                None,
             )
-            return False
 
-        # Get combined SOC from master coordinator's data
+        # Guard clause: Validate combined SOC is available
         combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
-
-        # Log SOC value for debugging
-        _LOGGER.debug(
-            "SOC enforcement check: combined_soc=%s, min_soc=%s",
-            combined_soc,
-            self.min_soc,
-        )
-
         if combined_soc is None:
-            _LOGGER.debug(
-                "Combined SOC not yet available in master coordinator data: %s",
-                self.coordinator.data.keys(),
-            )
-            return False
+            return False, "Combined SOC not yet available", None
 
-        # Check if below minimum
+        # Guard clause: Check if SOC is above minimum (no action needed)
         if combined_soc >= self.min_soc:
-            _LOGGER.debug(
-                "SOC %.1f%% >= min %.1f%% - no enforcement needed",
+            return (
+                False,
+                f"SOC {combined_soc:.1f}% >= min {self.min_soc:.1f}%",
                 combined_soc,
-                self.min_soc,
             )
-            return False
 
-        # Find SAX_MAX_DISCHARGE ModbusItem from MODBUS_BATTERY_POWER_LIMIT_ITEMS list
-        max_discharge_item = next(
+        # All validations passed - enforcement needed
+        return True, "Enforcement required", combined_soc
+
+    def _get_max_discharge_item(self) -> ModbusItem | None:
+        """Get SAX_MAX_DISCHARGE ModbusItem from power limit items.
+
+        Returns:
+            ModbusItem for SAX_MAX_DISCHARGE or None if not found
+
+        Performance:
+            Uses generator expression with next() for efficient lookup
+        """
+        item = next(
             (
                 item
                 for item in MODBUS_BATTERY_POWER_LIMIT_ITEMS
@@ -148,15 +175,29 @@ class SOCManager:
             None,
         )
 
-        if not max_discharge_item:
+        if not item:
             _LOGGER.error(
                 "Could not find SAX_MAX_DISCHARGE in MODBUS_BATTERY_POWER_LIMIT_ITEMS"
             )
-            return False
 
+        return item
+
+    def _resolve_max_discharge_entity(self, item: ModbusItem) -> str | None:
+        """Resolve entity_id for max discharge control.
+
+        Args:
+            item: ModbusItem for SAX_MAX_DISCHARGE
+
+        Returns:
+            Entity ID string or None if resolution failed
+
+        Security:
+            OWASP A05: Type guard validates unique_id before registry lookup
+            OWASP A01: Uses master's battery_id for proper entity addressing
+        """
         # Generate unique_id for SAX_MAX_DISCHARGE entity
         unique_id = self.coordinator.sax_data.get_unique_id_for_item(
-            max_discharge_item,
+            item,
             battery_id=self.coordinator.battery_id,  # Master's battery_id
         )
 
@@ -169,17 +210,15 @@ class SOCManager:
                 if self.coordinator.config_entry
                 else None,
             )
-            return False
+            return None
 
+        # Lookup entity in registry
         ent_reg = er.async_get(self.hass)
-
-        # Use "number" domain, not "input_number"
         entity_id = ent_reg.async_get_entity_id("number", DOMAIN, unique_id)
 
         if not entity_id:
-            _LOGGER.error(
-                "Could not find entity_id for SAX_MAX_DISCHARGE unique_id=%s (available entities: %s)",
-                unique_id,
+            # Log available entities for debugging
+            available_entities = (
                 [
                     e.unique_id
                     for e in ent_reg.entities.get_entries_for_config_entry_id(
@@ -188,21 +227,51 @@ class SOCManager:
                     if e.domain == "number"
                 ]
                 if self.coordinator.config_entry
-                else "N/A",
+                else []
             )
-            return False
 
-        # Only write 0W if the current value is non-zero
+            _LOGGER.error(
+                "Could not find entity_id for SAX_MAX_DISCHARGE unique_id=%s (available entities: %s)",
+                unique_id,
+                available_entities,
+            )
+            return None
+
+        return entity_id
+
+    async def _write_discharge_limit(
+        self,
+        entity_id: str,
+        limit_watts: float,
+        current_soc: float,
+    ) -> bool:
+        """Write discharge limit to hardware via Home Assistant service.
+
+        Args:
+            entity_id: Target entity ID for number.set_value service
+            limit_watts: Discharge limit in watts (0 = blocked)
+            current_soc: Current SOC percentage for logging
+
+        Returns:
+            True if write succeeded, False otherwise
+
+        Security:
+            OWASP A05: Uses blocking=True for reliable constraint enforcement
+
+        Performance:
+            Skips redundant writes if limit already set to target value
+        """
+        # Check current state to avoid redundant writes
         current_state = self.hass.states.get(entity_id)
         if current_state and current_state.state not in ("unknown", "unavailable"):
             try:
                 current_value = float(current_state.state)
-                if current_value == 0.0:
+                if current_value == limit_watts:
                     _LOGGER.debug(
-                        "Discharge limit already enforced (0W) on master %s, skipping redundant write",
+                        "Discharge limit already set to %sW on master %s, skipping redundant write",
+                        limit_watts,
                         self.coordinator.battery_id,
                     )
-
                     return False  # No write needed, enforcement already active
             except (ValueError, TypeError):
                 _LOGGER.warning(
@@ -210,18 +279,20 @@ class SOCManager:
                     current_state.state,
                 )
 
+        # Log enforcement action at warning level (user-relevant)
         _LOGGER.warning(
             "Combined SOC %.1f%% below minimum %.1f%% - enforcing discharge limit via master %s",
-            combined_soc,
+            current_soc,
             self.min_soc,
             self.coordinator.battery_id,
         )
 
-        # Use number.set_value service (not input_number)
+        # Use number.set_value service to write hardware
         try:
             _LOGGER.info(
-                "Calling number.set_value service: entity_id=%s, value=0.0",
+                "Calling number.set_value service: entity_id=%s, value=%s",
                 entity_id,
+                limit_watts,
             )
 
             await self.hass.services.async_call(
@@ -229,27 +300,99 @@ class SOCManager:
                 "set_value",
                 {
                     "entity_id": entity_id,
-                    "value": 0,
+                    "value": limit_watts,
                 },
-                blocking=True,
+                blocking=True,  # Wait for completion (safety critical)
             )
 
             _LOGGER.info(
                 "Discharge blocked on master %s: SOC %.1f%% < min %.1f%% (entity: %s)",
                 self.coordinator.battery_id,
-                combined_soc,
+                current_soc,
                 self.min_soc,
                 entity_id,
             )
 
-            return True  # noqa: TRY300
+            return True # noqa: TRY300
 
-        except Exception as exc:
-            _LOGGER.error(  # noqa: G201
+        except HomeAssistantError as exc:
+            # Specific exception: Service call failed
+            _LOGGER.error(
                 "Failed to enforce discharge limit on master %s via entity %s: %s",
                 self.coordinator.battery_id,
                 entity_id,
                 exc,
-                exc_info=True,  # Add full traceback for debugging
             )
             return False
+        except (OSError, TimeoutError) as exc:
+            # Specific exception: Network or hardware error
+            _LOGGER.error(
+                "Network error enforcing discharge limit on master %s: %s",
+                self.coordinator.battery_id,
+                exc,
+            )
+            return False
+
+    async def _enforce_discharge_constraint(self, combined_soc: float) -> bool:
+        """Execute discharge constraint enforcement.
+
+        Orchestrates the enforcement process:
+        1. Get ModbusItem for SAX_MAX_DISCHARGE
+        2. Resolve entity_id from entity registry
+        3. Write 0W limit via Home Assistant service
+
+        Args:
+            combined_soc: Current combined SOC percentage
+
+        Returns:
+            True if enforcement was applied, False otherwise
+
+        Performance:
+            Short-circuits on any step failure to avoid unnecessary work
+        """
+        # Step 1: Get ModbusItem
+        max_discharge_item = self._get_max_discharge_item()
+        if not max_discharge_item:
+            return False
+
+        # Step 2: Resolve entity_id
+        entity_id = self._resolve_max_discharge_entity(max_discharge_item)
+        if not entity_id:
+            return False
+
+        # Step 3: Write discharge limit (0W = block discharge)
+        return await self._write_discharge_limit(
+            entity_id=entity_id,
+            limit_watts=0,
+            current_soc=combined_soc,
+        )
+
+    async def check_and_enforce_discharge_limit(self) -> bool:
+        """Check and enforce discharge limit based on combined SOC.
+
+        Main entry point for SOC-based constraint enforcement.
+        Uses guard clauses for validation, then delegates to enforcement logic.
+
+        Returns:
+            bool: True if enforcement was applied, False otherwise
+
+        Security:
+            OWASP A05: Validates coordinator state before hardware writes
+            OWASP A01: Uses is_master property to ensure proper access control
+
+        Performance:
+            Early returns via validation avoid unnecessary enforcement attempts
+        """
+        # Validate all prerequisites before attempting enforcement
+        can_enforce, reason, combined_soc = self._validate_enforcement_prerequisites()
+
+        if not can_enforce:
+            _LOGGER.debug("SOC enforcement skipped: %s", reason)
+            return False
+
+        # All validations passed - proceed with enforcement
+        # combined_soc is guaranteed to be float (not None) when can_enforce=True
+        assert combined_soc is not None, (
+            "combined_soc must be set when can_enforce=True"
+        )
+        return await self._enforce_discharge_constraint(combined_soc)

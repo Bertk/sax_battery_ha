@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.sax_battery.const import SAX_COMBINED_SOC
 from custom_components.sax_battery.soc_manager import SOCManager
+from homeassistant.exceptions import HomeAssistantError
 
 
 class TestSOCManagerInitialization:
@@ -279,7 +280,7 @@ class TestCheckAndEnforceDischargeLimit:
         mock_entity_registry.return_value = mock_ent_reg
 
         # Mock service call to raise exception
-        soc_manager.hass.services.async_call.side_effect = RuntimeError(
+        soc_manager.hass.services.async_call.side_effect = HomeAssistantError(
             "Service call failed"
         )
 
@@ -350,7 +351,7 @@ class TestCheckAndEnforceDischargeLimit:
 
         # Mock service call failure
         soc_manager.hass.services.async_call = AsyncMock(
-            side_effect=Exception("Service call failed")
+            side_effect=OSError("Service call failed")
         )
 
         # Execute enforcement
