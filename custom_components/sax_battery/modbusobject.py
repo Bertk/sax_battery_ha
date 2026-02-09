@@ -927,6 +927,37 @@ class ModbusAPI:
                 )
                 return False
 
+    def get_diagnostics(self) -> dict[str, object]:
+        """Return diagnostic information for troubleshooting.
+
+        Returns:
+            Dictionary with connection state and operation metrics
+
+        Security:
+            OWASP A05: Does not expose host IP (caller must redact)
+
+        Performance:
+            Lightweight attribute access, no I/O
+        """
+        diagnostics: dict[str, object] = {
+            "connected": self.is_connected(),
+            "port": self._port,
+            "battery_id": self.battery_id,
+            "consecutive_failures": self.consecutive_failures,
+        }
+
+        # Last operation status
+        status = self.last_operation_status
+        diagnostics["last_operation"] = {
+            "success": status.success,
+            "error_type": status.error_type,
+            "error_message": status.error_message,
+            "timestamp": (status.timestamp.isoformat() if status.timestamp else None),
+            "register_address": status.register_address,
+        }
+
+        return diagnostics
+
     def should_force_reconnect(self) -> bool:
         """Check if forced reconnection is needed.
 

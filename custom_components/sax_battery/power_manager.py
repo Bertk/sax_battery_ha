@@ -585,6 +585,30 @@ class PowerManager:
         """Check if manual control mode is enabled."""
         return self._state.manual_control_enabled
 
+    def get_diagnostics(self) -> dict[str, object]:
+        """Return diagnostic information for troubleshooting.
+
+        Returns:
+            Dictionary with power manager state and configuration
+
+        Security:
+            OWASP A05: Does not expose sensitive configuration data
+        """
+        return {
+            "running": self._running,
+            "mode": self._state.mode,
+            "target_power": self._state.target_power,
+            "solar_charging_enabled": self._state.solar_charging_enabled,
+            "manual_control_enabled": self._state.manual_control_enabled,
+            "last_update": self._state.last_update.isoformat(),
+            "battery_count": self.battery_count,
+            "max_discharge_power": self.max_discharge_power,
+            "max_charge_power": self.max_charge_power,
+            "update_interval": getattr(self, "update_interval", None),
+            "power_entity_id": self._power_entity_id,
+            "power_factor_entity_id": self._power_factor_entity_id,
+        }
+
     async def _update_entity_states(self, power: float, factor: int) -> None:
         """Update entity states for immediate UI feedback.
 

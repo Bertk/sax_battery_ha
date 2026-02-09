@@ -396,3 +396,24 @@ class SOCManager:
             "combined_soc must be set when can_enforce=True"
         )
         return await self._enforce_discharge_constraint(combined_soc)
+
+    def get_diagnostics(self) -> dict[str, object]:
+        """Return diagnostic information for troubleshooting.
+
+        Returns:
+            Dictionary with SOC manager state and configuration
+
+        Security:
+            OWASP A05: Exposes only non-sensitive configuration data
+        """
+        combined_soc = None
+        if self.coordinator.data:
+            combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
+
+        return {
+            "enabled": self._enabled,
+            "min_soc": self._min_soc,
+            "coordinator_is_master": self.coordinator.is_master,
+            "coordinator_battery_id": self.coordinator.battery_id,
+            "combined_soc": combined_soc,
+        }
