@@ -36,6 +36,7 @@
         "GitHub.copilot",
         "GitHub.copilot-chat",
         "bierner.markdown-preview-github-styles",
+        "bierner.markdown-mermaid",
         "DavidAnson.vscode-markdownlint",
         "mhutchie.git-graph",
         "donjayamanne.python-extension-pack",
