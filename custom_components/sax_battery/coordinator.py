@@ -290,6 +290,9 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_cycle_duration = cycle_duration
             self._total_updates += 1
 
+            # Invalidate statistics cache (lazy aggregation - Issue #43)
+            self._statistics.mark_dirty()
+
             # Record success in circuit breaker
             self._circuit_breaker.record_success()
 

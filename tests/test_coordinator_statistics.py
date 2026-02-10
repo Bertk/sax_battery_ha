@@ -466,3 +466,103 @@ class TestCoordinatorStatistics:
         stats = stats_obj.cycle_time_statistics
 
         assert stats["last"] == 0.0
+
+    # --- Lazy caching tests (Issue #43) ---
+
+    def test_cache_returns_same_object_without_changes(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+        mock_circuit_breaker_stats: MagicMock,
+    ) -> None:
+        """Test that repeated calls return cached dict when data unchanged."""
+        mock_circuit_breaker_stats.cycle_times.extend([1.0, 2.0, 3.0])
+
+        stats1 = coordinator_stats.cycle_time_statistics
+        stats2 = coordinator_stats.cycle_time_statistics
+
+        # Same object reference - no recomputation
+        assert stats1 is stats2
+
+    def test_cache_invalidated_by_mark_dirty(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+        mock_circuit_breaker_stats: MagicMock,
+    ) -> None:
+        """Test that mark_dirty forces recomputation on next access."""
+        mock_circuit_breaker_stats.cycle_times.extend([1.0, 2.0])
+
+        stats1 = coordinator_stats.cycle_time_statistics
+        coordinator_stats.mark_dirty()
+        stats2 = coordinator_stats.cycle_time_statistics
+
+        # Different object after invalidation
+        assert stats1 is not stats2
+        # Values still correct
+        assert stats2["average"] == 1.5
+
+    def test_cache_invalidated_by_collect_modbus_error(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+        mock_circuit_breaker_stats: MagicMock,
+    ) -> None:
+        """Test that collecting an error invalidates the cache."""
+        mock_circuit_breaker_stats.cycle_times.extend([1.0])
+
+        stats1 = coordinator_stats.cycle_time_statistics
+
+        now = datetime.now()
+        status = OperationStatus(
+            success=False,
+            error_type="modbus",
+            timestamp=now,
+            register_address=40113,
+        )
+        coordinator_stats.collect_modbus_error(status)
+
+        stats2 = coordinator_stats.cycle_time_statistics
+
+        # Cache was invalidated by error collection
+        assert stats1 is not stats2
+        assert stats2["modbus_errors"] == 1
+
+    def test_cache_not_invalidated_by_successful_operation(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+        mock_circuit_breaker_stats: MagicMock,
+    ) -> None:
+        """Test that successful operations don't invalidate cache."""
+        mock_circuit_breaker_stats.cycle_times.extend([1.0])
+
+        stats1 = coordinator_stats.cycle_time_statistics
+
+        status = OperationStatus(success=True)
+        coordinator_stats.collect_modbus_error(status)
+
+        stats2 = coordinator_stats.cycle_time_statistics
+
+        # Same object - success doesn't invalidate
+        assert stats1 is stats2
+
+    def test_cache_generation_counter_increments(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that generation counter increments correctly."""
+        initial_gen = coordinator_stats._data_generation
+
+        coordinator_stats.mark_dirty()
+        assert coordinator_stats._data_generation == initial_gen + 1
+
+        coordinator_stats.mark_dirty()
+        assert coordinator_stats._data_generation == initial_gen + 2
+
+    def test_empty_stats_cached_correctly(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that empty stats (no cycle times) are also cached."""
+        stats1 = coordinator_stats.cycle_time_statistics
+        stats2 = coordinator_stats.cycle_time_statistics
+
+        assert stats1 is stats2
+        assert stats1["average"] == 0.0

@@ -714,35 +714,15 @@ class SAXBatteryCoordinatorCycleSensor(
             }
 
         if self.entity_description.key == COORDINATOR_ERROR_RATE:
-            # Unpack all 3 tuple elements
-            error_counts: dict[str, int] = {}
-            failed_registers: dict[int, int] = {}
-
-            for (
-                timestamp,  # noqa: B007
-                error_type,
-                register_address,
-            ) in self.coordinator._circuit_breaker.error_history:  # noqa: SLF001
-                # Count errors by type
-                error_counts[error_type] = error_counts.get(error_type, 0) + 1
-
-                # Count errors by register address (if available)
-                if register_address is not None:
-                    failed_registers[register_address] = (
-                        failed_registers.get(register_address, 0) + 1
-                    )
-
+            # Reuse cached stats from cycle_time_statistics (Issue #43)
+            # Avoids redundant error_history iteration
             return {
-                "modbus_errors": error_counts.get("modbus", 0),
-                "network_errors": error_counts.get("network", 0),
-                "timeout_errors": error_counts.get("timeout", 0),
+                "modbus_errors": stats.get("modbus_errors", 0),
+                "network_errors": stats.get("network_errors", 0),
+                "timeout_errors": stats.get("timeout_errors", 0),
                 "total_errors_last_hour": int(stats.get("errors_per_hour", 0)),
-                "failed_registers": failed_registers,
-                "last_error_time": (
-                    self.coordinator._circuit_breaker.error_history[-1][0].isoformat()  # noqa: SLF001
-                    if self.coordinator._circuit_breaker.error_history  # noqa: SLF001
-                    else None
-                ),
+                "failed_registers": stats.get("failed_registers", {}),
+                "last_error_time": stats.get("last_error_time"),
             }
 
         if self.entity_description.key == COORDINATOR_CIRCUIT_BREAKER:
