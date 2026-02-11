@@ -304,9 +304,10 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         connected_value = (
             self._modbus_item.get_switch_connected_value()
         )  # 3 = connected
+        standby_value = self._modbus_item.get_switch_standby_value()  # 4 = standby
 
         # Both "on" (2) and "connected" (3) are considered "True" for HA switch
-        if int_value in (on_value, connected_value):
+        if int_value in (on_value, connected_value, standby_value):
             return True
 
         # All other values (1=off, 4=standby) are considered "False"

@@ -169,12 +169,13 @@ class TestSAXBatterySwitch:
         """Test switch is_on with float values."""
         modbus_item_switch.get_switch_on_value = MagicMock(return_value=2)  # type: ignore[method-assign]
         modbus_item_switch.get_switch_connected_value = MagicMock(return_value=3)  # type: ignore[method-assign]
+        modbus_item_switch.get_switch_standby_value = MagicMock(return_value=4)  # type: ignore[method-assign]
 
         test_cases = [
             (1.0, False),  # Off value
             (2.0, True),  # On value
             (3.0, True),  # Connected value
-            (4.0, False),  # Standby value
+            (4.0, True),  # Standby value
         ]
 
         switch = SAXBatterySwitch(
@@ -629,7 +630,7 @@ class TestSAXBatterySwitch:
         )
 
         # "Standby" (4) should be considered "off" in Home Assistant
-        assert switch.is_on is False
+        assert switch.is_on is True
 
     def test_switch_state_attributes(
         self, mock_coordinator_switch: MagicMock, modbus_item_switch: ModbusItem
@@ -679,7 +680,7 @@ class TestSAXBatterySwitch:
             ("1", False),  # SAX "off" value
             ("2", True),  # SAX "on" value
             ("3", True),  # SAX "connected" value
-            ("4", False),  # SAX "standby" value
+            ("4", True),  # SAX "standby" value
         ]
 
         switch = SAXBatterySwitch(
