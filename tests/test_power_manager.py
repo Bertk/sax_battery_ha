@@ -14,16 +14,15 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.sax_battery.const import (
     CONF_AUTO_PILOT_INTERVAL,
     CONF_GRID_POWER_SENSOR,
-    CONF_MANUAL_CONTROL,
     DOMAIN,
+    GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    MANUAL_CONTROL_MODE,
+    PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_COMBINED_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SOLAR_CHARGING_MODE,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.power_manager import PowerManager, PowerManagerState
@@ -138,7 +137,7 @@ class TestPowerManagerInitialization:
         expected_max_charge = 3 * LIMIT_MAX_DISCHARGE_PER_BATTERY
         assert power_manager.max_discharge_power == expected_max_discharge
         assert power_manager.max_charge_power == expected_max_charge
-        assert power_manager._state.solar_charging_enabled is False
+        assert power_manager._state.pv_charging_enabled is False
 
     def test_configuration_update(
         self,
@@ -151,8 +150,8 @@ class TestPowerManagerInitialization:
             data={
                 CONF_GRID_POWER_SENSOR: "sensor.grid_power",
                 CONF_AUTO_PILOT_INTERVAL: 15,
-                SOLAR_CHARGING_MODE: True,
-                CONF_MANUAL_CONTROL: False,
+                PV_CHARGING_MODE: True,
+                GRID_CHARGING_MODE: False,
             },
         )
         entry.add_to_hass(hass)
@@ -176,10 +175,10 @@ class TestPowerManagerInitialization:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        # manual power control should be disabled due to solar charging enabled
+        # grid power control should be disabled due to pv charging enabled
         assert power_manager.grid_power_sensor == "sensor.grid_power"
         assert power_manager.update_interval == 15
-        assert power_manager._state.manual_control_enabled is False
+        assert power_manager._state.grid_charging_enabled is False
 
 
 class TestPowerManagerLifecycle:
@@ -328,12 +327,12 @@ class TestSolarChargingMode:
                 coordinator=mock_coordinator_master,
                 config_entry=entry,
             )
-            power_manager._state.solar_charging_enabled = True
+            power_manager._state.pv_charging_enabled = True
 
             with patch.object(
                 power_manager, "update_power_setpoint", new=AsyncMock()
             ) as mock_update:
-                await power_manager._update_solar_charging_power()
+                await power_manager._update_pv_charging_power()
 
                 mock_update.assert_called_once()
                 call_args = mock_update.call_args[0]
@@ -364,12 +363,12 @@ class TestSolarChargingMode:
                 coordinator=mock_coordinator_master,
                 config_entry=entry,
             )
-            power_manager._state.solar_charging_enabled = True
+            power_manager._state.pv_charging_enabled = True
 
             with patch.object(
                 power_manager, "update_power_setpoint", new=AsyncMock()
             ) as mock_update:
-                await power_manager._update_solar_charging_power()
+                await power_manager._update_pv_charging_power()
 
                 # Should not update power when sensor unavailable
                 mock_update.assert_not_called()
@@ -393,21 +392,21 @@ class TestSolarChargingMode:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        power_manager._state.solar_charging_enabled = True
+        power_manager._state.pv_charging_enabled = True
 
         with patch.object(
             power_manager, "update_power_setpoint", new=AsyncMock()
         ) as mock_update:
-            await power_manager._update_solar_charging_power()
+            await power_manager._update_pv_charging_power()
 
             mock_update.assert_not_called()
 
-    async def test_solar_charging_with_invalid_sensor_value(
+    async def test_pv_charging_with_invalid_sensor_value(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
     ) -> None:
-        """Test solar charging handles invalid sensor value."""
+        """Test PV charging handles invalid sensor value."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
@@ -423,24 +422,24 @@ class TestSolarChargingMode:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        power_manager._state.solar_charging_enabled = True
+        power_manager._state.pv_charging_enabled = True
 
         with patch.object(
             power_manager, "update_power_setpoint", new=AsyncMock()
         ) as mock_update:
-            await power_manager._update_solar_charging_power()
+            await power_manager._update_pv_charging_power()
 
             mock_update.assert_not_called()
 
-    async def test_solar_charging_applies_soc_constraints(
+    async def test_pv_charging_applies_soc_constraints(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
     ) -> None:
-        """Test solar charging applies SOC constraints.
+        """Test PV charging applies SOC constraints.
 
         Security:
-            OWASP A05: Validates SOC constraint enforcement in solar charging
+            OWASP A05: Validates SOC constraint enforcement in PV charging
         """
         entry = MockConfigEntry(
             domain=DOMAIN,
@@ -486,13 +485,13 @@ class TestSolarChargingMode:
                 coordinator=mock_coordinator_master,
                 config_entry=entry,
             )
-            power_manager._state.solar_charging_enabled = True
+            power_manager._state.pv_charging_enabled = True
 
             # Mock update_power_setpoint to capture the constrained value
             with patch.object(
                 power_manager, "update_power_setpoint", new=AsyncMock()
             ) as mock_update:
-                await power_manager._update_solar_charging_power()
+                await power_manager._update_pv_charging_power()
 
                 # VERIFY: Power setpoint was updated
                 mock_update.assert_called_once()
@@ -517,12 +516,12 @@ class TestSolarChargingMode:
                     constrained_power,
                 )
 
-    async def test_solar_charging_respects_soc_manager_constraints(
+    async def test_pv_charging_respects_soc_manager_constraints(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
     ) -> None:
-        """Test solar charging respects SOC manager discharge constraints.
+        """Test PV charging respects SOC manager discharge constraints.
 
         Security:
             OWASP A05: Validates SOC constraint enforcement prevents battery damage
@@ -574,12 +573,12 @@ class TestSolarChargingMode:
                 coordinator=mock_coordinator_master,
                 config_entry=entry,
             )
-            power_manager._state.solar_charging_enabled = True
+            power_manager._state.pv_charging_enabled = True
 
             with patch.object(
                 power_manager, "update_power_setpoint", new=AsyncMock()
             ) as mock_update:
-                await power_manager._update_solar_charging_power()
+                await power_manager._update_pv_charging_power()
 
                 # VERIFY: Power setpoint was updated
                 mock_update.assert_called_once()
@@ -605,13 +604,13 @@ class TestSolarChargingMode:
 class TestModeTransitions:
     """Test mode transition functionality."""
 
-    async def test_solar_to_manual_transition(
+    async def test_pv_to_manual_transition(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
         mock_config_entry: ConfigEntry,
     ) -> None:
-        """Test transition from solar charging to manual control.
+        """Test transition from PV charging to manual control.
 
         Verifies that enabling manual control automatically disables solar charging.
         """
@@ -623,18 +622,18 @@ class TestModeTransitions:
         )
 
         # Enable solar charging
-        await power_manager.set_solar_charging_mode(True)
-        assert power_manager._state.solar_charging_enabled is True
-        assert power_manager._state.manual_control_enabled is False
+        await power_manager.set_pv_charging_mode(True)
+        assert power_manager._state.pv_charging_enabled is True
+        assert power_manager._state.grid_charging_enabled is False
 
         # Enable manual control (should automatically disable solar)
         with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
             await power_manager.set_manual_control_mode(True, 1000)
 
             # Manual control enabled, solar charging disabled
-            assert power_manager._state.manual_control_enabled is True
-            assert power_manager._state.solar_charging_enabled is False
-            assert power_manager._state.mode == "manual_control"
+            assert power_manager._state.grid_charging_enabled is True
+            assert power_manager._state.pv_charging_enabled is False
+            assert power_manager._state.mode == GRID_CHARGING_MODE
 
     async def test_manual_to_solar_transition(
         self,
@@ -655,16 +654,16 @@ class TestModeTransitions:
         # Enable manual control
         with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
             await power_manager.set_manual_control_mode(True, 1000)
-            assert power_manager._state.manual_control_enabled is True
-            assert power_manager._state.solar_charging_enabled is False
+            assert power_manager._state.grid_charging_enabled is True
+            assert power_manager._state.pv_charging_enabled is False
 
         # Enable solar charging (should automatically disable manual control)
-        await power_manager.set_solar_charging_mode(True)
+        await power_manager.set_pv_charging_mode(True)
 
         # Solar enabled, manual control disabled
-        assert power_manager._state.solar_charging_enabled is True
-        assert power_manager._state.manual_control_enabled is False
-        assert power_manager._state.mode == "solar_charging"
+        assert power_manager._state.pv_charging_enabled is True
+        assert power_manager._state.grid_charging_enabled is False
+        assert power_manager._state.mode == PV_CHARGING_MODE
 
 
 class TestConfigurationUpdates:
@@ -724,10 +723,10 @@ class TestPowerManagerProperties:
             config_entry=mock_config_entry,
         )
 
-        assert power_manager.current_mode == MANUAL_CONTROL_MODE
+        assert power_manager.current_mode == GRID_CHARGING_MODE
 
-        power_manager._state.mode = SOLAR_CHARGING_MODE
-        assert power_manager.current_mode == SOLAR_CHARGING_MODE
+        power_manager._state.mode = PV_CHARGING_MODE
+        assert power_manager.current_mode == PV_CHARGING_MODE
 
     def test_current_power_property(
         self,
@@ -772,7 +771,7 @@ class TestErrorHandling:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        power_manager._state.solar_charging_enabled = True
+        power_manager._state.pv_charging_enabled = True
 
         # Should not raise exception
         await power_manager._async_update_power(None)
@@ -798,7 +797,7 @@ class TestErrorHandling:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        power_manager._state.solar_charging_enabled = True
+        power_manager._state.pv_charging_enabled = True
 
         # Should not raise exception
         await power_manager._async_update_power(None)
@@ -810,26 +809,26 @@ class TestPowerManagerState:
     def test_state_initialization(self) -> None:
         """Test PowerManagerState initialization."""
         state = PowerManagerState(
-            mode=SOLAR_CHARGING_MODE,
+            mode=PV_CHARGING_MODE,
             target_power=1500.0,
             last_update=datetime.now(),
         )
 
-        assert state.mode == SOLAR_CHARGING_MODE
+        assert state.mode == PV_CHARGING_MODE
         assert state.target_power == 1500.0
-        assert state.solar_charging_enabled is False
-        assert state.manual_control_enabled is False
+        assert state.pv_charging_enabled is False
+        assert state.grid_charging_enabled is False
 
     def test_state_with_flags(self) -> None:
         """Test PowerManagerState with mode flags."""
         state = PowerManagerState(
-            mode=MANUAL_CONTROL_MODE,
+            mode=GRID_CHARGING_MODE,
             target_power=0.0,
             last_update=datetime.now(),
-            solar_charging_enabled=False,
-            manual_control_enabled=True,
+            pv_charging_enabled=False,
+            grid_charging_enabled=True,
         )
 
-        assert state.mode == MANUAL_CONTROL_MODE
-        assert state.manual_control_enabled is True
-        assert state.solar_charging_enabled is False
+        assert state.mode == GRID_CHARGING_MODE
+        assert state.grid_charging_enabled is True
+        assert state.pv_charging_enabled is False

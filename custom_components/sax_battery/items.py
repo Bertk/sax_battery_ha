@@ -14,7 +14,7 @@ from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.switch import SwitchEntityDescription
 
-from .entity_keys import SAX_PILOT_POWER
+from .entity_keys import SAX_POWER_CONTROL_SETPOINT
 from .enums import DeviceConstants, TypeConstants
 
 _LOGGER = logging.getLogger(__name__)
@@ -277,7 +277,7 @@ class SAXItem(BaseItem):
             _LOGGER.warning("Attempted to write to read-only SAX item %s", self.name)
             return False
 
-        if self.name == SAX_PILOT_POWER:
+        if self.name == SAX_POWER_CONTROL_SETPOINT:
             return await self._write_pilot_power_value(value)
 
         _LOGGER.debug("SAX item write not yet implemented for %s", self.name)

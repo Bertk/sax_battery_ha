@@ -14,9 +14,9 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
-    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_SENSOR,
-    CONF_MANUAL_CONTROL,
     CONF_MIN_SOC,
     CONF_PF_SENSOR,
     CONF_PILOT_FROM_HA,
@@ -852,8 +852,8 @@ def mock_config_entry():
         CONF_PILOT_FROM_HA: False,
         CONF_GRID_POWER_SENSOR: None,
         CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-        CONF_ENABLE_SOLAR_CHARGING: False,
-        CONF_MANUAL_CONTROL: False,
+        CONF_ENABLE_PV_CHARGING: False,
+        CONF_ENABLE_GRID_CHARGING: False,
         # SOC configuration
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
         # Legacy pilot configuration
@@ -921,8 +921,8 @@ def mock_config_entry_pilot():
         "priority_devices": ["switch.ev_charger"],
         "min_soc": 20,
         "auto_pilot_interval": 60,
-        "enable_solar_charging": True,
-        "manual_control": False,
+        "enable_pv_charging": True,
+        "enable_grid_charging": False,
     }
     return entry
 

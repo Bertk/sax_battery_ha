@@ -192,7 +192,7 @@ Before configuring the integration, ensure:
 
 8. **Complete Setup**
 
-   Review your configuration and click **Submit** to finish.
+   Add location area and click **FINISH**.
 
    ![Configuration done](assets/conf-done-dialog.png)
 

@@ -49,12 +49,12 @@
                 "description": "Select the sensors that monitor your home's power usage for intelligent battery control.",
                 "data": {
                     "grid_power_sensor": "Grid Power Sensor (required for power manager)",
-                    "power_sensor": "Power Consumption Sensor, in Watts, a negative value means consuming from the grid and positive value equals injection into the grid",
+                    "power_control_setpoint": "Power Consumption Sensor, in Watts, a negative value means consuming from the grid and positive value equals injection into the grid",
                     "pf_sensor": "Power Factor Sensor, called cos(phi) or PF"
                 },
                 "data_description": {
                     "grid_power_sensor": "Select grid power sensor for power manager (required)",
-                    "power_sensor": "Select smart meter power sensor (optional, for legacy pilot)",
+                    "power_control_setpoint": "Select smart meter power sensor (optional, for legacy pilot)",
                     "pf_sensor": "Select power factor sensor (optional, for legacy pilot)"
                 }
             },
@@ -131,8 +131,8 @@
             "bms_nominal_power": {
                 "name": "Nominal Power"
             },
-            "bms_pilot_power": {
-                "name": "Pilot Power"
+            "bms_power_control_setpoint": {
+                "name": "Power Control Setpoint"
             }
         },
         "sensor": {
@@ -258,8 +258,8 @@
                     }
                 }
             },
-            "bms_solar_charging": {
-                "name": "Solar Charging",
+            "bms_charge_from_pv": {
+                "name": "Charging from PV",
                 "state": {
                     "off": "Disabled",
                     "on": "Enabled"
@@ -269,8 +269,8 @@
                         "name": "Mode Conflict",
                         "state": {
                             "none": "No conflict",
-                            "manual_disabled": "Manual control was disabled",
-                            "solar_disabled": "Solar charging was disabled"
+                            "grid_disabled": "Grid charging was disabled",
+                            "pv_disabled": "PV charging was disabled"
                         }
                     }
                 }
@@ -286,8 +286,8 @@
                         "name": "Mode Conflict",
                         "state": {
                             "none": "No conflict",
-                            "solar_disabled": "Solar charging was disabled",
-                            "manual_disabled": "Manual control was disabled"
+                            "pv_disabled": "PV charging was disabled",
+                            "grid_disabled": "Grid charging was disabled"
                         }
                     }
                 }

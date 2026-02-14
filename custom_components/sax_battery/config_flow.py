@@ -26,7 +26,7 @@ from .const import (
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
     CONF_DEVICE_ID,
-    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_SENSOR,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
@@ -43,7 +43,7 @@ from .const import (
     PILOT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
-    SAX_PILOT_POWER,
+    SAX_POWER_CONTROL_SETPOINT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,16 +107,16 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._limit_power = user_input[CONF_LIMIT_POWER]
             self._data.update(user_input)
 
-            #  Set solar charging default based on pilot mode
+            #  Set PV charging default based on pilot mode
             if not self._pilot_from_ha:
-                self._data[CONF_ENABLE_SOLAR_CHARGING] = False
+                self._data[CONF_ENABLE_PV_CHARGING] = False
 
             # Debug logging to verify configuration storage
             _LOGGER.debug(
-                "Control options saved: pilot_from_ha=%s, limit_power=%s, solar_charging=%s",
+                "Control options saved: pilot_from_ha=%s, limit_power=%s, pv_charging=%s",
                 self._pilot_from_ha,
                 self._limit_power,
-                self._data.get(CONF_ENABLE_SOLAR_CHARGING, False),
+                self._data.get(CONF_ENABLE_PV_CHARGING, False),
             )
 
             # Route to appropriate next step based on selections
@@ -497,9 +497,9 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                 pilot_options[CONF_AUTO_PILOT_INTERVAL] = user_input[
                     CONF_AUTO_PILOT_INTERVAL
                 ]
-            if CONF_ENABLE_SOLAR_CHARGING in user_input:
-                pilot_options[CONF_ENABLE_SOLAR_CHARGING] = user_input[
-                    CONF_ENABLE_SOLAR_CHARGING
+            if CONF_ENABLE_PV_CHARGING in user_input:
+                pilot_options[CONF_ENABLE_PV_CHARGING] = user_input[
+                    CONF_ENABLE_PV_CHARGING
                 ]
 
             # Build result data - always include feature toggles
@@ -602,12 +602,10 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
                     vol.Optional(
-                        CONF_ENABLE_SOLAR_CHARGING,
+                        CONF_ENABLE_PV_CHARGING,
                         default=self.config_entry.options.get(
-                            CONF_ENABLE_SOLAR_CHARGING,
-                            self.config_entry.data.get(
-                                CONF_ENABLE_SOLAR_CHARGING, True
-                            ),
+                            CONF_ENABLE_PV_CHARGING,
+                            self.config_entry.data.get(CONF_ENABLE_PV_CHARGING, True),
                         ),
                     ): bool,
                 }
@@ -761,13 +759,13 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Find the pilot power item from PILOT_ITEMS
         pilot_power_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_PILOT_POWER),
+            (item for item in PILOT_ITEMS if item.name == SAX_POWER_CONTROL_SETPOINT),
             None,
         )
 
         if not pilot_power_item:
             _LOGGER.error(
-                "SAX_PILOT_POWER item not found in PILOT_ITEMS - cannot generate unique_id"
+                "SAX_POWER_CONTROL_SETPOINT item not found in PILOT_ITEMS - cannot generate unique_id"
             )
             return
 
@@ -778,7 +776,9 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         if not unique_id:
-            _LOGGER.warning("Could not generate unique_id for SAX_PILOT_POWER entity")
+            _LOGGER.warning(
+                "Could not generate unique_id for SAX_POWER_CONTROL_SETPOINT entity"
+            )
             return
 
         # Find entity in registry
@@ -786,7 +786,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
         if not entity_id:
             _LOGGER.debug(
-                "SAX_PILOT_POWER entity not found in registry (unique_id=%s)",
+                "SAX_POWER_CONTROL_SETPOINT entity not found in registry (unique_id=%s)",
                 unique_id,
             )
             return
@@ -797,7 +797,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         _LOGGER.info(
-            "Disabled SAX_PILOT_POWER entity (entity_id=%s) because CONF_PILOT_FROM_HA was set to False",
+            "Disabled SAX_POWER_CONTROL_SETPOINT entity (entity_id=%s) because CONF_PILOT_FROM_HA was set to False",
             entity_id,
         )
 

@@ -45,6 +45,7 @@ class SOCManager:
         self,
         coordinator: SAXBatteryCoordinator,
         min_soc: int,
+        max_soc_charging: int = 90,  # Placeholder for future max SOC charging limit
         enabled: bool = True,
     ) -> None:
         """Initialize SOC manager.
@@ -52,6 +53,7 @@ class SOCManager:
         Args:
             coordinator: SAX Battery coordinator instance
             min_soc: Minimum SOC threshold (0-100)
+            max_soc_charging: Maximum SOC threshold for charging (0-100)
             enabled: Whether constraint enforcement is enabled
 
         Security:
@@ -62,7 +64,15 @@ class SOCManager:
         self.config_entry = coordinator.config_entry
         # used for min_soc enforcement - max_soc not implemented yet
         self._min_soc: int = max(0, min(100, min_soc))
+        self._max_soc_charging: int = (
+            max_soc_charging  # Placeholder for future max SOC charging limit
+        )
         self._enabled = enabled
+
+    @property
+    def max_soc_charging(self) -> int:
+        """Get maximum SOC threshold for charging."""
+        return self._max_soc_charging
 
     @property
     def min_soc(self) -> int:

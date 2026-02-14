@@ -31,10 +31,11 @@ from .entity_keys import (
     COORDINATOR_CIRCUIT_BREAKER,
     COORDINATOR_CYCLE_TIME,
     COORDINATOR_ERROR_RATE,
-    MANUAL_CONTROL_SWITCH,
     SAX_AC_POWER_TOTAL,
     SAX_APPARENT_POWER,
     SAX_CAPACITY,
+    SAX_CHARGE_FROM_GRID_SWITCH,
+    SAX_CHARGE_FROM_PV_SWITCH,
     SAX_COMBINED_SOC,
     SAX_CUMULATIVE_ENERGY_CONSUMED,
     SAX_CUMULATIVE_ENERGY_PRODUCED,
@@ -45,12 +46,13 @@ from .entity_keys import (
     SAX_GRID_FREQUENCY,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SAX_MAX_SOC_CHARGING,
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
     SAX_PHASE_CURRENTS_SUM,
-    SAX_PILOT_POWER,
     SAX_POWER,
+    SAX_POWER_CONTROL_SETPOINT,
     SAX_POWER_FACTOR,
     SAX_POWER_SM,
     SAX_REACTIVE_POWER,
@@ -73,7 +75,6 @@ from .entity_keys import (
     SAX_VOLTAGE_L1,
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
-    SOLAR_CHARGING_SWITCH,
 )
 from .enums import DeviceConstants, TypeConstants
 from .items import ModbusItem, SAXItem
@@ -104,8 +105,8 @@ CONF_LIMIT_POWER = "limit_power"
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
 
 # Control modes
-SOLAR_CHARGING_MODE = "solar_charging"
-MANUAL_CONTROL_MODE = "manual_control"
+PV_CHARGING_MODE = "enable_pv_charging"
+GRID_CHARGING_MODE = "enable_grid_charging"
 
 # Battery limits per individual battery unit 7.5kW model
 # Adjusted to realistic values based on SAX service feedback
@@ -141,9 +142,9 @@ CONF_DEVICE_ID = "device_id"
 # config flow constants
 CONF_MIN_SOC = "min_soc"
 CONF_PRIORITY_DEVICES = "priority_devices"
-CONF_ENABLE_SOLAR_CHARGING = "enable_solar_charging"
+CONF_ENABLE_PV_CHARGING = "enable_pv_charging"
+CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
 CONF_AUTO_PILOT_INTERVAL = "auto_pilot_interval"
-CONF_MANUAL_CONTROL = "manual_control"
 
 DEFAULT_PORT = 502  # Default Modbus port
 DEFAULT_AUTO_PILOT_INTERVAL = 60  # seconds
@@ -220,18 +221,16 @@ SAX_STATUS_STATES: dict[int, str] = {
 }
 
 
-DESCRIPTION_SOLAR_CHARGING_SWITCH = SwitchEntityDescription(
-    key=SOLAR_CHARGING_SWITCH,
-    name="Solar Charging Switch",
+DESCRIPTION_CHARGE_FROM_PV_SWITCH = SwitchEntityDescription(
+    key=SAX_CHARGE_FROM_PV_SWITCH,
+    name="PV Charging Switch",
     icon="mdi:solar-power",
-    entity_category=EntityCategory.CONFIG,
 )
 
-DESCRIPTION_MANUAL_CONTROL_SWITCH = SwitchEntityDescription(
-    key=MANUAL_CONTROL_SWITCH,
-    name="Manual Control Switch",
+DESCRIPTION_CHARGE_FROM_GRID_SWITCH = SwitchEntityDescription(
+    key=SAX_CHARGE_FROM_GRID_SWITCH,
+    name="Grid Charging Switch",
     icon="transmission-tower-export",
-    entity_category=EntityCategory.CONFIG,
 )
 
 DESCRIPTION_SAX_SOC = SensorEntityDescription(
@@ -253,9 +252,22 @@ DESCRIPTION_SAX_MIN_SOC = NumberEntityDescription(
     entity_category=EntityCategory.CONFIG,
 )
 
-DESCRIPTION_SAX_PILOT_POWER = NumberEntityDescription(
-    key=SAX_PILOT_POWER,
-    name="Sax Pilot Power",
+DESCRIPTION_SAX_MAX_SOC_CHARGING = NumberEntityDescription(
+    key=SAX_MAX_SOC_CHARGING,
+    name="Max SOC for Charging",
+    mode=NumberMode.BOX,
+    native_unit_of_measurement=PERCENTAGE,
+    native_min_value=0,
+    native_max_value=100,
+    native_step=5,
+    device_class=NumberDeviceClass.BATTERY,
+    entity_category=EntityCategory.CONFIG,
+    icon="mdi:battery-charging-high",
+)
+
+DESCRIPTION_SAX_POWER_CONTROL_SETPOINT = NumberEntityDescription(
+    key=SAX_POWER_CONTROL_SETPOINT,
+    name="Sax Power Control Setpoint",
     mode=NumberMode.BOX,
     device_class=NumberDeviceClass.POWER,
     native_unit_of_measurement=UnitOfPower.WATT,
@@ -647,10 +659,11 @@ AGGREGATED_ITEMS: list[SAXItem] = [
 ]
 # Pilot items - switches for manual control and solar charging
 PILOT_ITEMS: list[SAXItem] = [
-    SAXItem(name=SOLAR_CHARGING_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SOLAR_CHARGING_SWITCH, translation_key="bms_solar_charging"),
-    SAXItem(name=MANUAL_CONTROL_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_MANUAL_CONTROL_SWITCH, translation_key="bms_manual_control"),
+    SAXItem(name=SAX_CHARGE_FROM_PV_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_PV_SWITCH, translation_key="bms_charge_from_pv"),
+    SAXItem(name=SAX_CHARGE_FROM_GRID_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_GRID_SWITCH, translation_key="bms_charge_from_grid"),
     SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC, translation_key="bms_min_soc"),
-    SAXItem(name=SAX_PILOT_POWER, enabled_by_default=False, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_PILOT_POWER, translation_key="bms_pilot_power"),
+    SAXItem(name=SAX_MAX_SOC_CHARGING, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_SOC_CHARGING, translation_key="bms_max_soc_charging"),
+    SAXItem(name=SAX_POWER_CONTROL_SETPOINT, enabled_by_default=False, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER_CONTROL_SETPOINT, translation_key="bms_power_control_setpoint"),
 ]
 
 DIAGNOSTIC_ITEMS: list[SAXItem] = [

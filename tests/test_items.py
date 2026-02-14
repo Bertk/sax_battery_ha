@@ -12,7 +12,7 @@ import pytest
 from custom_components.sax_battery.entity_keys import (
     SAX_COMBINED_SOC,
     SAX_MIN_SOC,
-    SAX_PILOT_POWER,
+    SAX_POWER_CONTROL_SETPOINT,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem, WebAPIItem
@@ -378,7 +378,7 @@ class TestSAXItemWrite:
     async def test_write_pilot_power_success(self):
         """Test write pilot power successfully."""
         item = SAXItem(
-            name=SAX_PILOT_POWER,
+            name=SAX_POWER_CONTROL_SETPOINT,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
         )
@@ -395,7 +395,7 @@ class TestSAXItemWrite:
     async def test_write_pilot_power_no_pilot(self, caplog):
         """Test write pilot power when no pilot service."""
         item = SAXItem(
-            name=SAX_PILOT_POWER,
+            name=SAX_POWER_CONTROL_SETPOINT,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
         )
@@ -409,7 +409,7 @@ class TestSAXItemWrite:
     async def test_write_pilot_power_exception(self, caplog):
         """Test write pilot power handles exceptions."""
         item = SAXItem(
-            name=SAX_PILOT_POWER,
+            name=SAX_POWER_CONTROL_SETPOINT,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
         )

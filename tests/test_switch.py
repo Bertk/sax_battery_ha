@@ -14,15 +14,15 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
-    CONF_ENABLE_SOLAR_CHARGING,
-    CONF_MANUAL_CONTROL,
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_PILOT_FROM_HA,
     DEFAULT_DEVICE_INFO,
     DESCRIPTION_SAX_STATUS_SWITCH,
     DOMAIN,
-    MANUAL_CONTROL_SWITCH,
-    SOLAR_CHARGING_MODE,
-    SOLAR_CHARGING_SWITCH,
+    PV_CHARGING_MODE,
+    SAX_CHARGE_FROM_GRID_SWITCH,
+    SAX_CHARGE_FROM_PV_SWITCH,
     SAXDeviceInfo,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
@@ -771,7 +771,7 @@ class TestSAXBatteryControlSwitch:
     def mock_sax_item_control(self) -> SAXItem:
         """Create mock SAX item for control switch."""
         sax_item = MagicMock(spec=SAXItem)
-        sax_item.name = "solar_charging_switch"
+        sax_item.name = "pv_charging_switch"
         sax_item.mtype = TypeConstants.SWITCH
         sax_item.device = DeviceConstants.SYS
         sax_item.entitydescription = None
@@ -809,7 +809,7 @@ class TestSAXBatteryControlSwitch:
     ) -> None:
         """Test control switch initialization with entity description."""
         mock_entity_desc = MagicMock()
-        mock_entity_desc.name = "Solar Charging Control"
+        mock_entity_desc.name = "PV Charging Control"
         mock_sax_item_control.entitydescription = mock_entity_desc
         coordinators = {"bess_a": mock_control_coordinator}
 
@@ -819,17 +819,17 @@ class TestSAXBatteryControlSwitch:
             coordinators=coordinators,
         )
 
-        assert switch.name == "Solar Charging Control"
+        assert switch.name == "PV Charging Control"
 
-    def test_control_switch_is_on_solar_charging(
+    def test_control_switch_is_on_pv_charging(
         self, mock_control_coordinator, mock_sax_item_control
     ) -> None:
-        """Test control switch is_on for solar charging switch."""
-        mock_sax_item_control.name = "solar_charging_switch"
+        """Test control switch is_on for PV charging switch."""
+        mock_sax_item_control.name = "pv_charging_switch"
 
-        # Mock config entry with solar_charging_mode disabled
+        # Mock config entry with PV_CHARGING_MODE disabled
         mock_config_entry = MagicMock()
-        mock_config_entry.data = {SOLAR_CHARGING_MODE: False}
+        mock_config_entry.data = {PV_CHARGING_MODE: False}
         mock_control_coordinator.config_entry = mock_config_entry
 
         coordinators = {"bess_a": mock_control_coordinator}
@@ -924,8 +924,8 @@ class TestSAXBatteryControlSwitch:
     async def test_control_switch_turn_on_solar_charging(
         self, mock_control_coordinator, mock_sax_item_control
     ) -> None:
-        """Test turning on solar charging control switch."""
-        mock_sax_item_control.name = "solar_charging_switch"
+        """Test turning on pv charging control switch."""
+        mock_sax_item_control.name = "sax_charge_from_pv_switch"
         coordinators = {"bess_a": mock_control_coordinator}
 
         switch = SAXBatteryControlSwitch(
@@ -942,14 +942,14 @@ class TestSAXBatteryControlSwitch:
         # Should update config entry
         switch.hass.config_entries.async_update_entry.assert_called_once()
         call_args = switch.hass.config_entries.async_update_entry.call_args
-        assert call_args[1]["data"]["enable_solar_charging"] is True
+        assert call_args[1]["data"]["enable_pv_charging"] is True
         mock_control_coordinator.async_request_refresh.assert_called_once()
 
     async def test_control_switch_turn_on_manual_control(
         self, mock_control_coordinator, mock_sax_item_control
     ) -> None:
         """Test turning on manual control switch."""
-        mock_sax_item_control.name = "manual_control_switch"
+        mock_sax_item_control.name = "sax_charge_from_grid_switch"
         coordinators = {"bess_a": mock_control_coordinator}
 
         switch = SAXBatteryControlSwitch(
@@ -966,7 +966,7 @@ class TestSAXBatteryControlSwitch:
         # Should update config entry
         switch.hass.config_entries.async_update_entry.assert_called_once()
         call_args = switch.hass.config_entries.async_update_entry.call_args
-        assert call_args[1]["data"]["manual_control"] is True
+        assert call_args[1]["data"]["enable_grid_charging"] is True
 
     async def test_control_switch_turn_on_none_config_entry(
         self, mock_control_coordinator, mock_sax_item_control
@@ -989,8 +989,8 @@ class TestSAXBatteryControlSwitch:
     async def test_control_switch_turn_off_solar_charging(
         self, mock_control_coordinator, mock_sax_item_control
     ) -> None:
-        """Test turning off solar charging control switch."""
-        mock_sax_item_control.name = "solar_charging_switch"
+        """Test turning off pv charging control switch."""
+        mock_sax_item_control.name = "sax_charge_from_pv_switch"
         coordinators = {"bess_a": mock_control_coordinator}
 
         switch = SAXBatteryControlSwitch(
@@ -1007,13 +1007,13 @@ class TestSAXBatteryControlSwitch:
         # Should update config entry
         switch.hass.config_entries.async_update_entry.assert_called_once()
         call_args = switch.hass.config_entries.async_update_entry.call_args
-        assert call_args[1]["data"]["enable_solar_charging"] is False
+        assert call_args[1]["data"]["enable_pv_charging"] is False
 
     async def test_control_switch_turn_off_manual_control(
         self, mock_control_coordinator, mock_sax_item_control
     ) -> None:
         """Test turning off manual control switch."""
-        mock_sax_item_control.name = "manual_control_switch"
+        mock_sax_item_control.name = "sax_charge_from_grid_switch"
         coordinators = {"bess_a": mock_control_coordinator}
 
         switch = SAXBatteryControlSwitch(
@@ -1030,7 +1030,7 @@ class TestSAXBatteryControlSwitch:
         # Should update config entry
         switch.hass.config_entries.async_update_entry.assert_called_once()
         call_args = switch.hass.config_entries.async_update_entry.call_args
-        assert call_args[1]["data"]["manual_control"] is False
+        assert call_args[1]["data"]["enable_grid_charging"] is False
 
     async def test_control_switch_turn_off_none_config_entry(
         self, mock_control_coordinator, mock_sax_item_control
@@ -1063,8 +1063,8 @@ class TestAsyncSetupEntry:
         mock_config = MagicMock(spec=ConfigEntry)
         mock_config.data = {
             CONF_PILOT_FROM_HA: False,
-            CONF_ENABLE_SOLAR_CHARGING: False,
-            CONF_MANUAL_CONTROL: False,
+            CONF_ENABLE_PV_CHARGING: False,
+            CONF_ENABLE_GRID_CHARGING: False,
         }
         mock_coordinator.config_entry = mock_config
 
@@ -1090,8 +1090,8 @@ class TestAsyncSetupEntry:
         mock_entry.data = {
             CONF_BATTERY_COUNT: 1,
             CONF_PILOT_FROM_HA: False,
-            CONF_ENABLE_SOLAR_CHARGING: False,
-            CONF_MANUAL_CONTROL: False,
+            CONF_ENABLE_PV_CHARGING: False,
+            CONF_ENABLE_GRID_CHARGING: False,
         }
         return mock_entry
 
@@ -1407,8 +1407,8 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
             CONF_PILOT_FROM_HA: True,
-            CONF_ENABLE_SOLAR_CHARGING: False,
-            CONF_MANUAL_CONTROL: False,
+            CONF_ENABLE_PV_CHARGING: False,
+            CONF_ENABLE_GRID_CHARGING: False,
         }
         mock_config_entry.entry_id = "test_entry_123"
         coordinator.config_entry = mock_config_entry
@@ -1454,13 +1454,13 @@ class TestSAXBatterySwitchComprehensiveCoverage:
             entitydescription=DESCRIPTION_SAX_STATUS_SWITCH,
         )
 
-    # Test SAXBatteryControlSwitch solar charging interactions
+    # Test SAXBatteryControlSwitch pv charging interactions
     async def test_control_switch_solar_enable_disables_manual(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test enabling solar charging automatically disables manual control."""
+        """Test enabling pv charging automatically disables manual control."""
         sax_item = SAXItem(
-            name=SOLAR_CHARGING_SWITCH,
+            name=SAX_CHARGE_FROM_PV_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1478,19 +1478,19 @@ class TestSAXBatterySwitchComprehensiveCoverage:
 
         await switch.async_turn_on()
 
-        # Verify solar charging enabled and manual control disabled
+        # Verify pv charging enabled and manual control disabled
         update_call = mock_coordinator_comprehensive.hass.config_entries.async_update_entry.call_args
         assert update_call is not None
         new_data = update_call[1]["data"]
-        assert new_data[CONF_ENABLE_SOLAR_CHARGING] is True
-        assert new_data[CONF_MANUAL_CONTROL] is False
+        assert new_data[CONF_ENABLE_PV_CHARGING] is True
+        assert new_data[CONF_ENABLE_GRID_CHARGING] is False
 
     async def test_control_switch_manual_enable_disables_solar(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test enabling manual control automatically disables solar charging."""
+        """Test enabling manual control automatically disables pv charging."""
         sax_item = SAXItem(
-            name=MANUAL_CONTROL_SWITCH,
+            name=SAX_CHARGE_FROM_GRID_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1507,19 +1507,19 @@ class TestSAXBatterySwitchComprehensiveCoverage:
 
         await switch.async_turn_on()
 
-        # Verify manual control enabled and solar charging disabled
+        # Verify manual control enabled and pv charging disabled
         update_call = mock_coordinator_comprehensive.hass.config_entries.async_update_entry.call_args
         assert update_call is not None
         new_data = update_call[1]["data"]
-        assert new_data[CONF_MANUAL_CONTROL] is True
-        assert new_data[CONF_ENABLE_SOLAR_CHARGING] is False
+        assert new_data[CONF_ENABLE_GRID_CHARGING] is True
+        assert new_data[CONF_ENABLE_PV_CHARGING] is False
 
     async def test_control_switch_solar_disable_only(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test disabling solar charging doesn't affect manual control."""
+        """Test disabling pv charging doesn't affect manual control."""
         sax_item = SAXItem(
-            name=SOLAR_CHARGING_SWITCH,
+            name=SAX_CHARGE_FROM_PV_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1536,22 +1536,22 @@ class TestSAXBatterySwitchComprehensiveCoverage:
 
         await switch.async_turn_off()
 
-        # Verify only solar charging affected
+        # Verify only pv charging affected
         update_call = mock_coordinator_comprehensive.hass.config_entries.async_update_entry.call_args
         assert update_call is not None
         new_data = update_call[1]["data"]
-        assert new_data[CONF_ENABLE_SOLAR_CHARGING] is False
+        assert new_data[CONF_ENABLE_PV_CHARGING] is False
         assert (
-            CONF_MANUAL_CONTROL not in new_data
-            or new_data.get(CONF_MANUAL_CONTROL) is False
+            CONF_ENABLE_GRID_CHARGING not in new_data
+            or new_data.get(CONF_ENABLE_GRID_CHARGING) is False
         )
 
     async def test_control_switch_manual_disable_only(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test disabling manual control doesn't affect solar charging."""
+        """Test disabling manual control doesn't affect pv charging."""
         sax_item = SAXItem(
-            name=MANUAL_CONTROL_SWITCH,
+            name=SAX_CHARGE_FROM_GRID_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1572,7 +1572,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         update_call = mock_coordinator_comprehensive.hass.config_entries.async_update_entry.call_args
         assert update_call is not None
         new_data = update_call[1]["data"]
-        assert new_data[CONF_MANUAL_CONTROL] is False
+        assert new_data[CONF_ENABLE_GRID_CHARGING] is False
 
     # Test string normalization paths
     def test_switch_string_value_numeric_conversion(
@@ -1809,7 +1809,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         mock_config_entry.entry_id = "test_entry"
 
         sax_item = SAXItem(
-            name=SOLAR_CHARGING_SWITCH,
+            name=SAX_CHARGE_FROM_PV_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1852,7 +1852,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
     def test_control_switch_solar_requires_pilot_mode(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test solar charging switch requires pilot mode to be enabled."""
+        """Test pv charging switch requires pilot mode to be enabled."""
         # Pilot mode disabled
         mock_coordinator_comprehensive.config_entry.data["CONF_PILOT_FROM_HA"] = False
         mock_coordinator_comprehensive.config_entry.data[
@@ -1860,7 +1860,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         ] = True
 
         sax_item = SAXItem(
-            name=SOLAR_CHARGING_SWITCH,
+            name=SAX_CHARGE_FROM_PV_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1873,21 +1873,19 @@ class TestSAXBatterySwitchComprehensiveCoverage:
             coordinators=coordinators,
         )
 
-        # Solar charging should be off because pilot mode is disabled
+        # pv charging should be off because pilot mode is disabled
         assert switch.is_on is False
 
     def test_control_switch_solar_enabled_with_pilot(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test solar charging switch enabled when both pilot and solar are on."""
-        # Both pilot mode and solar charging enabled
+        """Test pv charging switch enabled when both pilot and pv are on."""
+        # Both pilot mode and pv charging enabled
         mock_coordinator_comprehensive.config_entry.data[CONF_PILOT_FROM_HA] = True
-        mock_coordinator_comprehensive.config_entry.data[CONF_ENABLE_SOLAR_CHARGING] = (
-            True
-        )
+        mock_coordinator_comprehensive.config_entry.data[CONF_ENABLE_PV_CHARGING] = True
 
         sax_item = SAXItem(
-            name=SOLAR_CHARGING_SWITCH,
+            name=SAX_CHARGE_FROM_PV_SWITCH,
             device=DeviceConstants.SYS,
             mtype=TypeConstants.SWITCH,
         )
@@ -1900,5 +1898,5 @@ class TestSAXBatterySwitchComprehensiveCoverage:
             coordinators=coordinators,
         )
 
-        # Solar charging should be on
+        # pv charging should be on
         assert switch.is_on is True

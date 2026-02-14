@@ -22,7 +22,7 @@ from custom_components.sax_battery.const import (
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_PILOT_POWER,
+    SAX_POWER_CONTROL_SETPOINT,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
@@ -1504,7 +1504,7 @@ class TestSAXBatteryConfigNumberPilotPower:
     def mock_pilot_item(self) -> SAXItem:
         """Create pilot power SAX item."""
         return SAXItem(
-            name=SAX_PILOT_POWER,
+            name=SAX_POWER_CONTROL_SETPOINT,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.SYS,
         )

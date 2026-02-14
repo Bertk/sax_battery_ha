@@ -16,16 +16,16 @@ import pytest
 
 from custom_components.sax_battery.const import (
     CONF_AUTO_PILOT_INTERVAL,
-    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_SENSOR,
     CONF_LIMIT_POWER,
-    CONF_MANUAL_CONTROL,
     CONF_MIN_SOC,
     CONF_PILOT_FROM_HA,
     DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DOMAIN,
-    MANUAL_CONTROL_MODE,
+    GRID_CHARGING_MODE,
 )
 from custom_components.sax_battery.diagnostics import (
     _get_coordinator_diagnostics,
@@ -77,8 +77,8 @@ def mock_entry_diagnostics():
         CONF_PILOT_FROM_HA: False,
         CONF_GRID_POWER_SENSOR: "sensor.grid_power",
         CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-        CONF_ENABLE_SOLAR_CHARGING: False,
-        CONF_MANUAL_CONTROL: False,
+        CONF_ENABLE_PV_CHARGING: False,
+        CONF_ENABLE_GRID_CHARGING: False,
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
         CONF_LIMIT_POWER: True,
     }
@@ -180,7 +180,7 @@ def mock_power_manager_diagnostics():
     pm = MagicMock(spec=PowerManager)
     pm.get_diagnostics.return_value = {
         "running": True,
-        "mode": MANUAL_CONTROL_MODE,
+        "mode": GRID_CHARGING_MODE,
         "target_power": 0.0,
         "solar_charging_enabled": False,
         "manual_control_enabled": True,
@@ -506,7 +506,7 @@ class TestAsyncGetConfigEntryDiagnostics:
 
         assert result["power_manager"] is not None
         assert result["power_manager"]["running"] is True
-        assert result["power_manager"]["mode"] == MANUAL_CONTROL_MODE
+        assert result["power_manager"]["mode"] == GRID_CHARGING_MODE
 
     @pytest.mark.asyncio
     async def test_power_manager_none_when_disabled(
@@ -747,7 +747,7 @@ class TestPowerManagerGetDiagnostics:
         )
         result = pm.get_diagnostics()
 
-        assert result["mode"] == MANUAL_CONTROL_MODE
+        assert result["mode"] == GRID_CHARGING_MODE
 
     def test_returns_power_limits(
         self, mock_coordinator_master, mock_config_entry

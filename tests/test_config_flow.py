@@ -24,7 +24,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_HOST,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PORT,
-    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
@@ -122,7 +122,7 @@ class TestSAXBatteryConfigFlowExtended:
             {
                 CONF_MIN_SOC: 150,
                 CONF_AUTO_PILOT_INTERVAL: 30,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             }
         )
 
@@ -143,7 +143,7 @@ class TestSAXBatteryConfigFlowExtended:
             {
                 CONF_MIN_SOC: 20,
                 CONF_AUTO_PILOT_INTERVAL: 2,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             }
         )
 
@@ -163,7 +163,7 @@ class TestSAXBatteryConfigFlowExtended:
             {
                 CONF_MIN_SOC: "invalid",
                 CONF_AUTO_PILOT_INTERVAL: "also_invalid",
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             }
         )
 
@@ -436,7 +436,7 @@ class TestSAXBatteryConfigFlowExtended:
             {
                 CONF_MIN_SOC: 25,
                 CONF_AUTO_PILOT_INTERVAL: 30,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             }
         )
 
@@ -444,7 +444,7 @@ class TestSAXBatteryConfigFlowExtended:
         assert result.get("step_id") == "sensors"
         assert flow._data[CONF_MIN_SOC] == 25
         assert flow._data[CONF_AUTO_PILOT_INTERVAL] == 30
-        assert flow._data[CONF_ENABLE_SOLAR_CHARGING] is True
+        assert flow._data[CONF_ENABLE_PV_CHARGING] is True
 
     async def test_sensors_step_with_pilot_enabled_schema(
         self, hass: HomeAssistant
@@ -569,7 +569,7 @@ class TestSAXBatteryConfigFlowExtended:
             CONF_LIMIT_POWER: True,
             CONF_MIN_SOC: 20,
             CONF_AUTO_PILOT_INTERVAL: 45,
-            CONF_ENABLE_SOLAR_CHARGING: False,
+            CONF_ENABLE_PV_CHARGING: False,
             CONF_BATTERIES: {
                 "battery_a": {"host": "192.168.1.100", "port": 502},
                 "battery_b": {"host": "192.168.1.101", "port": 502},
@@ -796,7 +796,7 @@ class TestSAXBatteryOptionsFlowExtended:
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: DEFAULT_MIN_SOC,
                 CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             },
             options={},
             entry_id="test_form_pilot_enabled",
@@ -819,7 +819,7 @@ class TestSAXBatteryOptionsFlowExtended:
 
         assert CONF_MIN_SOC in data_schema.schema
         assert CONF_AUTO_PILOT_INTERVAL in data_schema.schema
-        assert CONF_ENABLE_SOLAR_CHARGING in data_schema.schema
+        assert CONF_ENABLE_PV_CHARGING in data_schema.schema
 
     @pytest.mark.usefixtures("_mock_setup_integration")
     async def test_options_flow_show_form_pilot_disabled(
@@ -873,7 +873,7 @@ class TestSAXBatteryOptionsFlowExtended:
             options={
                 CONF_MIN_SOC: 25,
                 CONF_AUTO_PILOT_INTERVAL: 45,
-                CONF_ENABLE_SOLAR_CHARGING: False,
+                CONF_ENABLE_PV_CHARGING: False,
             },
             entry_id="test_existing_options",
         )
@@ -971,7 +971,7 @@ class TestSAXBatteryConfigFlowCompleteValidation:
                 {
                     CONF_MIN_SOC: min_soc,
                     CONF_AUTO_PILOT_INTERVAL: interval,
-                    CONF_ENABLE_SOLAR_CHARGING: True,
+                    CONF_ENABLE_PV_CHARGING: True,
                 }
             )
 
@@ -1024,7 +1024,7 @@ class TestSAXBatteryConfigFlowCompleteValidation:
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 25,
                 CONF_AUTO_PILOT_INTERVAL: 45,
-                CONF_ENABLE_SOLAR_CHARGING: False,
+                CONF_ENABLE_PV_CHARGING: False,
             },
             options={
                 CONF_MIN_SOC: 30,  # Different from data
@@ -1356,7 +1356,7 @@ class TestSAXBatteryConfigFlowEdgeCases:
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert flow._data[CONF_ENABLE_SOLAR_CHARGING] is False
+        assert flow._data[CONF_ENABLE_PV_CHARGING] is False
 
     async def test_validate_host_boundary_length(self, hass: HomeAssistant) -> None:
         """Test host validation with boundary length cases."""
@@ -1409,7 +1409,7 @@ class TestSAXBatteryConfigFlowEdgeCases:
                 {
                     CONF_MIN_SOC: min_soc,
                     CONF_AUTO_PILOT_INTERVAL: interval,
-                    CONF_ENABLE_SOLAR_CHARGING: False,
+                    CONF_ENABLE_PV_CHARGING: False,
                 }
             )
 
@@ -1440,7 +1440,7 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
                 CONF_AUTO_PILOT_INTERVAL: 30,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             },
             options={},
             entry_id="test_entry_pilot_change",
@@ -1460,14 +1460,14 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
                 CONF_LIMIT_POWER: True,  # Keep enabled
                 CONF_MIN_SOC: 30,  # Change from 20 to 30
                 CONF_AUTO_PILOT_INTERVAL: 60,  # Change from 30 to 60
-                CONF_ENABLE_SOLAR_CHARGING: False,  # Toggle off
+                CONF_ENABLE_PV_CHARGING: False,  # Toggle off
             },
         )
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert mock_entry.data[CONF_MIN_SOC] == 30
         assert mock_entry.data[CONF_AUTO_PILOT_INTERVAL] == 60
-        assert mock_entry.data[CONF_ENABLE_SOLAR_CHARGING] is False
+        assert mock_entry.data[CONF_ENABLE_PV_CHARGING] is False
 
     @pytest.mark.usefixtures("_mock_setup_integration")
     async def test_options_flow_disable_limit_power_only(
@@ -1499,7 +1499,7 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
                 CONF_LIMIT_POWER: False,  # Disable
                 CONF_MIN_SOC: 25,
                 CONF_AUTO_PILOT_INTERVAL: 30,
-                CONF_ENABLE_SOLAR_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
             },
         )
 

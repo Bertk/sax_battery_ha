@@ -23,8 +23,8 @@ from .const import (
     CONF_BATTERY_COUNT,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
+    CONF_ENABLE_GRID_CHARGING,
     CONF_LIMIT_POWER,
-    CONF_MANUAL_CONTROL,
     CONF_MIN_SOC,
     CONF_PILOT_FROM_HA,
     DOMAIN,
@@ -36,10 +36,11 @@ from .const import (
     SAX_COMBINED_SOC,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SAX_MAX_SOC_CHARGING,
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_PILOT_POWER,
+    SAX_POWER_CONTROL_SETPOINT,
     WRITE_ONLY_REGISTERS,
 )
 from .coordinator import SAXBatteryCoordinator
@@ -159,7 +160,7 @@ async def async_setup_entry(
     # STEP 2: Create cluster-wide config numbers (SAXItem → SAXBatteryConfigNumber)
     # ============================================================================
     # These entities are system-wide (not per-battery) and always available
-    # Examples: sax_min_soc, sax_pilot_power, sax_manual_power
+    # Examples: sax_min_soc, sax_power_control_setpoint, sax_max_soc_charging
 
     # Find master coordinator
     master_coordinators = {
@@ -499,7 +500,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         """
         config_entry = self.coordinator.config_entry
         if config_entry is not None:
-            return bool(config_entry.data.get(CONF_MANUAL_CONTROL, False))
+            return bool(config_entry.data.get(CONF_ENABLE_GRID_CHARGING, False))
         return False
 
     @property
@@ -1141,15 +1142,15 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
         # Set entity registry enabled state from SAXItem or configuration
-        # Special handling for SAX_PILOT_POWER: enabled only if CONF_PILOT_FROM_HA is True
-        if sax_item.name == SAX_PILOT_POWER:
+        # Special handling for SAX_POWER_CONTROL_SETPOINT: enabled only if CONF_PILOT_FROM_HA is True
+        if sax_item.name == SAX_POWER_CONTROL_SETPOINT:
             if coordinator.config_entry:
                 pilot_from_ha = coordinator.config_entry.data.get(
                     CONF_PILOT_FROM_HA, False
                 )
                 self._attr_entity_registry_enabled_default = pilot_from_ha
                 _LOGGER.debug(
-                    "SAX_PILOT_POWER entity enabled_by_default=%s (CONF_PILOT_FROM_HA=%s)",
+                    "SAX_POWER_CONTROL_SETPOINT entity enabled_by_default=%s (CONF_PILOT_FROM_HA=%s)",
                     pilot_from_ha,
                     pilot_from_ha,
                 )
@@ -1157,7 +1158,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                 # Fallback: disable by default if no config entry
                 self._attr_entity_registry_enabled_default = False
                 _LOGGER.warning(
-                    "No config entry available, SAX_PILOT_POWER disabled by default"
+                    "No config entry available, SAX_POWER_CONTROL_SETPOINT disabled by default"
                 )
         else:
             # All other config numbers use SAXItem's enabled_by_default
@@ -1176,11 +1177,15 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             entity_name = entity_name.removeprefix("Sax ")
             self._attr_name = entity_name
 
-        # Initialize with current SOC manager value if this is min_soc
-        if sax_item.name == SAX_MIN_SOC and coordinator.soc_manager:
-            self._attr_native_value = float(coordinator.soc_manager.min_soc)
-        else:
-            self._attr_native_value = None
+            # Initialize with current SOC manager value if this is min_soc
+            if sax_item.name == SAX_MIN_SOC and coordinator.soc_manager:
+                self._attr_native_value = float(coordinator.soc_manager.min_soc)
+            elif sax_item.name == SAX_MAX_SOC_CHARGING and coordinator.soc_manager:
+                self._attr_native_value = float(
+                    coordinator.soc_manager.max_soc_charging
+                )
+            else:
+                self._attr_native_value = None
 
         # Set cluster device info - this creates the "SAX Battery Cluster" device
         self._attr_device_info: DeviceInfo = coordinator.sax_data.get_device_info(
@@ -1223,6 +1228,8 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # For min_soc, always return current SOC manager value
         if self._sax_item.name == SAX_MIN_SOC and self.coordinator.soc_manager:
             return float(self.coordinator.soc_manager.min_soc)
+        if self._sax_item.name == SAX_MAX_SOC_CHARGING and self.coordinator.soc_manager:
+            return float(self.coordinator.soc_manager.max_soc_charging)
 
         return self._attr_native_value
 
@@ -1276,7 +1283,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                 )
                 _LOGGER.info("Minimum SOC updated to %s%%", value)
 
-            elif self._sax_item.name == SAX_PILOT_POWER:
+            elif self._sax_item.name == SAX_POWER_CONTROL_SETPOINT:
                 # New: Handle pilot power updates with atomic write to control registers
                 await self._handle_pilot_power_update(int(value))
 

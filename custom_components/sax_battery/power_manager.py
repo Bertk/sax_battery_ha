@@ -27,21 +27,21 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     CONF_AUTO_PILOT_INTERVAL,
-    CONF_ENABLE_SOLAR_CHARGING,
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_SENSOR,
-    CONF_MANUAL_CONTROL,
     DEFAULT_AUTO_PILOT_INTERVAL,
+    GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    MANUAL_CONTROL_MODE,
     MODBUS_BATTERY_BMS_ITEMS,
     MODBUS_BATTERY_POWER_CONTROL_ITEMS,
     PILOT_ITEMS,
+    PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_PILOT_POWER,
-    SOLAR_CHARGING_MODE,
+    SAX_POWER_CONTROL_SETPOINT,
 )
 from .coordinator import SAXBatteryCoordinator
 
@@ -58,8 +58,8 @@ class PowerManagerState:
     mode: str
     target_power: float
     last_update: datetime
-    solar_charging_enabled: bool = False
-    manual_control_enabled: bool = False
+    pv_charging_enabled: bool = False
+    grid_charging_enabled: bool = False
 
 
 class PowerManager:
@@ -96,12 +96,12 @@ class PowerManager:
 
         # State tracking
         self._state = PowerManagerState(
-            mode=MANUAL_CONTROL_MODE,
+            mode=GRID_CHARGING_MODE,
             target_power=0.0,
             last_update=datetime.now(),
         )
 
-        # self._solar_callback_running = False
+        # self._pv_callback_running = False
         # self._grid_power_sensor = None
 
         # Tracking for event listeners
@@ -127,27 +127,32 @@ class PowerManager:
         # Resolve SAX_PILOT_POWER entity (the one that actually exists!)
         # Find the pilot power item from the list
         pilot_power_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_PILOT_POWER),
+            (item for item in PILOT_ITEMS if item.name == SAX_POWER_CONTROL_SETPOINT),
             None,
         )
 
         if not pilot_power_item:
-            _LOGGER.error("Could not find %s in PILOT_ITEMS", SAX_PILOT_POWER)
+            _LOGGER.error(
+                "Could not find %s in PILOT_ITEMS", SAX_POWER_CONTROL_SETPOINT
+            )
             return
 
         power_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
             pilot_power_item,
-            SAX_PILOT_POWER,
+            SAX_POWER_CONTROL_SETPOINT,
         )
 
         if power_entity_id:
             self._power_entity_id = power_entity_id
             _LOGGER.info(
-                "✓ Resolved power entity: SAX_PILOT_POWER (entity_id: %s)",
+                "✓ Resolved power entity: %s (entity_id: %s)",
+                SAX_POWER_CONTROL_SETPOINT,
                 self._power_entity_id,
             )
         else:
-            _LOGGER.error("Could not generate entity_id for %s", SAX_PILOT_POWER)
+            _LOGGER.error(
+                "Could not generate entity_id for %s", SAX_POWER_CONTROL_SETPOINT
+            )
 
         power_factor_item = next(
             (item for item in PILOT_ITEMS if item.name == SAX_NOMINAL_FACTOR),
@@ -186,28 +191,28 @@ class PowerManager:
             CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
         )
 
-        solar_enabled = bool(
-            self.config_entry.data.get(CONF_ENABLE_SOLAR_CHARGING, False)
+        pv_enabled = bool(self.config_entry.data.get(CONF_ENABLE_PV_CHARGING, False))
+        grid_enabled = bool(
+            self.config_entry.data.get(CONF_ENABLE_GRID_CHARGING, False)
         )
-        manual_enabled = bool(self.config_entry.data.get(CONF_MANUAL_CONTROL, False))
 
         # Security: Enforce mutual exclusion at startup
-        if solar_enabled and manual_enabled:
+        if pv_enabled and grid_enabled:
             _LOGGER.warning(
-                "Both solar charging and manual control are enabled in config - "
-                "defaulting to solar charging mode"
+                "Both PV charging and grid control are enabled in config - "
+                "defaulting to PV charging mode"
             )
-            solar_enabled = True
-            manual_enabled = False
+            pv_enabled = True
+            grid_enabled = False
 
-        self._state.solar_charging_enabled = solar_enabled
-        self._state.manual_control_enabled = manual_enabled
+        self._state.pv_charging_enabled = pv_enabled
+        self._state.grid_charging_enabled = grid_enabled
 
         _LOGGER.info(
-            "Power manager config updated: interval=%ss, solar=%s, manual=%s, grid_sensor=%s",
+            "Power manager config updated: interval=%ss, PV=%s, grid=%s, grid_sensor=%s",
             self.update_interval,
-            solar_enabled,
-            manual_enabled,
+            pv_enabled,
+            grid_enabled,
             self.grid_power_sensor,
         )
 
@@ -283,23 +288,23 @@ class PowerManager:
         """
         try:
             # Check current mode
-            if self._state.manual_control_enabled:
+            if self._state.grid_charging_enabled:
                 _LOGGER.debug(
-                    "Manual control mode active - power: %sW",
+                    "Grid charging mode active - power: %sW",
                     self._state.target_power,
                 )
                 return
 
-            if self._state.solar_charging_enabled:
-                await self._update_solar_charging_power()
+            if self._state.pv_charging_enabled:
+                await self._update_pv_charging_power()
             else:
                 _LOGGER.debug("No active power management mode")
 
         except (OSError, ValueError, TypeError) as err:
             _LOGGER.error("Error updating power: %s", err)
 
-    async def _update_solar_charging_power(self) -> None:
-        """Update power setpoint for solar charging mode.
+    async def _update_pv_charging_power(self) -> None:
+        """Update power setpoint for PV charging mode.
 
         Uses the formula: New Battery Power = Current Battery Power - Grid Power
         This ensures grid power goes to zero by adjusting battery charge/discharge.
@@ -367,7 +372,7 @@ class PowerManager:
         _LOGGER.debug("After power limits: target=%sW", target_power)
 
         _LOGGER.info(
-            "Solar charging update: grid=%sW, battery=%sW ",
+            "PV charging update: grid=%sW, battery=%sW ",
             grid_power,
             current_battery_power,
         )
@@ -512,26 +517,26 @@ class PowerManager:
         #  Create task but don't await (fire-and-forget)
         self.hass.async_create_task(_set_power_value())
 
-    async def set_solar_charging_mode(self, enabled: bool) -> None:
-        """Enable or disable solar charging mode.
+    async def set_pv_charging_mode(self, enabled: bool) -> None:
+        """Enable or disable PV charging mode.
 
         Args:
-            enabled: True to enable solar charging mode
+            enabled: True to enable PV charging mode
 
         Security:
             OWASP A01: Power manager state synchronized with switch state
         """
-        self._state.solar_charging_enabled = enabled
-        self._state.mode = SOLAR_CHARGING_MODE if enabled else MANUAL_CONTROL_MODE
+        self._state.pv_charging_enabled = enabled
+        self._state.mode = PV_CHARGING_MODE if enabled else GRID_CHARGING_MODE
 
-        # Update manual control state (mutual exclusion)
+        # Update grid charging state (mutual exclusion)
         if enabled:
-            self._state.manual_control_enabled = False
+            self._state.grid_charging_enabled = False
 
         _LOGGER.info(
-            "Solar charging mode %s (manual_control=%s)",
+            "PV charging mode %s (grid_charging=%s)",
             "enabled" if enabled else "disabled",
-            self._state.manual_control_enabled,
+            self._state.grid_charging_enabled,
         )
 
         if enabled:
@@ -548,21 +553,21 @@ class PowerManager:
             OWASP A01: Power manager state synchronized with switch state
 
         """
-        self._state.manual_control_enabled = enabled
-        self._state.mode = MANUAL_CONTROL_MODE if enabled else SOLAR_CHARGING_MODE
+        self._state.grid_charging_enabled = enabled
+        self._state.mode = GRID_CHARGING_MODE if enabled else PV_CHARGING_MODE
 
-        # Update solar charging state (mutual exclusion)
+        # Update PV charging state (mutual exclusion)
         if enabled:
-            self._state.solar_charging_enabled = False
+            self._state.pv_charging_enabled = False
 
         if enabled:
             # Apply manual power
             await self.update_power_setpoint(power)
 
         _LOGGER.info(
-            "Manual control mode %s (solar_charging=%s)",
+            "Manual control mode %s (grid_charging=%s)",
             "enabled" if enabled else "disabled",
-            self._state.solar_charging_enabled,
+            self._state.grid_charging_enabled,
         )
 
     @property
@@ -576,14 +581,14 @@ class PowerManager:
         return self._state.target_power
 
     @property
-    def get_solar_charging_enabled(self) -> bool:
-        """Check if solar charging mode is enabled."""
-        return self._state.solar_charging_enabled
+    def get_pv_charging_enabled(self) -> bool:
+        """Check if PV charging mode is enabled."""
+        return self._state.pv_charging_enabled
 
     @property
-    def get_manual_control_enabled(self) -> bool:
-        """Check if manual control mode is enabled."""
-        return self._state.manual_control_enabled
+    def get_grid_charging_enabled(self) -> bool:
+        """Check if grid charging mode is enabled."""
+        return self._state.grid_charging_enabled
 
     def get_diagnostics(self) -> dict[str, object]:
         """Return diagnostic information for troubleshooting.
@@ -598,8 +603,8 @@ class PowerManager:
             "running": self._running,
             "mode": self._state.mode,
             "target_power": self._state.target_power,
-            "solar_charging_enabled": self._state.solar_charging_enabled,
-            "manual_control_enabled": self._state.manual_control_enabled,
+            "pv_charging_enabled": self._state.pv_charging_enabled,
+            "grid_charging_enabled": self._state.grid_charging_enabled,
             "last_update": self._state.last_update.isoformat(),
             "battery_count": self.battery_count,
             "max_discharge_power": self.max_discharge_power,

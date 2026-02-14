@@ -102,14 +102,14 @@
                     "limit_power": "Enable power limitations",
                     "min_soc": "Minimum State of Charge (%)",
                     "auto_pilot_interval": "Control Update Interval (seconds)",
-                    "enable_solar_charging": "Enable Solar Charging"
+                    "enable_solar_charging": "Enable Charging from PV"
                 },
                 "data_description": {
                     "pilot_from_ha": "Enable or disable pilot mode (registers 41,42)",
                     "limit_power": "Enable or disable power limits (registers 43,44)",
                     "min_soc": "Minimum battery charge level (0-100%)",
                     "auto_pilot_interval": "How often to update power setpoint (5-300 seconds)",
-                    "enable_solar_charging": "Enable solar charging mode for zero grid balance"
+                    "enable_solar_charging": "Enable PV charging mode for zero grid balance"
                 }
             }
         }
@@ -131,8 +131,8 @@
             "bms_nominal_power": {
                 "name": "Nominal Power"
             },
-            "bms_pilot_power": {
-                "name": "Pilot Power"
+            "bms_power_control_setpoint": {
+                "name": "Power Control Setpoint"
             }
         },
         "sensor": {
@@ -258,8 +258,8 @@
                     }
                 }
             },
-            "bms_solar_charging": {
-                "name": "Solar Charging",
+            "bms_charge_from_pv": {
+                "name": "Charging from PV",
                 "state": {
                     "off": "Disabled",
                     "on": "Enabled"
@@ -269,14 +269,14 @@
                         "name": "Mode Conflict",
                         "state": {
                             "none": "No conflict",
-                            "manual_disabled": "Manual control was disabled",
-                            "solar_disabled": "Solar charging was disabled"
+                            "grid_disabled": "Grid charging was disabled",
+                            "pv_disabled": "PV charging was disabled"
                         }
                     }
                 }
             },
-            "bms_manual_control": {
-                "name": "Manual Control",
+            "bms_charge_from_grid": {
+                "name": "Charging from Grid",
                 "state": {
                     "off": "Disabled",
                     "on": "Enabled"
@@ -286,8 +286,8 @@
                         "name": "Mode Conflict",
                         "state": {
                             "none": "No conflict",
-                            "solar_disabled": "Solar charging was disabled",
-                            "manual_disabled": "Manual control was disabled"
+                            "pv_disabled": "PV charging was disabled",
+                            "grid_disabled": "Grid charging was disabled"
                         }
                     }
                 }

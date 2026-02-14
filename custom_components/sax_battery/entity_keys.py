@@ -8,6 +8,7 @@ SAX_MAX_DISCHARGE = "sax_max_discharge"
 SAX_STATUS = "sax_status"
 SAX_SOC = "sax_soc"
 SAX_MIN_SOC = "sax_min_soc"
+SAX_MAX_SOC_CHARGING = "sax_max_soc_charging"
 SAX_POWER = "sax_power"
 SAX_POWER_SM = "sax_power_sm"
 SAX_CAPACITY = "sax_capacity"
@@ -49,10 +50,10 @@ SAX_CUMULATIVE_ENERGY_PRODUCED = "sax_cumulative_energy_produced"
 SAX_CUMULATIVE_ENERGY_CONSUMED = "sax_cumulative_energy_consumed"
 SAX_COMBINED_SOC = "sax_combined_soc"
 
-# Pilot entities
-SOLAR_CHARGING_SWITCH = "solar_charging_switch"
-MANUAL_CONTROL_SWITCH = "manual_control_switch"
-SAX_PILOT_POWER = "sax_pilot_power"
+# Power control entities
+SAX_CHARGE_FROM_PV_SWITCH = "sax_charge_from_pv_switch"
+SAX_CHARGE_FROM_GRID_SWITCH = "sax_charge_from_grid_switch"
+SAX_POWER_CONTROL_SETPOINT = "sax_power_control_setpoint"
 
 # Diagnostic entities
 COORDINATOR_CYCLE_TIME = "coordinator_cycle_time"
