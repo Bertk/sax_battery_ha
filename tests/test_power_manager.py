@@ -600,15 +600,15 @@ class TestSolarChargingMode:
 class TestModeTransitions:
     """Test mode transition functionality."""
 
-    async def test_pv_to_manual_transition(
+    async def test_pv_to_grid_transition(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
         mock_config_entry: ConfigEntry,
     ) -> None:
-        """Test transition from PV charging to manual control.
+        """Test transition from PV charging to grid charging.
 
-        Verifies that enabling manual control automatically disables solar charging.
+        Verifies that enabling grid charging automatically disables solar charging.
         """
 
         power_manager = PowerManager(
@@ -622,24 +622,24 @@ class TestModeTransitions:
         assert power_manager._state.pv_charging_enabled is True
         assert power_manager._state.grid_charging_enabled is False
 
-        # Enable manual control (should automatically disable solar)
+        # Enable grid charging (should automatically disable solar)
         with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
-            await power_manager.set_manual_control_mode(True, 1000)
+            await power_manager.set_grid_control_mode(True, 1000)
 
-            # Manual control enabled, solar charging disabled
+            # Grid charging enabled, solar charging disabled
             assert power_manager._state.grid_charging_enabled is True
             assert power_manager._state.pv_charging_enabled is False
             assert power_manager._state.mode == GRID_CHARGING_MODE
 
-    async def test_manual_to_solar_transition(
+    async def test_grid_to_solar_transition(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
         mock_config_entry: ConfigEntry,
     ) -> None:
-        """Test transition from manual control to solar charging.
+        """Test transition from grid charging to solar charging.
 
-        Verifies that enabling solar charging automatically disables manual control.
+        Verifies that enabling solar charging automatically disables grid charging.
         """
         power_manager = PowerManager(
             hass=hass,
@@ -647,16 +647,16 @@ class TestModeTransitions:
             config_entry=mock_config_entry,
         )
 
-        # Enable manual control
+        # Enable grid charging
         with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
-            await power_manager.set_manual_control_mode(True, 1000)
+            await power_manager.set_grid_control_mode(True, 1000)
             assert power_manager._state.grid_charging_enabled is True
             assert power_manager._state.pv_charging_enabled is False
 
-        # Enable solar charging (should automatically disable manual control)
+        # Enable solar charging (should automatically disable grid charging)
         await power_manager.set_pv_charging_mode(True)
 
-        # Solar enabled, manual control disabled
+        # Solar enabled, grid charging disabled
         assert power_manager._state.pv_charging_enabled is True
         assert power_manager._state.grid_charging_enabled is False
         assert power_manager._state.mode == PV_CHARGING_MODE

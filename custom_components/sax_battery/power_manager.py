@@ -58,6 +58,10 @@ class PowerManagerState:
     pv_charging_enabled: bool = False
     grid_charging_enabled: bool = False
 
+    # State persistence for mode transitions
+    previous_pv_state: bool = False  # Store PV state before grid charging
+    previous_grid_state: bool = False  # Store grid state before PV charging
+
 
 class PowerManager:
     """Power manager for coordinating battery control via HA entities.
@@ -549,33 +553,47 @@ class PowerManager:
         if enabled:
             await self._async_update_power(None)
 
-    async def set_manual_control_mode(self, enabled: bool, power: float = 0.0) -> None:
-        """Enable or disable manual control mode.
+    async def set_grid_control_mode(self, enabled: bool, power: float = 0.0) -> None:
+        """Enable or disable grid charging mode.
 
         Args:
-            enabled: True to enable manual control mode
-            power: Manual power setpoint (only used if enabled=True)
+            enabled: True to enable grid charging mode
+            power: Initial charge power (optional, uses SAX_MAX_CHARGE if 0)
 
         Security:
             OWASP A01: Power manager state synchronized with switch state
 
         """
+        # Store previous PV state before enabling grid charging
+        if enabled:
+            self._state.previous_pv_state = self._state.pv_charging_enabled
+            self._state.pv_charging_enabled = False  # Mutual exclusion
+        elif self._state.previous_pv_state:
+            # Restore previous PV state when disabling grid charging
+            _LOGGER.info("Restoring PV charging mode after grid charging disabled")
+            self._state.pv_charging_enabled = self._state.previous_pv_state
+            self._state.previous_pv_state = False
+
         self._state.grid_charging_enabled = enabled
-        self._state.mode = GRID_CHARGING_MODE if enabled else PV_CHARGING_MODE
-
-        # Update PV charging state (mutual exclusion)
-        if enabled:
-            self._state.pv_charging_enabled = False
-
-        if enabled:
-            # Apply manual power
-            await self.update_power_setpoint(power)
+        self._state.mode = (
+            GRID_CHARGING_MODE
+            if enabled
+            else (PV_CHARGING_MODE if self._state.pv_charging_enabled else "standby")
+        )
 
         _LOGGER.info(
-            "Manual control mode %s (grid_charging=%s)",
+            "Grid charging mode %s (PV charging will be %s)",
             "enabled" if enabled else "disabled",
-            self._state.grid_charging_enabled,
+            "restored"
+            if not enabled and self._state.pv_charging_enabled
+            else "disabled",
         )
+
+        if enabled:
+            # Apply manual power if specified
+            if power != 0.0:
+                await self.update_power_setpoint(power)
+            # Otherwise, grid charging logic will be handled by _async_update_power
 
     @property
     def current_mode(self) -> str:

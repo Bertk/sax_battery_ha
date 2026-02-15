@@ -658,8 +658,8 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
                 hasattr(self.coordinator, "power_manager")
                 and self.coordinator.power_manager
             ):
-                _LOGGER.info("Triggering power manager manual control mode")
-                # First disable PV charging, then enable manual control
+                _LOGGER.info("Triggering power manager grid charging mode")
+                # First disable PV charging, then enable grid charging
                 if pv_enabled:
                     await self.coordinator.power_manager.set_pv_charging_mode(False)
                 await self.coordinator.power_manager.set_grid_control_mode(True, 0.0)
@@ -715,7 +715,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
                 hasattr(self.coordinator, "power_manager")
                 and self.coordinator.power_manager
             ):
-                _LOGGER.info("Disabling power manager manual control mode")
-                await self.coordinator.power_manager.set_manual_control_mode(False, 0.0)
+                _LOGGER.info("Disabling power manager grid charging mode")
+                await self.coordinator.power_manager.set_grid_control_mode(False, 0.0)
 
         await self.coordinator.async_request_refresh()
