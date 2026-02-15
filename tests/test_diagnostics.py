@@ -15,14 +15,12 @@ from unittest.mock import MagicMock, PropertyMock
 import pytest
 
 from custom_components.sax_battery.const import (
-    CONF_AUTO_PILOT_INTERVAL,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_ENABLE_PV_CHARGING,
-    CONF_GRID_POWER_SENSOR,
     CONF_LIMIT_POWER,
     CONF_MIN_SOC,
-    CONF_PILOT_FROM_HA,
-    DEFAULT_AUTO_PILOT_INTERVAL,
+    CONF_POWER_SENSOR,
     DEFAULT_MIN_SOC,
     DOMAIN,
     GRID_CHARGING_MODE,
@@ -74,9 +72,8 @@ def mock_entry_diagnostics():
                 "enabled": True,
             },
         },
-        CONF_PILOT_FROM_HA: False,
-        CONF_GRID_POWER_SENSOR: "sensor.grid_power",
-        CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
+        CONF_CONTROL_POWER: False,
+        CONF_POWER_SENSOR: "sensor.grid_power",
         CONF_ENABLE_PV_CHARGING: False,
         CONF_ENABLE_GRID_CHARGING: False,
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
@@ -188,7 +185,6 @@ def mock_power_manager_diagnostics():
         "battery_count": 2,
         "max_discharge_power": 7000,
         "max_charge_power": 9200,
-        "update_interval": DEFAULT_AUTO_PILOT_INTERVAL,
         "power_entity_id": "number.sax_pilot_power",
         "power_factor_entity_id": "number.sax_nominal_factor",
     }

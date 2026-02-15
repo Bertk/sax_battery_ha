@@ -18,9 +18,9 @@ from .const import (
     BATTERY_IDS,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_ENABLE_PV_CHARGING,
-    CONF_PILOT_FROM_HA,
     DOMAIN,
     SAX_CHARGE_FROM_GRID_SWITCH,
     SAX_CHARGE_FROM_PV_SWITCH,
@@ -490,7 +490,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         _attr_entity_registry_enabled_default from entity description.
 
         Control switches (solar_charging, manual_control) are enabled/disabled
-        based on CONF_PILOT_FROM_HA option.
+        based on CONF_CONTROL_POWER option.
 
         Returns:
             True if entity should be enabled by default
@@ -505,7 +505,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         ):
             # Check config entry options for CONF_PILOT_FROM_HA
             pilot_from_ha = (
-                self.coordinator.config_entry.options.get(CONF_PILOT_FROM_HA, False)
+                self.coordinator.config_entry.options.get(CONF_CONTROL_POWER, False)
                 if self.coordinator.config_entry
                 else False
             )

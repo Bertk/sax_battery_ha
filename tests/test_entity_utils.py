@@ -8,8 +8,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery.const import (
+    CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
-    CONF_PILOT_FROM_HA,
     DOMAIN,
 )
 from custom_components.sax_battery.entity_utils import (
@@ -41,7 +41,7 @@ class TestFilterItemsByType:
         return MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
             },
             entry_id="test_entity_utils_entry",
@@ -547,7 +547,7 @@ class TestEntityUtilsEdgeCases:
         return MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: True,
             },
             entry_id="test_edge_cases_entry",
@@ -667,7 +667,7 @@ class TestEntityUtilsEdgeCases:
 
         mock_config_entry = MockConfigEntry(
             domain=DOMAIN,
-            data={CONF_PILOT_FROM_HA: True},
+            data={CONF_CONTROL_POWER: True},
             entry_id="test_case_sensitivity",
         )
 
@@ -695,7 +695,7 @@ class TestEntityUtilsEdgeCases:
 
         mock_config_entry = MockConfigEntry(
             domain=DOMAIN,
-            data={CONF_PILOT_FROM_HA: True},
+            data={CONF_CONTROL_POWER: True},
             entry_id="test_security",
         )
 
@@ -732,7 +732,7 @@ class TestEntityUtilsEdgeCases:
 
         mock_config_entry = MockConfigEntry(
             domain=DOMAIN,
-            data={CONF_PILOT_FROM_HA: True},
+            data={CONF_CONTROL_POWER: True},
             entry_id="test_memory",
         )
 

@@ -22,7 +22,6 @@ from custom_components.sax_battery.const import (
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_POWER_CONTROL_SETPOINT,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
@@ -1497,83 +1496,8 @@ class TestSAXBatteryModbusNumberPeriodicWrite:
         mock_coordinator_modbus_base.async_write_number_value.assert_called_once()
 
 
-class TestSAXBatteryConfigNumberPilotPower:
-    """Test pilot power handling in config numbers."""
-
-    @pytest.fixture
-    def mock_pilot_item(self) -> SAXItem:
-        """Create pilot power SAX item."""
-        return SAXItem(
-            name=SAX_POWER_CONTROL_SETPOINT,
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.SYS,
-        )
-
-    async def test_handle_pilot_power_update_calculates_nominal_values(
-        self,
-        hass: HomeAssistant,
-        mock_coordinator_config_base,
-        mock_pilot_item,
-    ) -> None:
-        """Test pilot power update calculates and sets nominal power/factor."""
-        number = SAXBatteryConfigNumber(
-            coordinator=mock_coordinator_config_base,
-            sax_item=mock_pilot_item,
-        )
-
-        # Set hass attribute (required for state machine access)
-        number.hass = hass
-
-        # Mock SOC manager with AsyncMock
-        mock_coordinator_config_base.soc_manager = MagicMock()
-
-        # Mock coordinator write methods
-        mock_coordinator_config_base.async_write_pilot_control_value = AsyncMock(
-            return_value=True
-        )
-
-        # Mock sax_data.get_entity_id_for_item to return valid entity IDs
-        mock_coordinator_config_base.sax_data.get_entity_id_for_item = MagicMock(
-            side_effect=lambda item, name: (
-                f"number.{name}"
-                if name in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]
-                else None
-            )
-        )
-
-        # Set up state machine entities for nominal power/factor
-        hass.states.async_set("number.sax_nominal_power", "0")
-        hass.states.async_set("number.sax_nominal_factor", "0")
-
-        await number._handle_pilot_power_update(2000)
-
-        # Should write both nominal power and factor
-        mock_coordinator_config_base.async_write_pilot_control_value.assert_called_once()
-
-    async def test_calculate_nominal_factor_positive_power(
-        self,
-        mock_coordinator_config_base,
-        mock_pilot_item,
-    ) -> None:
-        """Test nominal factor calculation for positive (discharge) power - CORRECTED."""
-        # Mock battery_count property
-        mock_coordinator_config_base.config_entry = MagicMock()
-        mock_coordinator_config_base.config_entry.data = {"CONF_BATTERY_COUNT": 2}
-
-        number = SAXBatteryConfigNumber(
-            coordinator=mock_coordinator_config_base,
-            sax_item=mock_pilot_item,
-        )
-
-        # Calculation: power_per_battery = 2000.0 / 2 = 1000.0
-        # factor = 1000.0 / 4600 * 10000 = 2173 (discharge limit)
-        # BUT: Actual implementation may scale differently
-        # Let's verify actual battery_count behavior
-
-        factor = await number._calculate_nominal_factor(2000.0)
-
-        # Check that factor is reasonable (between 0 and 10000)
-        assert 0 <= factor <= 10000
+# TestSAXBatteryConfigNumberControlPower class removed - SAX_POWER_CONTROL_SETPOINT entity deprecated
+# Power control now uses direct SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR writes via power_manager
 
 
 class TestSAXBatteryModbusNumberSOCConstraints:

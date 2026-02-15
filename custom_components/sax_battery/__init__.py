@@ -23,9 +23,9 @@ from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
-    CONF_PILOT_FROM_HA,
     DEFAULT_PORT,
     DOMAIN,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
@@ -90,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
         sax_data.coordinators = coordinators
 
         # Initialize power manager for master battery if enabled
-        power_manager_enabled = entry.data.get(CONF_PILOT_FROM_HA, False)
+        power_manager_enabled = entry.data.get(CONF_CONTROL_POWER, False)
         if power_manager_enabled:
             master_battery_id = sax_data.master_battery_id
             if master_battery_id and master_battery_id in coordinators:

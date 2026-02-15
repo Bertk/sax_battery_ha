@@ -31,10 +31,10 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
-    CONF_PILOT_FROM_HA,
     DOMAIN,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
@@ -148,7 +148,7 @@ class TestAsyncSetupEntry:
                 CONF_MASTER_BATTERY: "bess_a",
                 "bess_a_host": "192.168.1.100",
                 "bess_a_port": 502,
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
             },
         )
         entry.add_to_hass(hass)
@@ -345,7 +345,7 @@ class TestAsyncUnloadEntry:
                 CONF_MASTER_BATTERY: "bess_a",
                 "bess_a_host": "192.168.1.100",
                 "bess_a_port": 502,
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
             },
         )
         entry.add_to_hass(hass)
@@ -921,7 +921,7 @@ class TestLoggingFunctions:
 
         config_data = {
             CONF_BATTERY_COUNT: 1,
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: True,
             CONF_MIN_SOC: 15,
         }
@@ -945,7 +945,7 @@ class TestLoggingFunctions:
         # Cast to satisfy mypy
         typed_coordinators = cast(dict[str, SAXBatteryCoordinator], coordinators)
 
-        config_data = {CONF_PILOT_FROM_HA: True}
+        config_data = {CONF_CONTROL_POWER: True}
 
         # Should not raise exceptions
         _log_setup_summary(typed_coordinators, config_data)

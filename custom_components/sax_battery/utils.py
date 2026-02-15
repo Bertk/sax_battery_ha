@@ -10,9 +10,9 @@ from homeassistant.config_entries import ConfigEntry
 
 from .const import (
     CONF_BATTERY_COUNT,
+    CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
-    CONF_PILOT_FROM_HA,
     MODBUS_BATTERY_POWER_CONTROL_ITEMS,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
     MODBUS_BATTERY_REALTIME_ITEMS,
@@ -109,7 +109,7 @@ def create_register_access_config(
         battery_count = 1
 
     return RegisterAccessConfig(
-        pilot_from_ha=bool(config_data.get(CONF_PILOT_FROM_HA, False)),
+        pilot_from_ha=bool(config_data.get(CONF_CONTROL_POWER, False)),
         limit_power=bool(config_data.get(CONF_LIMIT_POWER, False)),
         is_master_battery=bool(is_master),
         battery_count=battery_count,

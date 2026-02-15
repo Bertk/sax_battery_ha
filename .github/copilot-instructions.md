@@ -597,7 +597,7 @@ def available(self) -> bool:
   - Follow existing test patterns
 
 ### Config Flow Testing
-- **100% Coverage Required**: All config flow paths must be tested
+- **100% Coverage Required**: All config flow paths must be tested (see [Full test coverage for the config flow](https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/config-flow-test-coverage/))
 - **Test Scenarios**:
   - All flow initiation methods (user, discovery, import)
   - Successful configuration paths

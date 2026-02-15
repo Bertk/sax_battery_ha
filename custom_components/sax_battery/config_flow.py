@@ -17,7 +17,6 @@ from homeassistant.helpers import entity_registry as er, selector
 from .const import (
     BATTERY_IDS,
     BATTERY_PHASES,
-    CONF_AUTO_PILOT_INTERVAL,
     CONF_BATTERIES,
     CONF_BATTERY_COUNT,
     CONF_BATTERY_ENABLED,
@@ -25,25 +24,19 @@ from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_DEVICE_ID,
     CONF_ENABLE_PV_CHARGING,
-    CONF_GRID_POWER_SENSOR,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
-    CONF_PF_SENSOR,
-    CONF_PILOT_FROM_HA,
     CONF_POWER_SENSOR,
-    CONF_PRIORITY_DEVICES,
-    DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
     DOMAIN,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
-    PILOT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
-    SAX_POWER_CONTROL_SETPOINT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,7 +52,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._battery_count: int | None = None
         self._device_id: str = str(uuid.uuid4())  # Generate unique device ID
-        self._pilot_from_ha: bool = False
+        self._control_power: bool = False
         self._limit_power: bool = False
 
     @staticmethod
@@ -103,39 +96,39 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            self._pilot_from_ha = user_input[CONF_PILOT_FROM_HA]
+            self._control_power = user_input[CONF_CONTROL_POWER]
             self._limit_power = user_input[CONF_LIMIT_POWER]
             self._data.update(user_input)
 
-            #  Set PV charging default based on pilot mode
-            if not self._pilot_from_ha:
+            #  Set PV charging default based on control power mode
+            if not self._control_power:
                 self._data[CONF_ENABLE_PV_CHARGING] = False
 
             # Debug logging to verify configuration storage
             _LOGGER.debug(
-                "Control options saved: pilot_from_ha=%s, limit_power=%s, pv_charging=%s",
-                self._pilot_from_ha,
+                "Control options saved: control_power=%s, limit_power=%s, pv_charging=%s",
+                self._control_power,
                 self._limit_power,
                 self._data.get(CONF_ENABLE_PV_CHARGING, False),
             )
 
             # Route to appropriate next step based on selections
-            if self._pilot_from_ha:
-                return await self.async_step_pilot_options()
-            # Skip pilot-specific steps if not enabled
+            if self._control_power:
+                return await self.async_step_sensors()
+            # Skip control-specific steps if not enabled
             return await self.async_step_battery_config()
 
         return self.async_show_form(
             step_id="control_options",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_PILOT_FROM_HA, default=False): bool,
+                    vol.Required(CONF_CONTROL_POWER, default=False): bool,
                     vol.Required(CONF_LIMIT_POWER, default=False): bool,
                 }
             ),
             errors=errors,
             description_placeholders={
-                "pilot_description": "Enable pilot mode to control battery power (registers 41, 42)",
+                "control_power_description": "Enable power control from Home Assistant (registers 41, 42)",
                 "limit_description": "Enable power limits to set max charge/discharge (registers 43, 44)",
             },
         )
@@ -143,11 +136,11 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_pilot_options(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure pilot options."""
+        """Configure pilot options (simplified - only MIN_SOC)."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Custom validation that allows us to show specific error messages
+            # Custom validation
             validation_passed = True
 
             try:
@@ -159,25 +152,12 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_MIN_SOC] = "invalid_min_soc"
                 validation_passed = False
 
-            try:
-                auto_pilot_interval = int(
-                    user_input.get(
-                        CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
-                    )
-                )
-                if not 5 <= auto_pilot_interval <= 300:
-                    errors[CONF_AUTO_PILOT_INTERVAL] = "invalid_interval"
-                    validation_passed = False
-            except (ValueError, TypeError):
-                errors[CONF_AUTO_PILOT_INTERVAL] = "invalid_interval"
-                validation_passed = False
-
             # If validation passed, save data and move to next step
             if validation_passed:
                 self._data.update(user_input)
                 _LOGGER.debug("Pilot options saved: %s", user_input)
-                # Move to the NEXT step (not the same step!)
-                return await self.async_step_sensors()  # Or whatever comes next
+                # Move to sensors step
+                return await self.async_step_sensors()
 
         # Show the form
         return self.async_show_form(
@@ -188,12 +168,6 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_MIN_SOC,
                         default=self._data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                    vol.Required(
-                        CONF_AUTO_PILOT_INTERVAL,
-                        default=self._data.get(
-                            CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
                 }
             ),
             errors=errors,
@@ -202,84 +176,34 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_sensors(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure power and PF sensors."""
+        """Configure PV production sensor for power balancing."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             self._data.update(user_input)
-
-            # If pilot is enabled and sensors configured, go to priority devices
-            if self._pilot_from_ha:
-                return await self.async_step_priority_devices()
-
-            # Otherwise proceed to battery config
+            # No priority devices step - go directly to battery config
             return await self.async_step_battery_config()
 
-        # Create schema based on pilot configuration
+        # Only ask for PV production sensor (power control)
         schema = {}
-        if self._pilot_from_ha:
+        if self._control_power:
             schema.update(
                 {
-                    vol.Required(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
+                    vol.Required(CONF_POWER_SENSOR): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             domain="sensor",
                             device_class="power",
-                        )
-                    ),
-                    vol.Optional(CONF_POWER_SENSOR): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="sensor",
-                            device_class="power",
-                        )
-                    ),
-                    vol.Optional(CONF_PF_SENSOR): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="sensor",
-                            device_class="power_factor",
                         )
                     ),
                 }
             )
-
-        # If no sensors are needed, skip this step
-        # if not schema:
-        #     return await self.async_step_battery_config() Line 242 - UNREACHABLE
 
         return self.async_show_form(
             step_id="sensors",
             data_schema=vol.Schema(schema),
             errors=errors,
             description_placeholders={
-                "grid_power_description": "Select grid power sensor for power manager (required)",
-                "power_sensor_description": "Select smart meter power sensor (optional, for legacy pilot)",
-                "pf_sensor_description": "Select power factor sensor (optional, for legacy pilot)",
-            },
-        )
-
-    async def async_step_priority_devices(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Configure priority devices."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            self._data.update(user_input)
-            return await self.async_step_battery_config()
-
-        return self.async_show_form(
-            step_id="priority_devices",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(CONF_PRIORITY_DEVICES): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            multiple=True,
-                        )
-                    ),
-                }
-            ),
-            errors=errors,
-            description_placeholders={
-                "priority_devices_description": "Select devices that should have priority over battery usage (e.g., EV charger, heat pump)"
+                "power_sensor_description": "Select PV production sensor for balanced charging/discharging",
             },
         )
 
@@ -468,7 +392,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Copy existing data to allow modification
         self._data = dict(entry.data)
         self._battery_count = self._data.get(CONF_BATTERY_COUNT, 1)
-        self._pilot_from_ha = self._data.get(CONF_PILOT_FROM_HA, False)
+        self._control_power = self._data.get(CONF_CONTROL_POWER, False)
         self._limit_power = self._data.get(CONF_LIMIT_POWER, False)
 
         # Start reconfiguration from control options
@@ -484,8 +408,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             # Get the current configuration values
-            current_pilot_from_ha = self.config_entry.data.get(
-                CONF_PILOT_FROM_HA, False
+            current_control_power = self.config_entry.data.get(
+                CONF_CONTROL_POWER, False
             )
             current_limit_power = self.config_entry.data.get(CONF_LIMIT_POWER, False)
 
@@ -493,10 +417,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             pilot_options: dict[str, Any] = {}
             if CONF_MIN_SOC in user_input:
                 pilot_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
-            if CONF_AUTO_PILOT_INTERVAL in user_input:
-                pilot_options[CONF_AUTO_PILOT_INTERVAL] = user_input[
-                    CONF_AUTO_PILOT_INTERVAL
-                ]
             if CONF_ENABLE_PV_CHARGING in user_input:
                 pilot_options[CONF_ENABLE_PV_CHARGING] = user_input[
                     CONF_ENABLE_PV_CHARGING
@@ -504,14 +424,14 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
             # Build result data - always include feature toggles
             result_data = {
-                CONF_PILOT_FROM_HA: user_input.get(
-                    CONF_PILOT_FROM_HA, current_pilot_from_ha
+                CONF_CONTROL_POWER: user_input.get(
+                    CONF_CONTROL_POWER, current_control_power
                 ),
                 CONF_LIMIT_POWER: user_input.get(CONF_LIMIT_POWER, current_limit_power),
             }
 
-            # Only include pilot-specific options when pilot is enabled
-            if user_input.get(CONF_PILOT_FROM_HA, current_pilot_from_ha):
+            # Only include pilot-specific options when control power is enabled
+            if user_input.get(CONF_CONTROL_POWER, current_control_power):
                 result_data.update(pilot_options)
 
             # Update config entry data
@@ -527,21 +447,17 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                 await self._enable_power_limit_entities()
 
             # Handle feature disabling
-            new_pilot_from_ha = user_input.get(
-                CONF_PILOT_FROM_HA, current_pilot_from_ha
+            new_control_power = user_input.get(
+                CONF_CONTROL_POWER, current_control_power
             )
             new_limit_power = user_input.get(CONF_LIMIT_POWER, current_limit_power)
-
-            # Disable SAX_PILOT_POWER entity if pilot was disabled
-            if not new_pilot_from_ha and current_pilot_from_ha:
-                await self._async_disable_pilot_power_entity()
 
             # Disable power limit entities if feature was disabled
             if not new_limit_power and current_limit_power:
                 await self._async_disable_power_limit_entities()
 
-            # Stop Power Manager if pilot was disabled
-            if not new_pilot_from_ha and current_pilot_from_ha:
+            # Stop Power Manager if control power was disabled
+            if not new_control_power and current_control_power:
                 await self._async_stop_power_manager()
 
             # Update SOC Manager state if limit power changed
@@ -556,7 +472,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=result_data)
 
         # Get current configuration for form display
-        pilot_enabled = self.config_entry.data.get(CONF_PILOT_FROM_HA, False)
+        control_power_enabled = self.config_entry.data.get(CONF_CONTROL_POWER, False)
         limit_power_enabled = self.config_entry.data.get(CONF_LIMIT_POWER, False)
 
         schema: dict[vol.Marker, Any] = {}
@@ -565,10 +481,10 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         schema.update(
             {
                 vol.Optional(
-                    CONF_PILOT_FROM_HA,
+                    CONF_CONTROL_POWER,
                     default=self.config_entry.options.get(
-                        CONF_PILOT_FROM_HA,
-                        self.config_entry.data.get(CONF_PILOT_FROM_HA, False),
+                        CONF_CONTROL_POWER,
+                        self.config_entry.data.get(CONF_CONTROL_POWER, False),
                     ),
                 ): bool,
                 vol.Optional(
@@ -581,8 +497,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-        # Show pilot-specific options if pilot is currently enabled
-        if pilot_enabled:
+        # Show control-power-specific options if power control is currently enabled
+        if control_power_enabled:
             schema.update(
                 {
                     vol.Optional(
@@ -592,15 +508,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                             self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                    vol.Optional(
-                        CONF_AUTO_PILOT_INTERVAL,
-                        default=self.config_entry.options.get(
-                            CONF_AUTO_PILOT_INTERVAL,
-                            self.config_entry.data.get(
-                                CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
-                            ),
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
                     vol.Optional(
                         CONF_ENABLE_PV_CHARGING,
                         default=self.config_entry.options.get(
@@ -613,14 +520,16 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Show informative description based on current feature states
         description_placeholders = {
-            "feature_toggles": "Enable or disable pilot mode (registers 41,42) and power limits (registers 43,44)",
+            "feature_toggles": "Enable or disable power control (registers 41,42) and power limits (registers 43,44)",
         }
 
-        if pilot_enabled:
-            description_placeholders["pilot_options"] = "Configure pilot mode settings"
+        if control_power_enabled:
+            description_placeholders["control_power_options"] = (
+                "Configure power control settings"
+            )
         else:
-            description_placeholders["pilot_options"] = (
-                "Pilot mode is disabled - enable it above to configure settings"
+            description_placeholders["control_power_options"] = (
+                "Power control is disabled - enable it above to configure settings"
             )
 
         if limit_power_enabled:
@@ -725,81 +634,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                 "Enabled %d power limit entities based on options flow configuration",
                 enabled_count,
             )
-
-    async def _async_disable_pilot_power_entity(self) -> None:
-        """Disable SAX_PILOT_POWER entity when pilot mode is disabled.
-
-        Security:
-            OWASP A01: Ensures entity access control follows configuration
-
-        Performance:
-            Single entity registry lookup and update
-        """
-        ent_reg = er.async_get(self.hass)
-
-        # Get SAXBatteryData instance from integration data
-        integration_data = self.hass.data.get(DOMAIN, {}).get(
-            self.config_entry.entry_id
-        )
-
-        if not integration_data:
-            _LOGGER.warning(
-                "Integration data not found for entry %s",
-                self.config_entry.entry_id,
-            )
-            return
-
-        sax_data = integration_data.get("sax_data")
-        if not sax_data:
-            _LOGGER.warning(
-                "SAXBatteryData not found in integration data for entry %s",
-                self.config_entry.entry_id,
-            )
-            return
-
-        # Find the pilot power item from PILOT_ITEMS
-        pilot_power_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_POWER_CONTROL_SETPOINT),
-            None,
-        )
-
-        if not pilot_power_item:
-            _LOGGER.error(
-                "SAX_POWER_CONTROL_SETPOINT item not found in PILOT_ITEMS - cannot generate unique_id"
-            )
-            return
-
-        # Use SAXBatteryData method for unique_id generation
-        unique_id = sax_data.get_unique_id_for_item(
-            pilot_power_item,
-            battery_id=None,  # Cluster-wide entity
-        )
-
-        if not unique_id:
-            _LOGGER.warning(
-                "Could not generate unique_id for SAX_POWER_CONTROL_SETPOINT entity"
-            )
-            return
-
-        # Find entity in registry
-        entity_id = ent_reg.async_get_entity_id("number", DOMAIN, unique_id)
-
-        if not entity_id:
-            _LOGGER.debug(
-                "SAX_POWER_CONTROL_SETPOINT entity not found in registry (unique_id=%s)",
-                unique_id,
-            )
-            return
-
-        # Disable entity
-        ent_reg.async_update_entity(
-            entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
-        )
-
-        _LOGGER.info(
-            "Disabled SAX_POWER_CONTROL_SETPOINT entity (entity_id=%s) because CONF_PILOT_FROM_HA was set to False",
-            entity_id,
-        )
 
     async def _async_disable_power_limit_entities(self) -> None:
         """Disable power limit entities when CONF_LIMIT_POWER is disabled.
@@ -918,7 +752,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             # Remove from integration data
             integration_data.pop("power_manager", None)
             _LOGGER.info(
-                "Power manager stopped because CONF_PILOT_FROM_HA was set to False"
+                "Power manager stopped because CONF_CONTROL_POWER was set to False"
             )
         else:
             _LOGGER.debug("No power manager found to stop")

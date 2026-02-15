@@ -23,10 +23,10 @@ from .const import (
     CONF_BATTERY_COUNT,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MIN_SOC,
-    CONF_PILOT_FROM_HA,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
@@ -40,7 +40,6 @@ from .const import (
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_POWER_CONTROL_SETPOINT,
     WRITE_ONLY_REGISTERS,
 )
 from .coordinator import SAXBatteryCoordinator
@@ -463,14 +462,16 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 return limit_power_enabled
 
             if self._modbus_item.name in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]:
-                # Pilot registers (41-42): check CONF_PILOT_FROM_HA
-                pilot_enabled = bool(config_entry.data.get(CONF_PILOT_FROM_HA, False))
-                _LOGGER.debug(
-                    "Pilot register %s enabled by config: %s",
-                    self._modbus_item.name,
-                    pilot_enabled,
+                # Pilot registers (41-42): check CONF_CONTROL_POWER
+                control_power_enabled = bool(
+                    config_entry.data.get(CONF_CONTROL_POWER, False)
                 )
-                return pilot_enabled
+                _LOGGER.debug(
+                    "Control power register %s enabled by config: %s",
+                    self._modbus_item.name,
+                    control_power_enabled,
+                )
+                return control_power_enabled
 
         return True
 
@@ -1142,29 +1143,10 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
 
         # Set entity registry enabled state from SAXItem or configuration
-        # Special handling for SAX_POWER_CONTROL_SETPOINT: enabled only if CONF_PILOT_FROM_HA is True
-        if sax_item.name == SAX_POWER_CONTROL_SETPOINT:
-            if coordinator.config_entry:
-                pilot_from_ha = coordinator.config_entry.data.get(
-                    CONF_PILOT_FROM_HA, False
-                )
-                self._attr_entity_registry_enabled_default = pilot_from_ha
-                _LOGGER.debug(
-                    "SAX_POWER_CONTROL_SETPOINT entity enabled_by_default=%s (CONF_PILOT_FROM_HA=%s)",
-                    pilot_from_ha,
-                    pilot_from_ha,
-                )
-            else:
-                # Fallback: disable by default if no config entry
-                self._attr_entity_registry_enabled_default = False
-                _LOGGER.warning(
-                    "No config entry available, SAX_POWER_CONTROL_SETPOINT disabled by default"
-                )
-        else:
-            # All other config numbers use SAXItem's enabled_by_default
-            self._attr_entity_registry_enabled_default = getattr(
-                self._sax_item, "enabled_by_default", True
-            )
+        # All other config numbers use SAXItem's enabled_by_default
+        self._attr_entity_registry_enabled_default = getattr(
+            self._sax_item, "enabled_by_default", True
+        )
 
         # Set entity name
         if (
@@ -1283,10 +1265,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                 )
                 _LOGGER.info("Minimum SOC updated to %s%%", value)
 
-            elif self._sax_item.name == SAX_POWER_CONTROL_SETPOINT:
-                # New: Handle pilot power updates with atomic write to control registers
-                await self._handle_pilot_power_update(int(value))
-
             else:
                 # Generic config value update
                 self._attr_native_value = float(value)
@@ -1315,10 +1293,10 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             )
             raise HomeAssistantError(f"Failed to update: {err}") from err
 
-    async def _handle_pilot_power_update(self, power_value: int) -> None:
-        """Handle SAX_PILOT_POWER update by writing to control registers atomically.
+    async def _handle_control_power_update(self, power_value: int) -> None:
+        """Handle CONF_CONTROL_POWER update by writing to control registers atomically.
 
-        Derives SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR from pilot power value
+        Derives SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR from control power value
         and writes both to registers 41 and 42 in a single atomic transaction.
 
         Args:

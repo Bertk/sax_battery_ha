@@ -14,9 +14,9 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_ENABLE_PV_CHARGING,
-    CONF_PILOT_FROM_HA,
     DEFAULT_DEVICE_INFO,
     DESCRIPTION_SAX_STATUS_SWITCH,
     DOMAIN,
@@ -112,7 +112,7 @@ class TestSAXBatterySwitch:
         """Test that register 99 is treated as regular switch (not write-only)."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            "CONF_PILOT_FROM_HA": True,
+            "CONF_CONTROL_POWER": True,
             "CONF_LIMIT_POWER": True,
             "CONF_MASTER_BATTERY": "bess_a",
         }
@@ -1062,7 +1062,7 @@ class TestAsyncSetupEntry:
 
         mock_config = MagicMock(spec=ConfigEntry)
         mock_config.data = {
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
             CONF_ENABLE_PV_CHARGING: False,
             CONF_ENABLE_GRID_CHARGING: False,
         }
@@ -1089,7 +1089,7 @@ class TestAsyncSetupEntry:
         mock_entry.entry_id = "test_switch_entry"
         mock_entry.data = {
             CONF_BATTERY_COUNT: 1,
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
             CONF_ENABLE_PV_CHARGING: False,
             CONF_ENABLE_GRID_CHARGING: False,
         }
@@ -1406,7 +1406,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         # Mock config entry
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_ENABLE_PV_CHARGING: False,
             CONF_ENABLE_GRID_CHARGING: False,
         }
@@ -1854,7 +1854,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
     ) -> None:
         """Test pv charging switch requires pilot mode to be enabled."""
         # Pilot mode disabled
-        mock_coordinator_comprehensive.config_entry.data["CONF_PILOT_FROM_HA"] = False
+        mock_coordinator_comprehensive.config_entry.data["CONF_CONTROL_POWER"] = False
         mock_coordinator_comprehensive.config_entry.data[
             "CONF_ENABLE_SOLAR_CHARGING"
         ] = True
@@ -1881,7 +1881,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
     ) -> None:
         """Test pv charging switch enabled when both pilot and pv are on."""
         # Both pilot mode and pv charging enabled
-        mock_coordinator_comprehensive.config_entry.data[CONF_PILOT_FROM_HA] = True
+        mock_coordinator_comprehensive.config_entry.data[CONF_CONTROL_POWER] = True
         mock_coordinator_comprehensive.config_entry.data[CONF_ENABLE_PV_CHARGING] = True
 
         sax_item = SAXItem(

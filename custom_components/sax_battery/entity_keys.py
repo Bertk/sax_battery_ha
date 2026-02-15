@@ -53,7 +53,7 @@ SAX_COMBINED_SOC = "sax_combined_soc"
 # Power control entities
 SAX_CHARGE_FROM_PV_SWITCH = "sax_charge_from_pv_switch"
 SAX_CHARGE_FROM_GRID_SWITCH = "sax_charge_from_grid_switch"
-SAX_POWER_CONTROL_SETPOINT = "sax_power_control_setpoint"
+# SAX_POWER_CONTROL_SETPOINT removed - replaced by direct SAX_NOMINAL_POWER control
 
 # Diagnostic entities
 COORDINATOR_CYCLE_TIME = "coordinator_cycle_time"

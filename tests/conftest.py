@@ -8,21 +8,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.sax_battery.const import (
-    CONF_AUTO_PILOT_INTERVAL,
     CONF_BATTERY_COUNT,
     CONF_BATTERY_HOST,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_ENABLE_PV_CHARGING,
-    CONF_GRID_POWER_SENSOR,
     CONF_MIN_SOC,
     CONF_PF_SENSOR,
-    CONF_PILOT_FROM_HA,
     CONF_POWER_SENSOR,
-    CONF_PRIORITY_DEVICES,
-    DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_MAX_CHARGE,
@@ -849,9 +845,7 @@ def mock_config_entry():
             },
         },
         # Power manager configuration
-        CONF_PILOT_FROM_HA: False,
-        CONF_GRID_POWER_SENSOR: None,
-        CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
+        CONF_CONTROL_POWER: False,
         CONF_ENABLE_PV_CHARGING: False,
         CONF_ENABLE_GRID_CHARGING: False,
         # SOC configuration
@@ -859,7 +853,6 @@ def mock_config_entry():
         # Legacy pilot configuration
         CONF_POWER_SENSOR: None,
         CONF_PF_SENSOR: None,
-        CONF_PRIORITY_DEVICES: [],
     }
     entry.options = {}
     entry.add_update_listener = MagicMock(return_value=MagicMock())

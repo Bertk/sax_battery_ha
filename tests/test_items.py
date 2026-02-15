@@ -9,11 +9,7 @@ from pymodbus.client.mixin import ModbusClientMixin
 from pymodbus.exceptions import ModbusException
 import pytest
 
-from custom_components.sax_battery.entity_keys import (
-    SAX_COMBINED_SOC,
-    SAX_MIN_SOC,
-    SAX_POWER_CONTROL_SETPOINT,
-)
+from custom_components.sax_battery.entity_keys import SAX_COMBINED_SOC, SAX_MIN_SOC
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem, WebAPIItem
 
@@ -374,55 +370,6 @@ class TestSAXItemWrite:
             result = await sax_item_fixture.async_write_value(100)
             assert result is False
             assert "read-only SAX item" in caplog.text
-
-    async def test_write_pilot_power_success(self):
-        """Test write pilot power successfully."""
-        item = SAXItem(
-            name=SAX_POWER_CONTROL_SETPOINT,
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.SYS,
-        )
-        mock_pilot = AsyncMock()
-        mock_pilot.set_manual_power = AsyncMock()
-        mock_sax_data = Mock(pilot=mock_pilot)
-        coordinators = {"bess_a": Mock(sax_data=mock_sax_data)}
-        item.set_coordinators(coordinators)
-
-        result = await item.async_write_value(500.0)
-        assert result is True
-        mock_pilot.set_manual_power.assert_called_once_with(500.0)
-
-    async def test_write_pilot_power_no_pilot(self, caplog):
-        """Test write pilot power when no pilot service."""
-        item = SAXItem(
-            name=SAX_POWER_CONTROL_SETPOINT,
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.SYS,
-        )
-        item.set_coordinators({})
-
-        with caplog.at_level(logging.ERROR):
-            result = await item.async_write_value(500.0)
-            assert result is False
-            assert "No pilot service found" in caplog.text
-
-    async def test_write_pilot_power_exception(self, caplog):
-        """Test write pilot power handles exceptions."""
-        item = SAXItem(
-            name=SAX_POWER_CONTROL_SETPOINT,
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.SYS,
-        )
-        mock_pilot = AsyncMock()
-        mock_pilot.set_manual_power.side_effect = Exception("Test error")
-        mock_sax_data = Mock(pilot=mock_pilot)
-        coordinators = {"bess_a": Mock(sax_data=mock_sax_data)}
-        item.set_coordinators(coordinators)
-
-        with caplog.at_level(logging.ERROR):
-            result = await item.async_write_value(500.0)
-            assert result is False
-            assert "Failed to write pilot power" in caplog.text
 
     async def test_write_not_implemented(self):
         """Test write for non-pilot SAX items."""

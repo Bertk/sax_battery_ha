@@ -26,11 +26,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
-    CONF_AUTO_PILOT_INTERVAL,
     CONF_ENABLE_GRID_CHARGING,
     CONF_ENABLE_PV_CHARGING,
-    CONF_GRID_POWER_SENSOR,
-    DEFAULT_AUTO_PILOT_INTERVAL,
+    CONF_POWER_SENSOR,
     GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
@@ -41,7 +39,6 @@ from .const import (
     SAX_AC_POWER_TOTAL,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
-    SAX_POWER_CONTROL_SETPOINT,
 )
 from .coordinator import SAXBatteryCoordinator
 
@@ -118,42 +115,41 @@ class PowerManager:
         self._update_config_values()
 
     def _resolve_entity_ids(self) -> None:
-        """Resolve entity IDs for power control entities from registry."""
+        """Resolve entity IDs for power control entities from registry.
+
+        Uses SAX_NOMINAL_POWER (register 43) and SAX_NOMINAL_FACTOR (register 44)
+        for direct hardware control instead of intermediate SAX_POWER_CONTROL_SETPOINT.
+        """
         # Validate coordinator has required dependencies
         if not hasattr(self.coordinator, "sax_data"):
             _LOGGER.error("Coordinator missing sax_data attribute")
             return
 
-        # Resolve SAX_PILOT_POWER entity (the one that actually exists!)
-        # Find the pilot power item from the list
-        pilot_power_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_POWER_CONTROL_SETPOINT),
+        # Resolve SAX_NOMINAL_POWER entity (register 43)
+        nominal_power_item = next(
+            (item for item in PILOT_ITEMS if item.name == SAX_NOMINAL_POWER),
             None,
         )
 
-        if not pilot_power_item:
-            _LOGGER.error(
-                "Could not find %s in PILOT_ITEMS", SAX_POWER_CONTROL_SETPOINT
-            )
+        if not nominal_power_item:
+            _LOGGER.error("Could not find %s in PILOT_ITEMS", SAX_NOMINAL_POWER)
             return
 
         power_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-            pilot_power_item,
-            SAX_POWER_CONTROL_SETPOINT,
+            nominal_power_item,
+            SAX_NOMINAL_POWER,
         )
 
         if power_entity_id:
             self._power_entity_id = power_entity_id
             _LOGGER.info(
-                "✓ Resolved power entity: %s (entity_id: %s)",
-                SAX_POWER_CONTROL_SETPOINT,
+                "✓ Resolved power entity: SAX_NOMINAL_POWER (register 43, entity_id: %s)",
                 self._power_entity_id,
             )
         else:
-            _LOGGER.error(
-                "Could not generate entity_id for %s", SAX_POWER_CONTROL_SETPOINT
-            )
+            _LOGGER.error("Could not generate entity_id for %s", SAX_NOMINAL_POWER)
 
+        # Resolve SAX_NOMINAL_FACTOR entity (register 44)
         power_factor_item = next(
             (item for item in PILOT_ITEMS if item.name == SAX_NOMINAL_FACTOR),
             None,
@@ -185,11 +181,12 @@ class PowerManager:
         )
 
     def _update_config_values(self) -> None:
-        """Update configuration values from entry data."""
-        self.grid_power_sensor = self.config_entry.data.get(CONF_GRID_POWER_SENSOR)
-        self.update_interval = self.config_entry.data.get(
-            CONF_AUTO_PILOT_INTERVAL, DEFAULT_AUTO_PILOT_INTERVAL
-        )
+        """Update configuration values from entry data.
+
+        Uses coordinator cycle for polling instead of custom interval (CONF_AUTO_PILOT_INTERVAL removed).
+        CONF_POWER_SENSOR now represents PV production sensor (not smart meter).
+        """
+        self.pv_power_sensor = self.config_entry.data.get(CONF_POWER_SENSOR)
 
         pv_enabled = bool(self.config_entry.data.get(CONF_ENABLE_PV_CHARGING, False))
         grid_enabled = bool(
@@ -209,16 +206,16 @@ class PowerManager:
         self._state.grid_charging_enabled = grid_enabled
 
         _LOGGER.info(
-            "Power manager config updated: interval=%ss, PV=%s, grid=%s, grid_sensor=%s",
-            self.update_interval,
+            "Power manager config updated: PV=%s, grid=%s, pv_sensor=%s",
             pv_enabled,
             grid_enabled,
-            self.grid_power_sensor,
+            self.pv_power_sensor,
         )
 
     async def async_start(self) -> None:
         """Start the power manager service.
 
+        Uses coordinator's update_interval instead of custom CONF_AUTO_PILOT_INTERVAL.
         Security: Only starts if not already running
         """
         if self._running:
@@ -227,11 +224,18 @@ class PowerManager:
 
         self._running = True
 
-        # Set up periodic updates
+        # Set up periodic updates using coordinator's update interval
+        # Use 60 seconds as fallback if coordinator interval is not set
+        update_interval: timedelta = (
+            self.coordinator.update_interval
+            if self.coordinator.update_interval is not None
+            else timedelta(seconds=60)
+        )
+
         self._remove_interval_update = async_track_time_interval(
             self.hass,
             self._async_update_power,
-            timedelta(seconds=self.update_interval),
+            update_interval,
         )
 
         # Add listener for config entry updates
@@ -242,7 +246,10 @@ class PowerManager:
         # Do initial update
         await self._async_update_power(None)
 
-        _LOGGER.info("Power manager started with %ss interval", self.update_interval)
+        _LOGGER.info(
+            "Power manager started with coordinator cycle (%ss)",
+            update_interval.total_seconds(),
+        )
 
     async def async_stop(self) -> None:
         """Stop the power manager service.
@@ -310,35 +317,35 @@ class PowerManager:
         This ensures grid power goes to zero by adjusting battery charge/discharge.
 
         Security:
-            OWASP A05: Validates grid sensor state and battery power availability
+            OWASP A05: Validates PV sensor state and battery power availability
 
         Performance:
             Direct state machine access with entity registry lookup
         """
-        if not self.grid_power_sensor:
-            _LOGGER.warning("Grid power sensor not configured")
+        if not self.pv_power_sensor:
+            _LOGGER.warning("PV power sensor not configured")
             return
 
-        # Get grid power state (negative = export, positive = import)
-        grid_state = self.hass.states.get(self.grid_power_sensor)
-        if grid_state is None:
-            _LOGGER.warning("Grid power sensor %s not found", self.grid_power_sensor)
+        # Get PV power state (production value from CONF_POWER_SENSOR)
+        pv_state = self.hass.states.get(self.pv_power_sensor)
+        if pv_state is None:
+            _LOGGER.warning("PV power sensor %s not found", self.pv_power_sensor)
             return
 
-        if grid_state.state in (None, "unknown", "unavailable"):
+        if pv_state.state in (None, "unknown", "unavailable"):
             _LOGGER.warning(
-                "Grid power sensor %s state is %s",
-                self.grid_power_sensor,
-                grid_state.state,
+                "PV power sensor %s state is %s",
+                self.pv_power_sensor,
+                pv_state.state,
             )
             return
 
         try:
-            grid_power = float(grid_state.state)
+            pv_power = float(pv_state.state)
         except (ValueError, TypeError) as err:
             _LOGGER.error(
-                "Could not convert grid power '%s' to float: %s",
-                grid_state.state,
+                "Could not convert PV power '%s' to float: %s",
+                pv_state.state,
                 err,
             )
             return
@@ -353,12 +360,12 @@ class PowerManager:
             return
 
         # CORRECT CALCULATION:
-        # New Battery Power = Current Battery Power - Grid Power
-        target_power = current_battery_power - grid_power
+        # New Battery Power = Current Battery Power - PV Power
+        target_power = current_battery_power - pv_power
 
         _LOGGER.debug(
-            "Solar charging calculation: grid=%sW, current_battery=%sW, raw_target=%sW",
-            grid_power,
+            "Solar charging calculation: pv=%sW, current_battery=%sW, raw_target=%sW",
+            pv_power,
             current_battery_power,
             target_power,
         )
@@ -372,8 +379,8 @@ class PowerManager:
         _LOGGER.debug("After power limits: target=%sW", target_power)
 
         _LOGGER.info(
-            "PV charging update: grid=%sW, battery=%sW ",
-            grid_power,
+            "PV charging update: pv=%sW, battery=%sW ",
+            pv_power,
             current_battery_power,
         )
 
@@ -599,6 +606,11 @@ class PowerManager:
         Security:
             OWASP A05: Does not expose sensitive configuration data
         """
+        update_interval: timedelta = (
+            self.coordinator.update_interval
+            if self.coordinator.update_interval is not None
+            else timedelta(seconds=60)
+        )
         return {
             "running": self._running,
             "mode": self._state.mode,
@@ -609,7 +621,7 @@ class PowerManager:
             "battery_count": self.battery_count,
             "max_discharge_power": self.max_discharge_power,
             "max_charge_power": self.max_charge_power,
-            "update_interval": getattr(self, "update_interval", None),
+            "update_interval_seconds": update_interval.total_seconds(),
             "power_entity_id": self._power_entity_id,
             "power_factor_entity_id": self._power_factor_entity_id,
         }

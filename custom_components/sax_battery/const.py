@@ -52,7 +52,6 @@ from .entity_keys import (
     SAX_NOMINAL_POWER,
     SAX_PHASE_CURRENTS_SUM,
     SAX_POWER,
-    SAX_POWER_CONTROL_SETPOINT,
     SAX_POWER_FACTOR,
     SAX_POWER_SM,
     SAX_REACTIVE_POWER,
@@ -98,11 +97,8 @@ BATTERY_PHASES = {"bess_a": "L1", "bess_b": "L2", "bess_c": "L3"}
 
 
 # Configuration constants for write access control
-CONF_PILOT_FROM_HA = "pilot_from_ha"
+CONF_CONTROL_POWER = "control_power"  # Renamed from CONF_PILOT_FROM_HA
 CONF_LIMIT_POWER = "limit_power"
-
-# Power Manager constants
-CONF_GRID_POWER_SENSOR = "grid_power_sensor"
 
 # Control modes
 PV_CHARGING_MODE = "enable_pv_charging"
@@ -134,21 +130,19 @@ DEFAULT_DEVICE_INFO = SAXDeviceInfo()
 
 # Configuration constants
 CONF_BATTERY_COUNT = "battery_count"
-CONF_POWER_SENSOR = "power_sensor_entity_id"
+CONF_POWER_SENSOR = "pv_production_sensor"  # PV production sensor for balanced charging
 CONF_PF_SENSOR = "pf_sensor_entity_id"
 CONF_MASTER_BATTERY = "master_battery"
 CONF_DEVICE_ID = "device_id"
 
 # config flow constants
 CONF_MIN_SOC = "min_soc"
-CONF_PRIORITY_DEVICES = "priority_devices"
 CONF_ENABLE_PV_CHARGING = "enable_pv_charging"
 CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
-CONF_AUTO_PILOT_INTERVAL = "auto_pilot_interval"
 
 DEFAULT_PORT = 502  # Default Modbus port
-DEFAULT_AUTO_PILOT_INTERVAL = 60  # seconds
-DEFAULT_MIN_SOC = 15  # 10% default minimum SOC
+DEFAULT_MIN_SOC = 15  # 15% default minimum
+DEFAULT_MAX_SOC_CHARGING = 90  # 90% default maximum for charging
 
 # Write-only register addresses that require configuration checks
 WRITE_ONLY_REGISTERS = {41, 42, 43, 44}
@@ -265,16 +259,7 @@ DESCRIPTION_SAX_MAX_SOC_CHARGING = NumberEntityDescription(
     icon="mdi:battery-charging-high",
 )
 
-DESCRIPTION_SAX_POWER_CONTROL_SETPOINT = NumberEntityDescription(
-    key=SAX_POWER_CONTROL_SETPOINT,
-    name="Sax Power Control Setpoint",
-    mode=NumberMode.BOX,
-    device_class=NumberDeviceClass.POWER,
-    native_unit_of_measurement=UnitOfPower.WATT,
-    native_step=1,
-    native_min_value=LIMIT_MAX_DISCHARGE_PER_BATTERY * -1,
-    native_max_value=LIMIT_MAX_CHARGE_PER_BATTERY,
-)
+# SAX_POWER_CONTROL_SETPOINT entity description removed - replaced by direct SAX_NOMINAL_POWER control
 
 DESCRIPTION_SAX_POWER = SensorEntityDescription(
     key=SAX_POWER,
@@ -663,8 +648,9 @@ PILOT_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CHARGE_FROM_GRID_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_GRID_SWITCH, translation_key="bms_charge_from_grid"),
     SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC, translation_key="bms_min_soc"),
     SAXItem(name=SAX_MAX_SOC_CHARGING, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_SOC_CHARGING, translation_key="bms_max_soc_charging"),
-    SAXItem(name=SAX_POWER_CONTROL_SETPOINT, enabled_by_default=False, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER_CONTROL_SETPOINT, translation_key="bms_power_control_setpoint"),
+    # SAX_POWER_CONTROL_SETPOINT removed - replaced by direct SAX_NOMINAL_POWER control
 ]
+
 
 DIAGNOSTIC_ITEMS: list[SAXItem] = [
     SAXItem(name=COORDINATOR_CYCLE_TIME, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_CYCLE_TIME, translation_key="coordinator_cycle_time"),

@@ -18,28 +18,21 @@ from custom_components.sax_battery.config_flow import (
     SAXBatteryOptionsFlowHandler,
 )
 from custom_components.sax_battery.const import (
-    CONF_AUTO_PILOT_INTERVAL,
     CONF_BATTERIES,
     CONF_BATTERY_COUNT,
     CONF_BATTERY_HOST,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PORT,
+    CONF_CONTROL_POWER,
     CONF_ENABLE_PV_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
-    CONF_PF_SENSOR,
-    CONF_PILOT_FROM_HA,
     CONF_POWER_SENSOR,
-    DEFAULT_AUTO_PILOT_INTERVAL,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
     DOMAIN,
 )
-
-# from homeassistant import config_entries
-# from homeassistant.config_entries import ConfigFlowResult
-# from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -55,7 +48,7 @@ class TestSAXBatteryConfigFlowExtended:
         assert flow.VERSION == 1
         assert flow._data == {}
         assert flow._battery_count is None
-        assert flow._pilot_from_ha is False
+        assert flow._control_power is False
         assert flow._limit_power is False
         assert isinstance(flow._device_id, str)
 
@@ -83,14 +76,14 @@ class TestSAXBatteryConfigFlowExtended:
 
         result = await flow.async_step_control_options(
             {
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
             }
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "pilot_options"
-        assert flow._pilot_from_ha is True
+        assert result.get("step_id") == "sensors"
+        assert flow._control_power is True
         assert flow._limit_power is False
 
     async def test_control_options_step_no_pilot(self, hass: HomeAssistant) -> None:
@@ -101,27 +94,26 @@ class TestSAXBatteryConfigFlowExtended:
 
         result = await flow.async_step_control_options(
             {
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: True,
             }
         )
 
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "battery_config"
-        assert flow._pilot_from_ha is False
+        assert flow._control_power is False
         assert flow._limit_power is True
 
     async def test_pilot_options_invalid_min_soc(self, hass: HomeAssistant) -> None:
         """Test pilot options with invalid min SOC."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         # Test with SOC too high
         result = await flow.async_step_pilot_options(
             {
                 CONF_MIN_SOC: 150,
-                CONF_AUTO_PILOT_INTERVAL: 30,
                 CONF_ENABLE_PV_CHARGING: True,
             }
         )
@@ -132,37 +124,18 @@ class TestSAXBatteryConfigFlowExtended:
         assert errors is not None
         assert "invalid_min_soc" in errors.get(CONF_MIN_SOC, "")
 
-    async def test_pilot_options_invalid_interval(self, hass: HomeAssistant) -> None:
-        """Test pilot options with invalid interval."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._pilot_from_ha = True
-
-        # Test with interval too short
-        result = await flow.async_step_pilot_options(
-            {
-                CONF_MIN_SOC: 20,
-                CONF_AUTO_PILOT_INTERVAL: 2,
-                CONF_ENABLE_PV_CHARGING: True,
-            }
-        )
-
-        assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "pilot_options"
-        errors = result.get("errors")
-        assert errors is not None
-        assert "invalid_interval" in errors.get(CONF_AUTO_PILOT_INTERVAL, "")
+    # Test removed: CONF_AUTO_PILOT_INTERVAL validation no longer exists
+    # Pilot auto-interval removed - coordinator timing now used
 
     async def test_pilot_options_non_numeric_values(self, hass: HomeAssistant) -> None:
         """Test pilot options with non-numeric values."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         result = await flow.async_step_pilot_options(
             {
                 CONF_MIN_SOC: "invalid",
-                CONF_AUTO_PILOT_INTERVAL: "also_invalid",
                 CONF_ENABLE_PV_CHARGING: True,
             }
         )
@@ -172,23 +145,21 @@ class TestSAXBatteryConfigFlowExtended:
         errors = result.get("errors")
         assert errors is not None
         assert CONF_MIN_SOC in errors
-        assert CONF_AUTO_PILOT_INTERVAL in errors
 
     async def test_sensors_step_with_pilot(self, hass: HomeAssistant) -> None:
         """Test sensors step when pilot is enabled."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         result = await flow.async_step_sensors(
             {
                 CONF_POWER_SENSOR: "sensor.power_meter",
-                CONF_PF_SENSOR: "sensor.power_factor",
             }
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "priority_devices"
+        assert result.get("step_id") == "battery_config"
 
     async def test_battery_config_invalid_host_format(
         self, hass: HomeAssistant
@@ -398,7 +369,7 @@ class TestSAXBatteryConfigFlowExtended:
         """
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
-            data={CONF_PILOT_FROM_HA: True},
+            data={CONF_CONTROL_POWER: True},
             entry_id="test_options_flow_creation",
         )
 
@@ -429,13 +400,12 @@ class TestSAXBatteryConfigFlowExtended:
         """Test pilot options step with valid input proceeding to sensors."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         # Test the uncovered lines 170-171: valid input updates data and proceeds to sensors
         result = await flow.async_step_pilot_options(
             {
                 CONF_MIN_SOC: 25,
-                CONF_AUTO_PILOT_INTERVAL: 30,
                 CONF_ENABLE_PV_CHARGING: True,
             }
         )
@@ -443,7 +413,6 @@ class TestSAXBatteryConfigFlowExtended:
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "sensors"
         assert flow._data[CONF_MIN_SOC] == 25
-        assert flow._data[CONF_AUTO_PILOT_INTERVAL] == 30
         assert flow._data[CONF_ENABLE_PV_CHARGING] is True
 
     async def test_sensors_step_with_pilot_enabled_schema(
@@ -452,7 +421,7 @@ class TestSAXBatteryConfigFlowExtended:
         """Test sensors step creates proper schema when pilot is enabled."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         # Test the uncovered lines 206-208: schema creation for pilot mode
         result = await flow.async_step_sensors(None)
@@ -460,12 +429,11 @@ class TestSAXBatteryConfigFlowExtended:
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "sensors"
 
-        # Verify schema includes power and PF sensor selectors
+        # Verify schema includes power sensor selector only (PF sensor removed)
         data_schema = result.get("data_schema")
         assert data_schema is not None
         schema_keys = [str(key) for key in data_schema.schema]
         assert any(CONF_POWER_SENSOR in key for key in schema_keys)
-        assert any(CONF_PF_SENSOR in key for key in schema_keys)
 
     async def test_sensors_step_with_pilot_form_display(
         self, hass: HomeAssistant
@@ -473,7 +441,7 @@ class TestSAXBatteryConfigFlowExtended:
         """Test sensors step shows form with pilot-specific schema."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         # Test the uncovered line 227: return self.async_show_form with sensor schema
         result = await flow.async_step_sensors(None)
@@ -481,7 +449,7 @@ class TestSAXBatteryConfigFlowExtended:
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "sensors"
         assert "power_sensor_description" in result["description_placeholders"]  # type: ignore[operator]
-        assert "pf_sensor_description" in result["description_placeholders"]  # type: ignore[operator]
+        # pf_sensor_description removed - power factor sensor no longer used
 
     async def test_reconfigure_step_with_valid_entry_and_input(
         self, hass: HomeAssistant
@@ -498,7 +466,7 @@ class TestSAXBatteryConfigFlowExtended:
         mock_entry.domain = DOMAIN
         mock_entry.data = {
             CONF_BATTERY_COUNT: 2,
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: False,
             CONF_BATTERIES: {
                 "bess_a": {"host": "192.168.1.100", "port": 502},
@@ -528,7 +496,7 @@ class TestSAXBatteryConfigFlowExtended:
 
             # Step 2: Provide control options (pilot disabled, no sensors step)
             control_options_input = {
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: True,
             }
 
@@ -565,10 +533,9 @@ class TestSAXBatteryConfigFlowExtended:
         mock_entry.domain = DOMAIN
         mock_entry.data = {
             CONF_BATTERY_COUNT: 3,
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: True,
             CONF_MIN_SOC: 20,
-            CONF_AUTO_PILOT_INTERVAL: 45,
             CONF_ENABLE_PV_CHARGING: False,
             CONF_BATTERIES: {
                 "battery_a": {"host": "192.168.1.100", "port": 502},
@@ -591,7 +558,7 @@ class TestSAXBatteryConfigFlowExtended:
             # Verify data was loaded correctly
             assert flow._data == dict(mock_entry.data)
             assert flow._battery_count == 3
-            assert flow._pilot_from_ha is True
+            assert flow._control_power is True
             assert flow._limit_power is True
 
             # Should proceed to control options step
@@ -672,7 +639,7 @@ class TestSAXBatteryOptionsFlowExtended:
         # Create and register config entry
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
-            data={CONF_PILOT_FROM_HA: True},
+            data={CONF_CONTROL_POWER: True},
             options={},
             entry_id="test_options_flow_init",
         )
@@ -701,7 +668,7 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: False,
             },
             options={},
@@ -729,7 +696,7 @@ class TestSAXBatteryOptionsFlowExtended:
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
                 user_input={
-                    CONF_PILOT_FROM_HA: True,
+                    CONF_CONTROL_POWER: True,
                     CONF_LIMIT_POWER: False,
                 },
             )
@@ -737,7 +704,7 @@ class TestSAXBatteryOptionsFlowExtended:
         # Flow completes immediately when enabling pilot
         # Type guard: Validate result structure before accessing fields
         assert result.get("type") == FlowResultType.CREATE_ENTRY
-        assert mock_entry.data[CONF_PILOT_FROM_HA] is True
+        assert mock_entry.data[CONF_CONTROL_POWER] is True
         assert mock_entry.data[CONF_LIMIT_POWER] is False
 
     @pytest.mark.usefixtures("_mock_setup_integration")
@@ -753,7 +720,7 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
             },
@@ -767,20 +734,17 @@ class TestSAXBatteryOptionsFlowExtended:
 
         result = await hass.config_entries.options.async_init(mock_entry.entry_id)
 
-        with patch(
-            "custom_components.sax_battery.config_flow.SAXBatteryOptionsFlowHandler._async_disable_pilot_power_entity",
-            new_callable=AsyncMock,
-        ):
-            result = await hass.config_entries.options.async_configure(
-                result["flow_id"],
-                user_input={
-                    CONF_PILOT_FROM_HA: False,
-                    CONF_LIMIT_POWER: True,
-                },
-            )
+        # _async_disable_pilot_power_entity method removed - no longer needed
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+            },
+        )
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert mock_entry.data[CONF_PILOT_FROM_HA] is False
+        assert mock_entry.data[CONF_CONTROL_POWER] is False
         assert mock_entry.data[CONF_LIMIT_POWER] is True
 
     @pytest.mark.usefixtures("_mock_setup_integration")
@@ -792,10 +756,9 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: DEFAULT_MIN_SOC,
-                CONF_AUTO_PILOT_INTERVAL: DEFAULT_AUTO_PILOT_INTERVAL,
                 CONF_ENABLE_PV_CHARGING: True,
             },
             options={},
@@ -818,7 +781,6 @@ class TestSAXBatteryOptionsFlowExtended:
         )
 
         assert CONF_MIN_SOC in data_schema.schema
-        assert CONF_AUTO_PILOT_INTERVAL in data_schema.schema
         assert CONF_ENABLE_PV_CHARGING in data_schema.schema
 
     @pytest.mark.usefixtures("_mock_setup_integration")
@@ -830,7 +792,7 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: True,
             },
             options={},
@@ -853,7 +815,7 @@ class TestSAXBatteryOptionsFlowExtended:
         )
 
         # When pilot disabled, schema only has pilot_from_ha and limit_power
-        assert CONF_PILOT_FROM_HA in data_schema.schema
+        assert CONF_CONTROL_POWER in data_schema.schema
         assert CONF_LIMIT_POWER in data_schema.schema
         # min_soc NOT in schema when pilot disabled
         assert CONF_MIN_SOC not in data_schema.schema
@@ -867,12 +829,11 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
             },
             options={
                 CONF_MIN_SOC: 25,
-                CONF_AUTO_PILOT_INTERVAL: 45,
                 CONF_ENABLE_PV_CHARGING: False,
             },
             entry_id="test_existing_options",
@@ -919,7 +880,7 @@ class TestSAXBatteryOptionsFlowExtended:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 15,
             },
@@ -938,14 +899,14 @@ class TestSAXBatteryOptionsFlowExtended:
             result["flow_id"],
             user_input={
                 CONF_LIMIT_POWER: True,
-                # CONF_PILOT_FROM_HA not provided - should use current value
+                # CONF_CONTROL_POWER not provided - should use current value
                 CONF_MIN_SOC: 35,
             },
         )
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        # Should preserve CONF_PILOT_FROM_HA from original data
-        assert mock_entry.data[CONF_PILOT_FROM_HA] is True
+        # Should preserve CONF_CONTROL_POWER from original data
+        assert mock_entry.data[CONF_CONTROL_POWER] is True
         assert mock_entry.data[CONF_LIMIT_POWER] is True
         assert mock_entry.data[CONF_MIN_SOC] == 35
 
@@ -954,31 +915,9 @@ class TestSAXBatteryConfigFlowCompleteValidation:
     """Complete validation tests for edge cases and error paths."""
 
     async def test_pilot_options_edge_case_values(self, hass: HomeAssistant) -> None:
-        """Test pilot options with boundary values."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._pilot_from_ha = True
-
-        # Test boundary values that should pass validation
-        boundary_test_cases = [
-            (0, 5),  # Minimum valid values
-            (100, 300),  # Maximum valid values
-            (50, 60),  # Normal middle values
-        ]
-
-        for min_soc, interval in boundary_test_cases:
-            result = await flow.async_step_pilot_options(
-                {
-                    CONF_MIN_SOC: min_soc,
-                    CONF_AUTO_PILOT_INTERVAL: interval,
-                    CONF_ENABLE_PV_CHARGING: True,
-                }
-            )
-
-            assert result.get("type") == FlowResultType.FORM
-            assert result.get("step_id") == "sensors"
-            assert flow._data[CONF_MIN_SOC] == min_soc
-            assert flow._data[CONF_AUTO_PILOT_INTERVAL] == interval
+        """Test removed - pilot_options step no longer used in config flow."""
+        # pilot_options step is dead code (never called in flow)
+        # MIN_SOC is now configured directly in options flow init step
 
     async def test_battery_config_comprehensive_validation(
         self, hass: HomeAssistant
@@ -1020,15 +959,13 @@ class TestSAXBatteryConfigFlowCompleteValidation:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 25,
-                CONF_AUTO_PILOT_INTERVAL: 45,
                 CONF_ENABLE_PV_CHARGING: False,
             },
             options={
                 CONF_MIN_SOC: 30,  # Different from data
-                CONF_AUTO_PILOT_INTERVAL: 60,  # Different from data
             },
             entry_id="test_entry_comprehensive",
         )
@@ -1046,7 +983,7 @@ class TestSAXBatteryConfigFlowCompleteValidation:
 
         # Submit updated configuration
         updated_input = {
-            CONF_PILOT_FROM_HA: False,  # Disable pilot
+            CONF_CONTROL_POWER: False,  # Disable pilot
             CONF_LIMIT_POWER: False,  # Disable limits
             CONF_MIN_SOC: 35,  # Should be ignored when pilot disabled
         }
@@ -1061,7 +998,7 @@ class TestSAXBatteryConfigFlowCompleteValidation:
         assert result["type"] == FlowResultType.CREATE_ENTRY
 
         # Verify data was updated correctly
-        assert result["data"][CONF_PILOT_FROM_HA] is False
+        assert result["data"][CONF_CONTROL_POWER] is False
         assert result["data"][CONF_LIMIT_POWER] is False
         # MIN_SOC may or may not be updated when pilot is disabled
         # (depends on implementation logic)
@@ -1164,7 +1101,7 @@ class TestSAXBatteryConfigFlowMissingCoverage:
         """
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = False  # Pilot disabled
+        flow._control_power = False  # Pilot disabled
         flow._battery_count = 1
 
         # When pilot is disabled, sensors step should skip priority devices
@@ -1178,23 +1115,6 @@ class TestSAXBatteryConfigFlowMissingCoverage:
         # Line 212: Should proceed to battery_config, not priority_devices
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "battery_config"
-
-    async def test_priority_devices_form_display_no_input(
-        self, hass: HomeAssistant
-    ) -> None:
-        """Test priority devices step shows form when no input provided (line 242)."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._pilot_from_ha = True
-        flow._battery_count = 1
-
-        # Call without user input to trigger form display
-        result = await flow.async_step_priority_devices(None)
-
-        # Line 242: Should show form for priority devices selection
-        assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "priority_devices"
-        assert "priority_devices_description" in result["description_placeholders"]  # type: ignore[operator]
 
     async def test_reconfigure_entry_wrong_domain(self, hass: HomeAssistant) -> None:
         """Test reconfigure aborts when entry has wrong domain (line 417, 419)."""
@@ -1237,7 +1157,7 @@ class TestSAXBatteryConfigFlowMissingCoverage:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: False,  # Pilot disabled
+                CONF_CONTROL_POWER: False,  # Pilot disabled
                 CONF_LIMIT_POWER: True,
             },
             options={},
@@ -1263,22 +1183,18 @@ class TestSAXBatteryConfigFlowEdgeCases:
         """Test sensors step with all optional sensors configured."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._pilot_from_ha = True
+        flow._control_power = True
 
         result = await flow.async_step_sensors(
             {
-                # CONF_GRID_POWER_SENSOR: "sensor.grid_power",
                 CONF_POWER_SENSOR: "sensor.battery_power",
-                CONF_PF_SENSOR: "sensor.power_factor",
             }
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "priority_devices"
-        # Verify all sensors stored in data
-        # assert flow._data[CONF_GRID_POWER_SENSOR] == "sensor.grid_power"
+        assert result.get("step_id") == "battery_config"
+        # Verify sensor stored in data
         assert flow._data[CONF_POWER_SENSOR] == "sensor.battery_power"
-        assert flow._data[CONF_PF_SENSOR] == "sensor.power_factor"
 
     # async def test_battery_config_ipv6_host(self, hass: HomeAssistant) -> None:
     #     """Test battery config with IPv6 address."""
@@ -1308,7 +1224,7 @@ class TestSAXBatteryConfigFlowEdgeCases:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: False,
             },
             options={},
@@ -1329,14 +1245,14 @@ class TestSAXBatteryConfigFlowEdgeCases:
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
                 user_input={
-                    CONF_PILOT_FROM_HA: True,
+                    CONF_CONTROL_POWER: True,
                     CONF_LIMIT_POWER: True,
                 },
             )
 
         # Type guard: Validate result structure before accessing fields
         assert result.get("type") == FlowResultType.CREATE_ENTRY
-        assert mock_entry.data[CONF_PILOT_FROM_HA] is True
+        assert mock_entry.data[CONF_CONTROL_POWER] is True
         assert mock_entry.data[CONF_LIMIT_POWER] is True
 
     async def test_control_options_solar_charging_default(
@@ -1350,7 +1266,7 @@ class TestSAXBatteryConfigFlowEdgeCases:
         # When pilot disabled, solar charging should default to False
         result = await flow.async_step_control_options(
             {
-                CONF_PILOT_FROM_HA: False,
+                CONF_CONTROL_POWER: False,
                 CONF_LIMIT_POWER: False,
             }
         )
@@ -1393,30 +1309,9 @@ class TestSAXBatteryConfigFlowEdgeCases:
     async def test_pilot_options_boundary_values_edge(
         self, hass: HomeAssistant
     ) -> None:
-        """Test pilot options with edge case boundary values."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._pilot_from_ha = True
-
-        # Test exactly at boundaries (should pass)
-        test_cases = [
-            (0, 5),  # Minimum valid
-            (100, 300),  # Maximum valid
-        ]
-
-        for min_soc, interval in test_cases:
-            result = await flow.async_step_pilot_options(
-                {
-                    CONF_MIN_SOC: min_soc,
-                    CONF_AUTO_PILOT_INTERVAL: interval,
-                    CONF_ENABLE_PV_CHARGING: False,
-                }
-            )
-
-            assert result.get("type") == FlowResultType.FORM
-            assert result.get("step_id") == "sensors"
-            assert flow._data[CONF_MIN_SOC] == min_soc
-            assert flow._data[CONF_AUTO_PILOT_INTERVAL] == interval
+        """Test removed - pilot_options step no longer used in config flow."""
+        # pilot_options step is dead code (never called in flow)
+        # MIN_SOC is now configured directly in options flow init step
 
 
 class TestSAXBatteryOptionsFlowCompleteFlow:
@@ -1436,10 +1331,9 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
-                CONF_AUTO_PILOT_INTERVAL: 30,
                 CONF_ENABLE_PV_CHARGING: True,
             },
             options={},
@@ -1456,17 +1350,15 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                CONF_PILOT_FROM_HA: True,  # Keep enabled
+                CONF_CONTROL_POWER: True,  # Keep enabled
                 CONF_LIMIT_POWER: True,  # Keep enabled
                 CONF_MIN_SOC: 30,  # Change from 20 to 30
-                CONF_AUTO_PILOT_INTERVAL: 60,  # Change from 30 to 60
                 CONF_ENABLE_PV_CHARGING: False,  # Toggle off
             },
         )
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert mock_entry.data[CONF_MIN_SOC] == 30
-        assert mock_entry.data[CONF_AUTO_PILOT_INTERVAL] == 60
         assert mock_entry.data[CONF_ENABLE_PV_CHARGING] is False
 
     @pytest.mark.usefixtures("_mock_setup_integration")
@@ -1478,7 +1370,7 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 25,
             },
@@ -1495,16 +1387,15 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                CONF_PILOT_FROM_HA: True,  # Keep enabled
+                CONF_CONTROL_POWER: True,  # Keep enabled
                 CONF_LIMIT_POWER: False,  # Disable
                 CONF_MIN_SOC: 25,
-                CONF_AUTO_PILOT_INTERVAL: 30,
                 CONF_ENABLE_PV_CHARGING: True,
             },
         )
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert mock_entry.data[CONF_PILOT_FROM_HA] is True
+        assert mock_entry.data[CONF_CONTROL_POWER] is True
         assert mock_entry.data[CONF_LIMIT_POWER] is False
 
 
@@ -1567,13 +1458,12 @@ class TestSAXBatteryConfigFlowSecurityEdgeCases:
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_PILOT_FROM_HA: True,
+                CONF_CONTROL_POWER: True,
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,  # In data
             },
             options={
                 CONF_MIN_SOC: 30,  # In options - should take precedence
-                CONF_AUTO_PILOT_INTERVAL: 45,
             },
             entry_id="test_options_precedence",
         )
@@ -1600,15 +1490,830 @@ class TestSAXBatteryConfigFlowDeadCodeRemoval:
         flow.hass = hass
 
         # Case 1: Pilot enabled → Shows sensor form
-        flow._pilot_from_ha = True
+        flow._control_power = True
         result = await flow.async_step_sensors(None)
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "sensors"
 
         # Case 2: Pilot disabled → Already handled by async_step_sensors
         # No dead code path needed
-        flow._pilot_from_ha = False
+        flow._control_power = False
         flow._battery_count = 1
         result = await flow.async_step_sensors({})
         assert result.get("type") == FlowResultType.FORM
         assert result.get("step_id") == "battery_config"
+
+
+class TestSAXBatteryConfigFlowFullCoverage:
+    """Tests to achieve 100% coverage of config_flow.py."""
+
+    async def test_reconfigure_battery_config_no_entry_id_in_context(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test battery_config during reconfigure with missing entry_id.
+
+        Coverage: config_flow.py line 285
+        """
+        flow = SAXBatteryConfigFlow()
+        flow.hass = hass
+        flow._battery_count = 1
+        flow._data = {}
+
+        # Set context to reconfigure but don't provide entry_id
+        flow.context = {"source": "reconfigure"}
+
+        # Simulate battery_config step with valid data but no entry_id
+        result = await flow.async_step_battery_config(
+            {
+                "bess_a_host": "192.168.1.100",
+                "bess_a_port": DEFAULT_PORT,
+            }
+        )
+
+        # Should abort due to missing entry_id
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_entry_not_found"
+
+    async def test_reconfigure_battery_config_entry_not_found(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test battery_config during reconfigure with invalid entry_id.
+
+        Coverage: config_flow.py line 292
+        """
+        flow = SAXBatteryConfigFlow()
+        flow.hass = hass
+        flow._battery_count = 1
+        flow._data = {}
+
+        # Set context with non-existent entry_id
+        flow.context = {"source": "reconfigure", "entry_id": "non_existent_id"}
+
+        # Simulate battery_config step with valid data
+        result = await flow.async_step_battery_config(
+            {
+                "bess_a_host": "192.168.1.100",
+                "bess_a_port": DEFAULT_PORT,
+            }
+        )
+
+        # Should abort due to entry not found
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_entry_not_found"
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_options_enable_power_limits_with_integration_data(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test enabling power limits with proper integration data.
+
+        Coverage: config_flow.py lines 570-633
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_enable_power_limits",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with get_unique_id_for_item before setup
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            side_effect=lambda item, battery_id: f"sax_cluster_{item.name}"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(
+            side_effect=lambda platform, domain, unique_id: (
+                f"number.{unique_id}" if unique_id else None
+            )
+        )
+        mock_ent_reg.async_update_entity = MagicMock()
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Enable limit power (triggers _enable_power_limit_entities)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+            },
+        )
+
+        # Verify flow completed
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # Verify entity registry was updated
+        assert mock_ent_reg.async_update_entity.call_count >= 1
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_options_disable_power_limits_with_integration_data(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test disabling power limits with proper integration data.
+
+        Coverage: config_flow.py lines 661-724
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_disable_power_limits",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            side_effect=lambda item, battery_id: f"sax_cluster_{item.name}"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(
+            side_effect=lambda platform, domain, unique_id: (
+                f"number.{unique_id}" if unique_id else None
+            )
+        )
+        mock_ent_reg.async_update_entity = MagicMock()
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable limit power (triggers _async_disable_power_limit_entities)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completed
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # Verify entity registry was updated
+        assert mock_ent_reg.async_update_entity.call_count >= 1
+
+    async def test_options_disable_control_power_stops_power_manager(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test disabling control power stops the power manager.
+
+        Coverage: config_flow.py lines 749-758
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: True,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_stop_power_manager",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock power manager before setup
+        mock_power_manager = MagicMock()
+        mock_power_manager.async_stop = AsyncMock()
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"power_manager": mock_power_manager}
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable control power (should stop power manager)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify power manager was stopped
+        mock_power_manager.async_stop.assert_called_once()
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    async def test_options_change_limit_power_updates_soc_manager(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test changing limit power updates SOC manager state.
+
+        Coverage: config_flow.py lines 777-791
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: True,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_soc_manager_update",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock coordinator with SOC manager before setup
+        mock_soc_manager = MagicMock()
+        mock_soc_manager.enabled = False
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.battery_id = "bess_a"
+        mock_coordinator.soc_manager = mock_soc_manager
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {
+            "coordinators": {"bess_a": mock_coordinator}
+        }
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Enable limit power (triggers SOC manager update)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: True,
+                CONF_LIMIT_POWER: True,
+            },
+        )
+
+        # Verify SOC manager was enabled
+        assert mock_soc_manager.enabled is True
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_enable_power_limits_unique_id_generation_fails(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test enable power limits when unique_id generation fails.
+
+        Coverage: config_flow.py lines 595-599
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_unique_id_fail_enable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with get_unique_id_for_item returning None
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(return_value=None)
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry
+        mock_ent_reg = MagicMock()
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Enable limit power (should handle unique_id=None gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+            },
+        )
+
+        # Verify flow completes despite unique_id failure
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # Entity registry should not be called since unique_id was None
+        mock_ent_reg.async_get_entity_id.assert_not_called()
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_enable_power_limits_entity_not_found(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test enable power limits when entity not found in registry.
+
+        Coverage: config_flow.py lines 605-610
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_entity_not_found_enable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with valid unique_id
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            return_value="sax_cluster_max_discharge"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry to return None (entity not found)
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(return_value=None)
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Enable limit power (should handle entity not found gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+            },
+        )
+
+        # Verify flow completes despite entity not found
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # async_update_entity should not be called since entity wasn't found
+        mock_ent_reg.async_update_entity.assert_not_called()
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_disable_power_limits_sax_data_missing(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test disable power limits when SAXBatteryData is missing.
+
+        Coverage: config_flow.py lines 663-666
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_sax_data_missing",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Pre-create integration data WITHOUT sax_data
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {}
+
+        # Mock entity registry
+        mock_ent_reg = MagicMock()
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable limit power (should handle missing sax_data gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completes despite missing sax_data
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # Entity registry should not be used since sax_data was missing
+        mock_ent_reg.async_get_entity_id.assert_not_called()
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_disable_power_limits_unique_id_generation_fails(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test disable power limits when unique_id generation fails.
+
+        Coverage: config_flow.py lines 686-690
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_unique_id_fail_disable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with get_unique_id_for_item returning None
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(return_value=None)
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry
+        mock_ent_reg = MagicMock()
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable limit power (should handle unique_id=None gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completes despite unique_id failure
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # Entity registry should not be called since unique_id was None
+        mock_ent_reg.async_get_entity_id.assert_not_called()
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_disable_power_limits_entity_not_found(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test disable power limits when entity not found in registry.
+
+        Coverage: config_flow.py lines 696-701
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_entity_not_found_disable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with valid unique_id
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            return_value="sax_cluster_max_discharge"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry to return None (entity not found)
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(return_value=None)
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable limit power (should handle entity not found gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completes despite entity not found
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        # async_update_entity should not be called since entity wasn't found
+        mock_ent_reg.async_update_entity.assert_not_called()
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_enable_power_limits_exception_during_enable(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test enable power limits when async_update_entity raises exception.
+
+        Coverage: config_flow.py lines 625-626
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_exception_enable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with valid unique_id
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            return_value="sax_cluster_max_discharge"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry with async_update_entity that raises exception
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(
+            return_value="number.sax_max_discharge"
+        )
+        mock_ent_reg.async_update_entity = MagicMock(
+            side_effect=RuntimeError("Test exception")
+        )
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Enable limit power (should handle exception gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+            },
+        )
+
+        # Verify flow completes despite exception
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    @patch("custom_components.sax_battery.config_flow.er.async_get")
+    async def test_disable_power_limits_exception_during_disable(
+        self, mock_entity_registry, hass: HomeAssistant
+    ) -> None:
+        """Test disable power limits when async_update_entity raises exception.
+
+        Coverage: config_flow.py lines 716-717
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_exception_disable",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Mock SAXBatteryData with valid unique_id
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item = MagicMock(
+            return_value="sax_cluster_max_discharge"
+        )
+
+        # Pre-create integration data structure
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {"sax_data": mock_sax_data}
+
+        # Mock entity registry with async_update_entity that raises exception
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id = MagicMock(
+            return_value="number.sax_max_discharge"
+        )
+        mock_ent_reg.async_update_entity = MagicMock(
+            side_effect=RuntimeError("Test exception")
+        )
+        mock_entity_registry.return_value = mock_ent_reg
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable limit power (should handle exception gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completes despite exception
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    async def test_options_disable_control_power_no_power_manager(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Test disabling control power when no power manager exists.
+
+        Coverage: config_flow.py line 758
+        """
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Battery",
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_CONTROL_POWER: True,
+                CONF_LIMIT_POWER: False,
+                CONF_MIN_SOC: 20,
+                CONF_BATTERIES: {
+                    "bess_a": {
+                        "host": "192.168.1.100",
+                        "port": DEFAULT_PORT,
+                        "is_master": True,
+                    }
+                },
+            },
+            entry_id="test_no_power_manager",
+        )
+        mock_entry.add_to_hass(hass)
+
+        # Pre-create integration data WITHOUT power_manager
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][mock_entry.entry_id] = {}
+
+        # Setup integration
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initialize options flow
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+
+        # Disable control power (should handle missing power manager gracefully)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: False,
+            },
+        )
+
+        # Verify flow completes despite missing power manager
+        assert result["type"] == FlowResultType.CREATE_ENTRY

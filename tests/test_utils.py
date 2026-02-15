@@ -9,9 +9,9 @@ import pytest
 
 from custom_components.sax_battery.const import (
     CONF_BATTERY_COUNT,
+    CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
-    CONF_PILOT_FROM_HA,
     DESCRIPTION_SAX_SMARTMETER_TOTAL_POWER,
     DOMAIN,
     MODBUS_BATTERY_POWER_CONTROL_ITEMS,
@@ -324,7 +324,7 @@ class TestWriteOnlyRegisterHandling:
         """Test pilot register inclusion for master battery with pilot enabled."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_MASTER_BATTERY: "bess_a",
         }
 
@@ -346,7 +346,7 @@ class TestWriteOnlyRegisterHandling:
         """Test pilot register exclusion for slave battery."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_MASTER_BATTERY: "bess_a",
         }
 
@@ -371,7 +371,7 @@ class TestWriteOnlyRegisterHandling:
         """
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
             CONF_MASTER_BATTERY: "bess_a",
         }
 
@@ -483,7 +483,7 @@ class TestCreateRegisterAccessConfig:
         """Test creating config with valid battery count."""
         config_data = {
             CONF_BATTERY_COUNT: 3,
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: False,
         }
 
@@ -498,7 +498,7 @@ class TestCreateRegisterAccessConfig:
         """Test creating config with negative battery count."""
         config_data = {
             CONF_BATTERY_COUNT: -1,
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
         }
 
         with patch("custom_components.sax_battery.utils._LOGGER") as mock_logger:
@@ -531,7 +531,7 @@ class TestCreateRegisterAccessConfig:
         """Test creating config with non-integer battery count."""
         config_data = {
             CONF_BATTERY_COUNT: "invalid",
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
         }
 
         with patch("custom_components.sax_battery.utils._LOGGER") as mock_logger:
@@ -546,7 +546,7 @@ class TestCreateRegisterAccessConfig:
     def test_create_config_with_missing_battery_count(self) -> None:
         """Test creating config with missing battery count."""
         config_data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: True,
         }
 
@@ -589,7 +589,7 @@ class TestGetWritableRegisters:
     def test_get_writable_registers_master_with_pilot_and_limits(self) -> None:
         """Test getting writable registers for master with pilot and power limits enabled."""
         config_data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: True,
             CONF_BATTERY_COUNT: 2,
         }
@@ -602,7 +602,7 @@ class TestGetWritableRegisters:
     def test_get_writable_registers_master_with_pilot_only(self) -> None:
         """Test getting writable registers for master with only pilot enabled."""
         config_data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: False,
             CONF_BATTERY_COUNT: 1,
         }
@@ -615,7 +615,7 @@ class TestGetWritableRegisters:
     def test_get_writable_registers_master_with_limits_only(self) -> None:
         """Test getting writable registers for master with only power limits enabled."""
         config_data = {
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
             CONF_LIMIT_POWER: True,
             CONF_BATTERY_COUNT: 3,
         }
@@ -628,7 +628,7 @@ class TestGetWritableRegisters:
     def test_get_writable_registers_slave_battery(self) -> None:
         """Test getting writable registers for slave battery."""
         config_data = {
-            CONF_PILOT_FROM_HA: True,
+            CONF_CONTROL_POWER: True,
             CONF_LIMIT_POWER: True,
             CONF_BATTERY_COUNT: 2,
         }
@@ -640,7 +640,7 @@ class TestGetWritableRegisters:
     def test_get_writable_registers_master_with_no_features(self) -> None:
         """Test getting writable registers for master with no features enabled."""
         config_data = {
-            CONF_PILOT_FROM_HA: False,
+            CONF_CONTROL_POWER: False,
             CONF_LIMIT_POWER: False,
             CONF_BATTERY_COUNT: 1,
         }
@@ -1020,7 +1020,7 @@ class TestEdgeCasesAndBoundaryConditions:
     def test_config_data_type_conversion(self) -> None:
         """Test that configuration values are properly converted to bool."""
         config_data = {
-            CONF_PILOT_FROM_HA: "true",  # String instead of bool
+            CONF_CONTROL_POWER: "true",  # String instead of bool
             CONF_LIMIT_POWER: 1,  # Integer instead of bool
             CONF_BATTERY_COUNT: 2,
         }

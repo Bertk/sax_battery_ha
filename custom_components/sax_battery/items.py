@@ -14,7 +14,6 @@ from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.switch import SwitchEntityDescription
 
-from .entity_keys import SAX_POWER_CONTROL_SETPOINT
 from .enums import DeviceConstants, TypeConstants
 
 _LOGGER = logging.getLogger(__name__)
@@ -272,33 +271,17 @@ class SAXItem(BaseItem):
         return None
 
     async def async_write_value(self, value: float) -> bool:
-        """Write system configuration value."""
+        """Write system configuration value.
+
+        SAX_POWER_CONTROL_SETPOINT removed - power control now uses direct
+        SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR writes via power_manager.
+        """
         if self.mtype not in (TypeConstants.NUMBER, TypeConstants.NUMBER_WO):
             _LOGGER.warning("Attempted to write to read-only SAX item %s", self.name)
             return False
 
-        if self.name == SAX_POWER_CONTROL_SETPOINT:
-            return await self._write_pilot_power_value(value)
-
         _LOGGER.debug("SAX item write not yet implemented for %s", self.name)
         return False
-
-    async def _write_pilot_power_value(self, value: float) -> bool:
-        """Write pilot power value to the pilot service."""
-        try:
-            for coordinator in self.coordinators.values():
-                if hasattr(coordinator, "sax_data") and hasattr(
-                    coordinator.sax_data, "pilot"
-                ):
-                    pilot = coordinator.sax_data.pilot
-                    if pilot:
-                        await pilot.set_manual_power(value)
-                        return True
-            _LOGGER.error("No pilot service found in coordinators")
-            return False  # noqa: TRY300
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to write pilot power value: %s", err)
-            return False
 
 
 @dataclass

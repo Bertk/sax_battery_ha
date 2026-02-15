@@ -12,8 +12,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery.const import (
-    CONF_AUTO_PILOT_INTERVAL,
-    CONF_GRID_POWER_SENSOR,
+    CONF_POWER_SENSOR,
     DOMAIN,
     GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
@@ -114,8 +113,7 @@ class TestPowerManagerInitialization:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
-                CONF_AUTO_PILOT_INTERVAL: 10,
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -148,8 +146,7 @@ class TestPowerManagerInitialization:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
-                CONF_AUTO_PILOT_INTERVAL: 15,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 PV_CHARGING_MODE: True,
                 GRID_CHARGING_MODE: False,
             },
@@ -176,8 +173,7 @@ class TestPowerManagerInitialization:
             config_entry=entry,
         )
         # grid power control should be disabled due to pv charging enabled
-        assert power_manager.grid_power_sensor == "sensor.grid_power"
-        assert power_manager.update_interval == 15
+        assert power_manager.pv_power_sensor == "sensor.grid_power"
         assert power_manager._state.grid_charging_enabled is False
 
 
@@ -286,7 +282,7 @@ class TestSolarChargingMode:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -350,7 +346,7 @@ class TestSolarChargingMode:
             entry = MockConfigEntry(
                 domain=DOMAIN,
                 data={
-                    CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                    CONF_POWER_SENSOR: "sensor.grid_power",
                 },
             )
             entry.add_to_hass(hass)
@@ -382,7 +378,7 @@ class TestSolarChargingMode:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.nonexistent",
+                CONF_POWER_SENSOR: "sensor.nonexistent",
             },
         )
         entry.add_to_hass(hass)
@@ -410,7 +406,7 @@ class TestSolarChargingMode:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -444,7 +440,7 @@ class TestSolarChargingMode:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -529,7 +525,7 @@ class TestSolarChargingMode:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -678,8 +674,7 @@ class TestConfigurationUpdates:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_AUTO_PILOT_INTERVAL: 10,
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -694,8 +689,7 @@ class TestConfigurationUpdates:
         updated_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_AUTO_PILOT_INTERVAL: 20,
-                CONF_GRID_POWER_SENSOR: "sensor.new_grid_power",
+                CONF_POWER_SENSOR: "sensor.new_grid_power",
             },
         )
         updated_entry.add_to_hass(hass)
@@ -703,8 +697,7 @@ class TestConfigurationUpdates:
         with patch.object(power_manager, "_async_update_power", new=AsyncMock()):
             await power_manager._async_config_updated(hass, updated_entry)
 
-            assert power_manager.update_interval == 20
-            assert power_manager.grid_power_sensor == "sensor.new_grid_power"
+            assert power_manager.pv_power_sensor == "sensor.new_grid_power"
 
 
 class TestPowerManagerProperties:
@@ -759,7 +752,7 @@ class TestErrorHandling:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
@@ -785,7 +778,7 @@ class TestErrorHandling:
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_GRID_POWER_SENSOR: "sensor.grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
         entry.add_to_hass(hass)
