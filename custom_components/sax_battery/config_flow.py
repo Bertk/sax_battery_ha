@@ -11,6 +11,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.const import UnitOfPower
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er, selector
 
@@ -170,7 +171,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_sensors(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure PV production sensor for power balancing."""
+        """Configure Grid power sensor for power balancing."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -178,7 +179,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # No priority devices step - go directly to battery config
             return await self.async_step_battery_config()
 
-        # Only ask for PV production sensor (power control)
+        # Only ask for Grid power sensor UnitOfPower.WATT (power control)
         schema = {}
         if self._control_power:
             schema.update(
@@ -197,7 +198,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(schema),
             errors=errors,
             description_placeholders={
-                "power_sensor_description": "Select PV production sensor for balanced charging/discharging",
+                "power_sensor_description": f"Select Grid power sensor for balanced charging/discharging ({UnitOfPower.WATT} required for power control)",
             },
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -517,8 +518,12 @@ def mock_coordinator_master(
     # Async methods
     coordinator.async_request_refresh = AsyncMock()
     coordinator.async_write_number_value = AsyncMock(return_value=True)
+    coordinator.async_write_power_control_value = AsyncMock(return_value=True)
     coordinator.async_set_updated_data = MagicMock()
     coordinator._async_update_data = AsyncMock(return_value=coordinator.data)
+
+    # Update interval for power manager and diagnostics
+    coordinator.update_interval = timedelta(seconds=30)
 
     return coordinator
 

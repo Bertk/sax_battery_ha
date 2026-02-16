@@ -1,15 +1,16 @@
 """Power manager for SAX Battery integration.
 
-Replaces pilot.py with state-based power management using Home Assistant
-number entities (SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR) and SOC constraints.
+Coordinator-centric power management using SAX_NOMINAL_POWER (register 41)
+and SAX_NOMINAL_FACTOR (register 42) via coordinator.async_write_power_control_value()
+for atomic Modbus writes.
 
 Security:
     OWASP A05: Validates all sensor inputs and power values
     OWASP A01: Only master battery can create power manager
 
 Performance:
-    Debounced grid monitoring with configurable intervals
-    Efficient state updates using HA service calls
+    Uses coordinator update cycle for periodic power adjustments
+    Direct coordinator writes instead of HA service calls
 """
 
 from __future__ import annotations
@@ -33,9 +34,6 @@ from .const import (
     GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    MODBUS_BATTERY_BMS_ITEMS,
-    MODBUS_BATTERY_POWER_CONTROL_ITEMS,
-    PILOT_ITEMS,
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_CHARGE_FROM_PV_SWITCH,
@@ -43,10 +41,10 @@ from .const import (
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC_CHARGING,
-    SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
 )
 from .coordinator import SAXBatteryCoordinator
+from .items import ModbusItem
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,8 +61,6 @@ class PowerManagerState:
     last_update: datetime
     pv_charging_enabled: bool = False
     grid_charging_enabled: bool = False
-    manual_mode_enabled: bool = False
-    manual_power_value: float = 0.0
 
     # State persistence for mode transitions
     previous_pv_state: bool = False  # Store PV state before grid charging
@@ -72,10 +68,16 @@ class PowerManagerState:
 
 
 class PowerManager:
-    """Power manager for coordinating battery control via HA entities.
+    """Coordinator-centric power manager for SAX Battery systems.
 
-    This replaces the direct Modbus write approach in pilot.py with a state-based
-    system using Home Assistant number entities and SOC constraints.
+    Uses coordinator.async_write_power_control_value() for atomic Modbus writes
+    to SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42).
+
+    Write flow:
+        PowerManager.update_nominal_power()
+        -> coordinator.async_write_power_control_value(power_item, power, factor)
+        -> modbus_api.write_nominal_power(value, power_factor, modbus_item)
+        -> register 41 (power) + register 42 (factor) atomic write
     """
 
     def __init__(
@@ -105,96 +107,18 @@ class PowerManager:
 
         # State tracking
         self._state = PowerManagerState(
-            mode=GRID_CHARGING_MODE,
+            mode=PV_CHARGING_MODE,
             target_power=0.0,
             last_update=datetime.now(),
         )
-
-        # self._pv_callback_running = False
-        # self._grid_power_sensor = None
 
         # Tracking for event listeners
         self._remove_interval_update: Callable[[], None] | None = None
         self._remove_config_update: Callable[[], None] | None = None
         self._running = False
 
-        # Resolve entity IDs from entity registry using unique_id
-        self._power_entity_id: str | None = (
-            None  # Entity ID for SAX_NOMINAL_POWER (register 43)
-        )
-        self._power_factor_entity_id: str | None = (
-            None  # Entity ID for SAX_NOMINAL_FACTOR (register 44)
-        )
-        self._resolve_entity_ids()
-
-        # Configuration values - now safe to call after state initialization
+        # Configuration values
         self._update_config_values()
-
-    def _resolve_entity_ids(self) -> None:
-        """Resolve entity IDs for power control entities from registry.
-
-        Uses SAX_NOMINAL_POWER (register 43) and SAX_NOMINAL_FACTOR (register 44)
-        for direct hardware control instead of intermediate SAX_POWER_CONTROL_SETPOINT.
-        """
-        # Validate coordinator has required dependencies
-        if not hasattr(self.coordinator, "sax_data"):
-            _LOGGER.error("Coordinator missing sax_data attribute")
-            return
-
-        # Resolve SAX_NOMINAL_POWER entity (register 43)
-        nominal_power_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_NOMINAL_POWER),
-            None,
-        )
-
-        if not nominal_power_item:
-            _LOGGER.error("Could not find %s in PILOT_ITEMS", SAX_NOMINAL_POWER)
-            return
-
-        power_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-            nominal_power_item,
-            SAX_NOMINAL_POWER,
-        )
-
-        if power_entity_id:
-            self._power_entity_id = power_entity_id
-            _LOGGER.info(
-                "✓ Resolved power entity: SAX_NOMINAL_POWER (register 43, entity_id: %s)",
-                self._power_entity_id,
-            )
-        else:
-            _LOGGER.error("Could not generate entity_id for %s", SAX_NOMINAL_POWER)
-
-        # Resolve SAX_NOMINAL_FACTOR entity (register 44)
-        power_factor_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_NOMINAL_FACTOR),
-            None,
-        )
-
-        if not power_factor_item:
-            _LOGGER.error("Could not find %s in PILOT_ITEMS", SAX_NOMINAL_FACTOR)
-            return
-
-        # Resolve SAX_NOMINAL_FACTOR entity (for power factor)
-        factor_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-            power_factor_item,
-            SAX_NOMINAL_FACTOR,
-        )
-
-        if factor_entity_id:
-            self._power_factor_entity_id = factor_entity_id
-            _LOGGER.info(
-                "✓ Resolved power factor entity: SAX_NOMINAL_FACTOR (entity_id: %s)",
-                self._power_factor_entity_id,
-            )
-        else:
-            _LOGGER.error("Could not generate unique_id for %s", SAX_NOMINAL_FACTOR)
-
-        _LOGGER.debug(
-            "Entity resolution complete: power=%s, factor=%s",
-            self._power_entity_id,
-            self._power_factor_entity_id,
-        )
 
     def _get_switch_state(self, switch_name: str) -> bool:
         """Get current state of a switch entity.
@@ -209,17 +133,11 @@ class PowerManager:
             OWASP A05: Validates entity availability before reading state
         """
         try:
-            # Get switch item from PILOT_ITEMS
-            switch_item = next(
-                (item for item in PILOT_ITEMS if item.name == switch_name),
-                None,
-            )
-
+            switch_item = self.coordinator.sax_data.get_item_by_name(switch_name)
             if not switch_item:
-                _LOGGER.warning("Switch item %s not found in PILOT_ITEMS", switch_name)
+                _LOGGER.debug("Switch item %s not found", switch_name)
                 return False
 
-            # Get entity ID from registry
             entity_id = self.coordinator.sax_data.get_entity_id_for_item(
                 switch_item,
                 battery_id=None,  # Cluster-wide entity
@@ -229,7 +147,6 @@ class PowerManager:
                 _LOGGER.debug("Entity ID not found for %s", switch_name)
                 return False
 
-            # Read state from Home Assistant state machine
             state = self.hass.states.get(entity_id)
             if not state or state.state in ("unknown", "unavailable"):
                 _LOGGER.debug("Switch %s state unavailable", entity_id)
@@ -244,8 +161,8 @@ class PowerManager:
     def _update_config_values(self) -> None:
         """Update configuration values from entry data.
 
-        Uses coordinator cycle for polling instead of custom interval (CONF_AUTO_PILOT_INTERVAL removed).
-        CONF_POWER_SENSOR now represents PV production sensor (not smart meter).
+        Uses coordinator cycle for polling instead of custom interval.
+        CONF_POWER_SENSOR represents the power sensor for balanced charging.
         Reads SAX_CHARGE_FROM_PV_SWITCH entity state for runtime control.
         """
         self.pv_power_sensor = self.config_entry.data.get(CONF_POWER_SENSOR)
@@ -348,7 +265,7 @@ class PowerManager:
         _LOGGER.info("Power manager configuration updated")
 
     async def _async_update_power(self, now: Any = None) -> None:
-        """Update power setpoint based on current mode.
+        """Update power via coordinator based on current mode.
 
         Args:
             now: Current time (from time interval trigger)
@@ -357,16 +274,12 @@ class PowerManager:
             OWASP A05: Validates sensor states before processing
         """
         try:
-            # Check current mode (priority order: manual > grid > pv)
-            if self._state.manual_mode_enabled:
-                # Manual mode: maintain fixed power setpoint
-                _LOGGER.debug(
-                    "Manual mode active - maintaining power: %sW",
-                    self._state.manual_power_value,
-                )
-                return
-
+            # Check current mode (priority order: grid > pv)
             if self._state.grid_charging_enabled:
+                _LOGGER.debug(
+                    "Charge from grid - maintaining power: %sW",
+                    self.max_charge_power,
+                )
                 await self._update_grid_balance_mode()
                 return
 
@@ -418,13 +331,11 @@ class PowerManager:
             )
             return
 
-        # FIX: Get current battery power from Home Assistant state machine
+        # Get current battery power from Home Assistant state machine
         current_battery_power = await self._get_battery_power()
 
         if current_battery_power is None:
-            _LOGGER.warning(
-                "Battery power not available, skipping solar charging update"
-            )
+            _LOGGER.warning("Battery power not available, skipping pv charging update")
             return
 
         # CORRECT CALCULATION:
@@ -432,7 +343,7 @@ class PowerManager:
         target_power = current_battery_power - pv_power
 
         _LOGGER.debug(
-            "Solar charging calculation: pv=%sW, current_battery=%sW, raw_target=%sW",
+            "PV charging calculation: pv=%sW, current_battery=%sW, raw_target=%sW",
             pv_power,
             current_battery_power,
             target_power,
@@ -447,13 +358,13 @@ class PowerManager:
         _LOGGER.debug("After power limits: target=%sW", target_power)
 
         _LOGGER.info(
-            "PV charging update: pv=%sW, battery=%sW ",
+            "PV charging update: pv=%sW, battery=%sW",
             pv_power,
             current_battery_power,
         )
 
-        # Update power setpoint via number entity
-        await self.update_power_setpoint(target_power)
+        # Update power setpoint via coordinator
+        await self.update_nominal_power(target_power)
 
     async def _update_grid_balance_mode(self) -> None:
         """Update power setpoint to balance grid power.
@@ -500,8 +411,6 @@ class PowerManager:
             return
 
         # Calculate target power to balance grid
-        # If importing 1000W from grid, need to discharge 1000W from battery
-        # If exporting 500W to grid, need to charge 500W to battery
         target_power = current_battery_power - grid_power
 
         _LOGGER.debug(
@@ -511,11 +420,13 @@ class PowerManager:
             target_power,
         )
 
-        # Apply constraints and update hardware
-        await self.update_power_setpoint(target_power)
+        # Apply constraints and update hardware via coordinator
+        await self.update_nominal_power(target_power)
 
     async def _get_battery_power(self) -> float | None:
-        """Get current battery power (SAX_AC_POWER_TOTAL) from Home Assistant state machine.
+        """Get current battery power (SAX_AC_POWER_TOTAL) from state machine.
+
+        Uses coordinator.sax_data.get_item_by_name() for item lookup.
 
         Returns:
             float | None: Current battery power in watts or None if unavailable
@@ -524,33 +435,27 @@ class PowerManager:
             OWASP A05: Validates entity availability before access
 
         Performance:
-            Direct state machine access with multiple lookup strategies
-
+            Direct state machine access via coordinator.sax_data
         """
         try:
-            # Validate coordinator has required dependencies
             if not hasattr(self.coordinator, "sax_data"):
                 _LOGGER.error("Coordinator missing sax_data attribute")
                 return None
 
-            # Get SAXItem for SAX_AC_POWER_TOTAL from list MODBUS_BATTERY_BMS_ITEMS
-            power_ac_item = None
-            for item in MODBUS_BATTERY_BMS_ITEMS:
-                if item.name == SAX_AC_POWER_TOTAL:
-                    power_ac_item = item
-                    break
+            power_ac_item = self.coordinator.sax_data.get_item_by_name(
+                SAX_AC_POWER_TOTAL
+            )
 
             if power_ac_item is None:
                 _LOGGER.debug(
-                    "Could not find SAXItem for SAX_AC_POWER_TOTAL in list MODBUS_BATTERY_BMS_ITEMS"
+                    "Could not find item for %s via sax_data", SAX_AC_POWER_TOTAL
                 )
                 return None
 
             # SAX_AC_POWER_TOTAL is a cluster-wide entity (battery_id=None)
-            # sensor: sensor.sax_cluster_ac_power_total
             power_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
                 power_ac_item,
-                battery_id=None,  # Cluster-wide entity
+                battery_id=None,
             )
 
             if power_entity_id is None:
@@ -560,18 +465,17 @@ class PowerManager:
             if state and state.state not in ("unknown", "unavailable", None):
                 try:
                     power_value = float(state.state)
-                    _LOGGER.info(
-                        "✓ Found battery power %s: %.1fW",
+                    _LOGGER.debug(
+                        "Battery power %s: %.1fW",
                         power_entity_id,
                         power_value,
                     )
                     return power_value  # noqa: TRY300
                 except (ValueError, TypeError) as err:
-                    _LOGGER.debug("Could not convert registry entity value: %s", err)
-        except Exception as err:
-            _LOGGER.error(  # noqa: G201
-                "Unexpected error getting battery power: %s", err, exc_info=True
-            )
+                    _LOGGER.debug("Could not convert battery power value: %s", err)
+
+        except (ValueError, TypeError, AttributeError) as err:
+            _LOGGER.error("Error getting battery power: %s", err)
 
         return None
 
@@ -592,6 +496,8 @@ class PowerManager:
     async def _get_max_soc_charging_limit(self) -> float:
         """Get maximum SOC charging limit from entity.
 
+        Uses coordinator.sax_data.get_item_by_name() for item lookup.
+
         Returns:
             Maximum SOC percentage (0-100)
 
@@ -599,10 +505,8 @@ class PowerManager:
             OWASP A05: Validates entity availability with fallback
         """
         try:
-            # Get SAX_MAX_SOC_CHARGING entity (cluster-wide virtual entity)
-            max_soc_item = next(
-                (item for item in PILOT_ITEMS if item.name == SAX_MAX_SOC_CHARGING),
-                None,
+            max_soc_item = self.coordinator.sax_data.get_item_by_name(
+                SAX_MAX_SOC_CHARGING
             )
 
             if not max_soc_item:
@@ -626,6 +530,9 @@ class PowerManager:
     async def _get_max_charge_limit(self) -> float:
         """Get maximum charge power limit from entity.
 
+        Uses coordinator.sax_data.get_item_by_name() for correct item lookup
+        (SAX_MAX_CHARGE is in MODBUS_BATTERY_POWER_LIMIT_ITEMS).
+
         Returns:
             Maximum charge power in watts (per battery)
 
@@ -633,15 +540,7 @@ class PowerManager:
             OWASP A05: Validates entity availability with fallback
         """
         try:
-            # Get SAX_MAX_CHARGE entity (per-battery hardware entity)
-            max_charge_item = next(
-                (
-                    item
-                    for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                    if item.name == SAX_MAX_CHARGE
-                ),
-                None,
-            )
+            max_charge_item = self.coordinator.sax_data.get_item_by_name(SAX_MAX_CHARGE)
 
             if not max_charge_item:
                 return LIMIT_MAX_CHARGE_PER_BATTERY
@@ -664,6 +563,9 @@ class PowerManager:
     async def _get_max_discharge_limit(self) -> float:
         """Get maximum discharge power limit from entity.
 
+        Uses coordinator.sax_data.get_item_by_name() for correct item lookup
+        (SAX_MAX_DISCHARGE is in MODBUS_BATTERY_POWER_LIMIT_ITEMS).
+
         Returns:
             Maximum discharge power in watts (per battery)
 
@@ -671,14 +573,8 @@ class PowerManager:
             OWASP A05: Validates entity availability with fallback
         """
         try:
-            # Get SAX_MAX_DISCHARGE entity (per-battery hardware entity)
-            max_discharge_item = next(
-                (
-                    item
-                    for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                    if item.name == SAX_MAX_DISCHARGE
-                ),
-                None,
+            max_discharge_item = self.coordinator.sax_data.get_item_by_name(
+                SAX_MAX_DISCHARGE
             )
 
             if not max_discharge_item:
@@ -787,23 +683,34 @@ class PowerManager:
 
         return battery_power
 
-    async def update_power_setpoint(self, power: float) -> None:
-        """Update power setpoint via number entity service call.
+    async def update_nominal_power(self, power: float) -> None:
+        """Update power setpoint via coordinator atomic write.
+
+        Uses coordinator.async_write_power_control_value() to write both
+        SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42)
+        atomically via the coordinator's write queue.
+
+        Write sequence:
+            1. Get SAX_NOMINAL_POWER ModbusItem via coordinator.sax_data
+            2. Apply SOC and hardware constraints
+            3. Call coordinator.async_write_power_control_value(item, power, factor)
+            4. Coordinator queues atomic write for next update cycle
+            5. modbus_api.write_nominal_power() writes both registers
 
         Args:
             power: Power value in watts (positive = discharge, negative = charge)
 
         Security:
-            OWASP A05: Validates power limits, SOC constraints, and entity availability
+            OWASP A05: Validates power limits, SOC constraints, and item availability
         Performance:
-            Non-blocking service call for efficiency
+            Coordinator-centric write avoids HA service call overhead
         """
-        # Security: Validate power limits
+        # Security: Validate power value type
         if not isinstance(power, (int, float)):
             _LOGGER.error("Invalid power value type: %s", type(power))  # type:ignore[unreachable]
             return
 
-        # Get current combined SOC
+        # Get current combined SOC for constraint enforcement
         combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
         if combined_soc is None:
             _LOGGER.warning("Combined SOC not available, cannot apply constraints")
@@ -827,52 +734,39 @@ class PowerManager:
         self._state.target_power = constrained_power
         self._state.last_update = datetime.now()
 
-        if self._power_entity_id is None:
+        # Get SAX_NOMINAL_POWER ModbusItem from coordinator's sax_data
+        power_item = self.coordinator.sax_data.get_item_by_name(SAX_NOMINAL_POWER)
+        if not isinstance(power_item, ModbusItem):
+            _LOGGER.error("SAX_NOMINAL_POWER not found or not a ModbusItem")
             return
 
-        # Verify entity exists
-        if not self.hass.states.get(self._power_entity_id):
-            _LOGGER.error(
-                "Power entity %s not found in Home Assistant",
-                self._power_entity_id,
-            )
-            return
+        # Power factor: 1000 = 1.0 (full power capacity)
+        power_factor = 1000
 
-        # Fire-and-forget with timeout
-        async def _set_power_value() -> None:
-            """Set power value with timeout protection."""
-            try:
-                async with asyncio.timeout(5.0):  # 5 second timeout
-                    await self.hass.services.async_call(
-                        "number",
-                        "set_value",
-                        {
-                            "entity_id": self._power_entity_id,
-                            "value": constrained_power,
-                        },
-                        blocking=False,
-                    )
+        # Coordinator-centric atomic write with timeout protection
+        try:
+            async with asyncio.timeout(5.0):
+                success = await self.coordinator.async_write_power_control_value(
+                    power_item=power_item,
+                    power=int(constrained_power),
+                    power_factor=power_factor,
+                )
 
+            if success:
                 _LOGGER.info(
-                    "✓ Power setpoint updated to %sW via %s",
+                    "Power setpoint updated to %sW via coordinator",
                     constrained_power,
-                    self._power_entity_id,
                 )
-            except TimeoutError:
-                _LOGGER.error(
-                    "Timeout setting power value to %sW (entity: %s)",
-                    constrained_power,
-                    self._power_entity_id,
-                )
-            except Exception as err:
-                _LOGGER.error(  # noqa: G201
-                    "Failed to update power setpoint: %s",
-                    err,
-                    exc_info=True,
-                )
+            else:
+                _LOGGER.error("Failed to write power setpoint via coordinator")
 
-        #  Create task but don't await (fire-and-forget)
-        self.hass.async_create_task(_set_power_value())
+        except TimeoutError:
+            _LOGGER.error(
+                "Timeout writing power value %sW via coordinator",
+                constrained_power,
+            )
+        except (OSError, ValueError) as err:
+            _LOGGER.error("Failed to update power setpoint: %s", err)
 
     async def set_pv_charging_mode(self, enabled: bool) -> None:
         """Enable or disable PV charging mode.
@@ -938,7 +832,7 @@ class PowerManager:
         if enabled:
             # Apply manual power if specified
             if power != 0.0:
-                await self.update_power_setpoint(power)
+                await self.update_nominal_power(power)
             # Otherwise, grid charging logic will be handled by _async_update_power
 
     async def set_manual_power_mode(
@@ -985,9 +879,7 @@ class PowerManager:
                 self._state.pv_charging_enabled = True
             self._state.previous_pv_state = False
             self._state.previous_grid_state = False
-
-        self._state.manual_mode_enabled = enabled
-        self._state.manual_power_value = target_power
+        # charge from grid uses actual value of number.sax_bms_max_charge
         self._state.mode = (
             "manual"
             if enabled
@@ -1008,10 +900,10 @@ class PowerManager:
 
         if enabled:
             # Apply power setpoint with constraint enforcement
-            await self.update_power_setpoint(target_power)
+            await self.update_nominal_power(target_power)
         else:
             # Reset to standby when disabling
-            await self.update_power_setpoint(0.0)
+            await self.update_nominal_power(0.0)
 
     @property
     def current_mode(self) -> str:
@@ -1033,16 +925,6 @@ class PowerManager:
         """Check if grid charging mode is enabled."""
         return self._state.grid_charging_enabled
 
-    @property
-    def get_manual_mode_enabled(self) -> bool:
-        """Check if manual power mode is enabled."""
-        return self._state.manual_mode_enabled
-
-    @property
-    def get_manual_power_value(self) -> float:
-        """Get manual mode power setpoint."""
-        return self._state.manual_power_value
-
     def get_diagnostics(self) -> dict[str, object]:
         """Return diagnostic information for troubleshooting.
 
@@ -1063,45 +945,9 @@ class PowerManager:
             "target_power": self._state.target_power,
             "pv_charging_enabled": self._state.pv_charging_enabled,
             "grid_charging_enabled": self._state.grid_charging_enabled,
-            "manual_mode_enabled": self._state.manual_mode_enabled,
-            "manual_power_value": self._state.manual_power_value,
             "last_update": self._state.last_update.isoformat(),
             "battery_count": self.battery_count,
             "max_discharge_power": self.max_discharge_power,
             "max_charge_power": self.max_charge_power,
             "update_interval_seconds": update_interval.total_seconds(),
-            "power_entity_id": self._power_entity_id,
-            "power_factor_entity_id": self._power_factor_entity_id,
         }
-
-    async def _update_entity_states(self, power: float, factor: int) -> None:
-        """Update entity states for immediate UI feedback.
-
-        Args:
-            power: Power value
-            factor: Power factor
-
-        Security:
-            OWASP A05: Validates entity registry access
-        """
-
-        if not self.coordinator.sax_data:
-            return
-
-        for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS:
-            entity_id = None
-            if item.name == SAX_NOMINAL_POWER:
-                entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-                    item=item,
-                    battery_id="bess_a",
-                )
-            if item.name == SAX_NOMINAL_FACTOR:
-                entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-                    item=item,
-                    battery_id="bess_a",
-                )
-            if entity_id is not None:
-                self.coordinator.hass.states.async_set(
-                    entity_id,
-                    str(factor),
-                )

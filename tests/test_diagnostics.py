@@ -22,7 +22,7 @@ from custom_components.sax_battery.const import (
     CONF_POWER_SENSOR,
     DEFAULT_MIN_SOC,
     DOMAIN,
-    GRID_CHARGING_MODE,
+    PV_CHARGING_MODE,
 )
 from custom_components.sax_battery.diagnostics import (
     _get_coordinator_diagnostics,
@@ -175,16 +175,15 @@ def mock_power_manager_diagnostics():
     pm = MagicMock(spec=PowerManager)
     pm.get_diagnostics.return_value = {
         "running": True,
-        "mode": GRID_CHARGING_MODE,
+        "mode": PV_CHARGING_MODE,
         "target_power": 0.0,
-        "solar_charging_enabled": False,
-        "manual_control_enabled": True,
+        "pv_charging_enabled": False,
+        "grid_charging_enabled": True,
         "last_update": "2026-02-08T10:00:00",
         "battery_count": 2,
         "max_discharge_power": 7000,
         "max_charge_power": 9200,
-        "power_entity_id": "number.sax_nominal_power",
-        "power_factor_entity_id": "number.sax_nominal_factor",
+        "update_interval_seconds": 30.0,
     }
     return pm
 
@@ -500,7 +499,7 @@ class TestAsyncGetConfigEntryDiagnostics:
 
         assert result["power_manager"] is not None
         assert result["power_manager"]["running"] is True
-        assert result["power_manager"]["mode"] == GRID_CHARGING_MODE
+        assert result["power_manager"]["mode"] == PV_CHARGING_MODE
 
     @pytest.mark.asyncio
     async def test_power_manager_none_when_disabled(
@@ -741,7 +740,7 @@ class TestPowerManagerGetDiagnostics:
         )
         result = pm.get_diagnostics()
 
-        assert result["mode"] == GRID_CHARGING_MODE
+        assert result["mode"] == PV_CHARGING_MODE
 
     def test_returns_power_limits(
         self, mock_coordinator_master, mock_config_entry
@@ -757,10 +756,10 @@ class TestPowerManagerGetDiagnostics:
         assert "max_discharge_power" in result
         assert "max_charge_power" in result
 
-    def test_returns_entity_ids(
+    def test_returns_update_interval(
         self, mock_coordinator_master, mock_config_entry
     ) -> None:
-        """Test that resolved entity IDs are included."""
+        """Test that update interval is included in diagnostics."""
         pm = PowerManager(
             hass=mock_coordinator_master.hass,
             coordinator=mock_coordinator_master,
@@ -768,8 +767,7 @@ class TestPowerManagerGetDiagnostics:
         )
         result = pm.get_diagnostics()
 
-        assert "power_entity_id" in result
-        assert "power_factor_entity_id" in result
+        assert "update_interval_seconds" in result
 
     def test_returns_last_update_timestamp(
         self, mock_coordinator_master, mock_config_entry

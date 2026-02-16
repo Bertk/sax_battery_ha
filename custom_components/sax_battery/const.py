@@ -130,7 +130,7 @@ DEFAULT_DEVICE_INFO = SAXDeviceInfo()
 
 # Configuration constants
 CONF_BATTERY_COUNT = "battery_count"
-CONF_POWER_SENSOR = "pv_production_sensor"  # PV production sensor for balanced charging
+CONF_POWER_SENSOR = "power_sensor"  # power sensor for balanced charging
 CONF_PF_SENSOR = "pf_sensor_entity_id"
 CONF_MASTER_BATTERY = "master_battery"
 CONF_DEVICE_ID = "device_id"
