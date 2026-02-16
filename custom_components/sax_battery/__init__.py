@@ -416,7 +416,7 @@ async def _log_comprehensive_setup_summary(
         ]
 
         # Get feature flags
-        pilot_from_ha = config_data.get("pilot_from_ha", False)
+        control_power = config_data.get("control_power", False)
         limit_power = config_data.get("limit_power", False)
         enable_solar = config_data.get("enable_solar_charging", False)
 
@@ -472,14 +472,14 @@ async def _log_comprehensive_setup_summary(
         _LOGGER.info(
             "SAX Battery setup complete - %d batteries [%s], master: %s, "
             "devices: %d battery + %d smartmeter + %d cluster, "
-            "features: pilot=%s, limits=%s, solar=%s",
+            "features: control_power=%s, limits=%s, solar=%s",
             battery_count,
             ", ".join(phase_mappings),
             master_batteries[0] if master_batteries else "none",
             device_summary["battery"],
             device_summary["smartmeter"],
             device_summary["cluster"],
-            pilot_from_ha,
+            control_power,
             limit_power,
             enable_solar,
         )
@@ -897,17 +897,17 @@ def _log_setup_summary(
     ]
 
     # Get feature flags (non-sensitive configuration)
-    pilot_from_ha = config_data.get("pilot_from_ha", False)
+    control_power = config_data.get("control_power", False)
     limit_power = config_data.get("limit_power", False)
     enable_solar = config_data.get("enable_solar_charging", False)
 
     _LOGGER.info(
         "SAX Battery integration setup complete - %d batteries configured [%s], "
-        "master: %s, features: pilot_control=%s, power_limits=%s, solar_charging=%s",
+        "master: %s, features: control_power=%s, power_limits=%s, solar_charging=%s",
         battery_count,
         ", ".join(phase_mappings),
         master_batteries[0] if master_batteries else "none",
-        pilot_from_ha,
+        control_power,
         limit_power,
         enable_solar,
     )

@@ -174,7 +174,7 @@ class TestSAXBatteryModbusSensor:
         """Create mock config entry for sensor tests."""
         config_entry = MagicMock()
         config_entry.entry_id = "test_sensor_entry"
-        config_entry.data = {"pilot_from_ha": False, "limit_power": False}
+        config_entry.data = {"control_power": False, "limit_power": False}
         return config_entry
 
     @pytest.fixture
@@ -545,7 +545,7 @@ class TestSensorPlatformSetup:
         """Create mock config entry for platform tests."""
         config_entry = MagicMock()
         config_entry.entry_id = "test_sensor_platform_entry"
-        config_entry.data = {"pilot_from_ha": False, "limit_power": False}
+        config_entry.data = {"control_power": False, "limit_power": False}
         return config_entry
 
     @pytest.fixture

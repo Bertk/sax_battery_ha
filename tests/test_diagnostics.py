@@ -17,7 +17,6 @@ import pytest
 from custom_components.sax_battery.const import (
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
-    CONF_ENABLE_PV_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MIN_SOC,
     CONF_POWER_SENSOR,
@@ -74,7 +73,6 @@ def mock_entry_diagnostics():
         },
         CONF_CONTROL_POWER: False,
         CONF_POWER_SENSOR: "sensor.grid_power",
-        CONF_ENABLE_PV_CHARGING: False,
         CONF_ENABLE_GRID_CHARGING: False,
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
         CONF_LIMIT_POWER: True,
@@ -185,7 +183,7 @@ def mock_power_manager_diagnostics():
         "battery_count": 2,
         "max_discharge_power": 7000,
         "max_charge_power": 9200,
-        "power_entity_id": "number.sax_pilot_power",
+        "power_entity_id": "number.sax_nominal_power",
         "power_factor_entity_id": "number.sax_nominal_factor",
     }
     return pm

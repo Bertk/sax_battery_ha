@@ -490,7 +490,7 @@ class TestCreateRegisterAccessConfig:
         config = create_register_access_config(config_data, is_master=True)
 
         assert config.battery_count == 3
-        assert config.pilot_from_ha is True
+        assert config.control_power is True
         assert config.limit_power is False
         assert config.is_master_battery is True
 
@@ -505,7 +505,7 @@ class TestCreateRegisterAccessConfig:
             config = create_register_access_config(config_data, is_master=False)
 
             assert config.battery_count == 1  # Default value
-            assert config.pilot_from_ha is True
+            assert config.control_power is True
             assert config.is_master_battery is False
             mock_logger.warning.assert_called_once_with(
                 "Invalid battery count %s, using default of 1", -1
@@ -538,7 +538,7 @@ class TestCreateRegisterAccessConfig:
             config = create_register_access_config(config_data)
 
             assert config.battery_count == 1  # Default value
-            assert config.pilot_from_ha is False
+            assert config.control_power is False
             mock_logger.warning.assert_called_once_with(
                 "Invalid battery count %s, using default of 1", "invalid"
             )
@@ -553,7 +553,7 @@ class TestCreateRegisterAccessConfig:
         config = create_register_access_config(config_data, is_master=True)
 
         assert config.battery_count == 1  # Default value
-        assert config.pilot_from_ha is True
+        assert config.control_power is True
         assert config.limit_power is True
         assert config.is_master_battery is True
 
@@ -564,7 +564,7 @@ class TestCreateRegisterAccessConfig:
         config = create_register_access_config(config_data)
 
         assert config.battery_count == 1
-        assert config.pilot_from_ha is False
+        assert config.control_power is False
         assert config.limit_power is False
         assert config.is_master_battery is False
 
@@ -578,7 +578,7 @@ class TestCreateRegisterAccessConfig:
         config = create_register_access_config(config_data)
 
         assert config.battery_count == 2
-        assert config.pilot_from_ha is False  # Default
+        assert config.control_power is False  # Default
         assert config.limit_power is False  # Default
         assert config.is_master_battery is False  # Default parameter
 
@@ -656,7 +656,7 @@ class TestRegisterAccessConfig:
     def test_register_access_config_immutable(self) -> None:
         """Test that RegisterAccessConfig is immutable (frozen)."""
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=False,
             is_master_battery=True,
             battery_count=2,
@@ -664,13 +664,13 @@ class TestRegisterAccessConfig:
 
         # Attempting to modify should raise an exception
         with pytest.raises(AttributeError):
-            config.pilot_from_ha = False  # type: ignore[misc]
+            config.control_power = False  # type: ignore[misc]
 
     def test_register_access_config_defaults(self) -> None:
         """Test RegisterAccessConfig default values."""
         config = RegisterAccessConfig()
 
-        assert config.pilot_from_ha is False
+        assert config.control_power is False
         assert config.limit_power is False
         assert config.is_master_battery is False
         assert config.battery_count == 1
@@ -678,7 +678,7 @@ class TestRegisterAccessConfig:
     def test_get_writable_registers_pilot_only(self) -> None:
         """Test get_writable_registers with pilot only."""
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=False,
             is_master_battery=True,
             battery_count=1,
@@ -690,7 +690,7 @@ class TestRegisterAccessConfig:
     def test_get_writable_registers_limit_only(self) -> None:
         """Test get_writable_registers with power limits only."""
         config = RegisterAccessConfig(
-            pilot_from_ha=False,
+            control_power=False,
             limit_power=True,
             is_master_battery=True,
             battery_count=1,
@@ -702,7 +702,7 @@ class TestRegisterAccessConfig:
     def test_get_writable_registers_both_features(self) -> None:
         """Test get_writable_registers with both pilot and limits."""
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=True,
             is_master_battery=True,
             battery_count=1,
@@ -714,7 +714,7 @@ class TestRegisterAccessConfig:
     def test_get_writable_registers_slave_battery(self) -> None:
         """Test get_writable_registers for slave battery."""
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=True,
             is_master_battery=False,  # Slave battery
             battery_count=1,
@@ -726,7 +726,7 @@ class TestRegisterAccessConfig:
     def test_get_writable_registers_no_features(self) -> None:
         """Test get_writable_registers with no features enabled."""
         config = RegisterAccessConfig(
-            pilot_from_ha=False,
+            control_power=False,
             limit_power=False,
             is_master_battery=True,
             battery_count=1,
@@ -746,7 +746,7 @@ class TestGetBatteryRealtimeItems:
         for master battery, regardless of feature flags.
         """
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=True,
             is_master_battery=True,
             battery_count=1,
@@ -769,7 +769,7 @@ class TestGetBatteryRealtimeItems:
         for master battery, regardless of feature flags.
         """
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=False,
             is_master_battery=True,
             battery_count=1,
@@ -792,7 +792,7 @@ class TestGetBatteryRealtimeItems:
         for master battery, regardless of feature flags.
         """
         config = RegisterAccessConfig(
-            pilot_from_ha=False,
+            control_power=False,
             limit_power=True,
             is_master_battery=True,
             battery_count=1,
@@ -811,7 +811,7 @@ class TestGetBatteryRealtimeItems:
     def test_get_realtime_items_slave_battery(self) -> None:
         """Test getting realtime items for slave battery."""
         config = RegisterAccessConfig(
-            pilot_from_ha=True,
+            control_power=True,
             limit_power=True,
             is_master_battery=False,
             battery_count=3,
@@ -830,7 +830,7 @@ class TestGetBatteryRealtimeItems:
         for master battery, regardless of feature flags.
         """
         config = RegisterAccessConfig(
-            pilot_from_ha=False,
+            control_power=False,
             limit_power=False,
             is_master_battery=True,
             battery_count=1,
@@ -849,7 +849,7 @@ class TestGetBatteryRealtimeItems:
     def test_get_realtime_items_returns_copy(self) -> None:
         """Test that function returns a copy, not reference."""
         config = RegisterAccessConfig(
-            pilot_from_ha=False,
+            control_power=False,
             limit_power=False,
             is_master_battery=False,
             battery_count=1,
@@ -877,7 +877,7 @@ class TestGetBatteryRealtimeItems:
 
         for is_master, pilot_enabled, limit_enabled in test_cases:
             config = RegisterAccessConfig(
-                pilot_from_ha=pilot_enabled,
+                control_power=pilot_enabled,
                 limit_power=limit_enabled,
                 is_master_battery=is_master,
                 battery_count=1,
@@ -1030,7 +1030,7 @@ class TestEdgeCasesAndBoundaryConditions:
             is_master="yes",  # type: ignore[arg-type]
         )  # String instead of bool
 
-        assert config.pilot_from_ha is True  # "true" -> True
+        assert config.control_power is True  # "true" -> True
         assert config.limit_power is True  # 1 -> True
         assert config.is_master_battery is True  # "yes" -> True
 

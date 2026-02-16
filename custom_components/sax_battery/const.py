@@ -137,7 +137,6 @@ CONF_DEVICE_ID = "device_id"
 
 # config flow constants
 CONF_MIN_SOC = "min_soc"
-CONF_ENABLE_PV_CHARGING = "enable_pv_charging"
 CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
 
 DEFAULT_PORT = 502  # Default Modbus port
@@ -648,7 +647,6 @@ PILOT_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CHARGE_FROM_GRID_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_GRID_SWITCH, translation_key="bms_charge_from_grid"),
     SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC, translation_key="bms_min_soc"),
     SAXItem(name=SAX_MAX_SOC_CHARGING, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_SOC_CHARGING, translation_key="bms_max_soc_charging"),
-    # SAX_POWER_CONTROL_SETPOINT removed - replaced by direct SAX_NOMINAL_POWER control
 ]
 
 

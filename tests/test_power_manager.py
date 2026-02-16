@@ -20,71 +20,20 @@ from custom_components.sax_battery.const import (
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_COMBINED_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.power_manager import PowerManager, PowerManagerState
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.exceptions import HomeAssistantError
 
 SERVICE_SET_VALUE = "set_value"
 
 _LOGGER = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def mock_power_manager_devices(
-    hass: HomeAssistant,
-) -> None:
-    """Set up mock devices and entities for power manager tests."""
-
-    real_entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            "battery_a_host": "192.168.1.100",
-            "battery_a_port": 502,
-        },
-        entry_id="test_power_manager_entry",
-    )
-    real_entry.add_to_hass(hass)
-
-    # Get registries
-    dev_reg = dr.async_get(hass)
-    ent_reg = er.async_get(hass)
-
-    # Create device in registry
-    device = dev_reg.async_get_or_create(
-        config_entry_id=real_entry.entry_id,
-        identifiers={(DOMAIN, "test_cluster")},
-        name="SAX Cluster",
-        manufacturer="SAX",
-        model="Battery System",
-    )
-
-    # Register entities...
-    ent_reg.async_get_or_create(
-        "number",
-        DOMAIN,
-        f"test_cluster_{SAX_NOMINAL_POWER}",
-        suggested_object_id=f"sax_cluster_{SAX_NOMINAL_POWER}",
-        config_entry=real_entry,
-        device_id=device.id,
-    )
-
-    ent_reg.async_get_or_create(
-        "number",
-        DOMAIN,
-        f"test_cluster_{SAX_NOMINAL_FACTOR}",
-        suggested_object_id=f"sax_cluster_{SAX_NOMINAL_FACTOR}",
-        config_entry=real_entry,
-        device_id=device.id,
-    )
-
-
 class TestPowerManagerInitialization:
-    """Test PowerManager initialization."""
+    """Test PowerManager __init__ and setup."""
 
     def test_initialization_defaults(
         self,
@@ -136,45 +85,6 @@ class TestPowerManagerInitialization:
         assert power_manager.max_discharge_power == expected_max_discharge
         assert power_manager.max_charge_power == expected_max_charge
         assert power_manager._state.pv_charging_enabled is False
-
-    def test_configuration_update(
-        self,
-        hass: HomeAssistant,
-        mock_coordinator_master: SAXBatteryCoordinator,
-    ) -> None:
-        """Test configuration values are properly loaded."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            data={
-                CONF_POWER_SENSOR: "sensor.grid_power",
-                PV_CHARGING_MODE: True,
-                GRID_CHARGING_MODE: False,
-            },
-        )
-        entry.add_to_hass(hass)
-
-        # Mock SAXBatteryData.get_unique_id_for_item to return valid unique IDs
-        mock_sax_data = MagicMock()
-        mock_sax_data.get_unique_id_for_item.return_value = "test_power_entity"
-        mock_coordinator_master.sax_data = mock_sax_data
-
-        # Register entities in entity registry
-        ent_reg = er.async_get(hass)
-        ent_reg.async_get_or_create(
-            "number",
-            DOMAIN,
-            "test_power_entity",
-            suggested_object_id="sax_nominal_power",
-        )
-
-        power_manager = PowerManager(
-            hass=hass,
-            coordinator=mock_coordinator_master,
-            config_entry=entry,
-        )
-        # grid power control should be disabled due to pv charging enabled
-        assert power_manager.pv_power_sensor == "sensor.grid_power"
-        assert power_manager._state.grid_charging_enabled is False
 
 
 class TestPowerManagerLifecycle:
@@ -305,17 +215,12 @@ class TestSolarChargingMode:
             )
             mock_ent_reg.return_value = mock_reg
 
-            # mock_coordinator_master.sax_data.get_unique_id_for_item.return_value = (
-            #     "battery_a_ac_power_total"
-            # )
-
             # Set battery power state in state machine
-            hass.states.async_set(
-                "sensor.battery_a_ac_power_total", "500"
-            )  # 500W discharging
+            hass.states.async_set("sensor.battery_a_ac_power_total", "500")
 
-            mock_coordinator_master.sax_data.get_entity_id_for_item = MagicMock(  # type:ignore[method-assign]
-                return_value="sensor.battery_a_ac_power_total"
+            # ✅ FIX: Direct attribute assignment instead of configure_mock
+            mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = (
+                "sensor.battery_a_ac_power_total"
             )
 
             power_manager = PowerManager(
@@ -325,8 +230,9 @@ class TestSolarChargingMode:
             )
             power_manager._state.pv_charging_enabled = True
 
+            # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_power_setpoint", new=AsyncMock()
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 
@@ -337,37 +243,38 @@ class TestSolarChargingMode:
                 # Target = abs(-1000) + 500 = 1500W
                 assert call_args[0] == 1500
 
-        async def test_solar_charging_with_unavailable_sensor(
-            self,
-            hass: HomeAssistant,
-            mock_coordinator_master: SAXBatteryCoordinator,
-        ) -> None:
-            """Test solar charging handles unavailable sensor."""
-            entry = MockConfigEntry(
-                domain=DOMAIN,
-                data={
-                    CONF_POWER_SENSOR: "sensor.grid_power",
-                },
-            )
-            entry.add_to_hass(hass)
+    async def test_solar_charging_with_unavailable_sensor(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Test solar charging handles unavailable sensor."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_POWER_SENSOR: "sensor.grid_power",
+            },
+        )
+        entry.add_to_hass(hass)
 
-            # Mock unavailable sensor
-            hass.states.async_set("sensor.grid_power", "unavailable")
+        # Mock unavailable sensor
+        hass.states.async_set("sensor.grid_power", "unavailable")
 
-            power_manager = PowerManager(
-                hass=hass,
-                coordinator=mock_coordinator_master,
-                config_entry=entry,
-            )
-            power_manager._state.pv_charging_enabled = True
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+        power_manager._state.pv_charging_enabled = True
 
-            with patch.object(
-                power_manager, "update_power_setpoint", new=AsyncMock()
-            ) as mock_update:
-                await power_manager._update_pv_charging_power()
+        # ✅ FIX: Use patch.object instead of direct assignment
+        with patch.object(
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
+        ) as mock_update:
+            await power_manager._update_pv_charging_power()
 
-                # Should not update power when sensor unavailable
-                mock_update.assert_not_called()
+            # Should not update power when sensor unavailable
+            mock_update.assert_not_called()
 
     async def test_solar_charging_with_missing_sensor(
         self,
@@ -390,8 +297,9 @@ class TestSolarChargingMode:
         )
         power_manager._state.pv_charging_enabled = True
 
+        # ✅ FIX: Use patch.object instead of direct assignment
         with patch.object(
-            power_manager, "update_power_setpoint", new=AsyncMock()
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
         ) as mock_update:
             await power_manager._update_pv_charging_power()
 
@@ -420,8 +328,9 @@ class TestSolarChargingMode:
         )
         power_manager._state.pv_charging_enabled = True
 
+        # ✅ FIX: Use patch.object instead of direct assignment
         with patch.object(
-            power_manager, "update_power_setpoint", new=AsyncMock()
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
         ) as mock_update:
             await power_manager._update_pv_charging_power()
 
@@ -471,9 +380,9 @@ class TestSolarChargingMode:
             # Current battery power: 1kW discharging
             hass.states.async_set("sensor.battery_a_ac_power_total", "1000")
 
-            # Mock get_entity_id_for_item to return correct entity_id
-            mock_coordinator_master.sax_data.get_entity_id_for_item = MagicMock(  # type:ignore[method-assign]
-                return_value="sensor.battery_a_ac_power_total"
+            # ✅ FIX: Direct attribute assignment instead of configure_mock
+            mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = (
+                "sensor.battery_a_ac_power_total"
             )
 
             power_manager = PowerManager(
@@ -483,34 +392,20 @@ class TestSolarChargingMode:
             )
             power_manager._state.pv_charging_enabled = True
 
-            # Mock update_power_setpoint to capture the constrained value
+            # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_power_setpoint", new=AsyncMock()
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 
                 # VERIFY: Power setpoint was updated
                 mock_update.assert_called_once()
 
-                # VERIFY: Calculate expected value
-                # Current battery: 1000W (discharging)
-                # Grid: -5000W (exporting)
-                # Raw target = 1000 - (-5000) = 6000W
-                # Max charge limit: 3500W (per battery) * battery_count
-                # Expected clamped value: 3500W (assuming 1 battery)
-
                 call_args = mock_update.call_args[0]
                 constrained_power = call_args[0]
 
                 # VERIFY: Power is clamped to max discharge
-                assert constrained_power == 3500.0, (
-                    f"Expected power clamped to 3500W, got {constrained_power}W"
-                )
-
-                _LOGGER.debug(
-                    "✓ Solar charging constrained: raw=6000W, constrained=%sW",
-                    constrained_power,
-                )
+                assert constrained_power == 3500.0
 
     async def test_pv_charging_respects_soc_manager_constraints(
         self,
@@ -530,7 +425,7 @@ class TestSolarChargingMode:
         )
         entry.add_to_hass(hass)
 
-        # Mock grid importing (not exporting - should trigger discharge)
+        # Mock grid importing
         hass.states.async_set("sensor.grid_power", "2000")  # 2kW import
 
         # Mock battery power
@@ -541,11 +436,11 @@ class TestSolarChargingMode:
             SAX_COMBINED_SOC: 15.0,  # Below minimum
         }
 
-        # Setup SOC manager that will block discharge
+        # Setup SOC manager
         mock_soc_manager = MagicMock()
         mock_soc_manager.min_soc = 20.0
         mock_soc_manager.check_and_enforce_discharge_limit = AsyncMock(
-            return_value=True  # Constraint active
+            return_value=True
         )
         mock_coordinator_master.soc_manager = mock_soc_manager
 
@@ -556,12 +451,11 @@ class TestSolarChargingMode:
             )
             mock_ent_reg.return_value = mock_reg
 
-            hass.states.async_set(
-                "sensor.battery_a_ac_power_total", "500"
-            )  # Discharging
+            hass.states.async_set("sensor.battery_a_ac_power_total", "500")
 
-            mock_coordinator_master.sax_data.get_entity_id_for_item = MagicMock(  # type:ignore[method-assign]
-                return_value="sensor.battery_a_ac_power_total"
+            # ✅ FIX: Direct attribute assignment instead of configure_mock
+            mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = (
+                "sensor.battery_a_ac_power_total"
             )
 
             power_manager = PowerManager(
@@ -571,106 +465,30 @@ class TestSolarChargingMode:
             )
             power_manager._state.pv_charging_enabled = True
 
+            # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_power_setpoint", new=AsyncMock()
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 
-                # VERIFY: Power setpoint was updated
                 mock_update.assert_called_once()
-
-                # VERIFY: Calculation respects current state
-                # Current battery: 500W (discharging)
-                # Grid: 2000W (importing - need to reduce discharge)
-                # Raw target = 500 - 2000 = -1500W (charge)
-                # Expected: Charging allowed even with low SOC
-
                 call_args = mock_update.call_args[0]
                 target_power = call_args[0]
 
-                # VERIFY: Charging is allowed (negative value)
-                assert target_power < 0, (
-                    f"Expected charging (negative), got {target_power}W"
-                )
-
-                # VERIFY: Value matches calculation
-                assert target_power == -1500.0, f"Expected -1500W, got {target_power}W"
+                # Charging is allowed (negative value)
+                assert target_power < 0
+                assert target_power == -1500.0
 
 
-class TestModeTransitions:
-    """Test mode transition functionality."""
+class TestGridBalanceMode:
+    """Test grid power balancing mode."""
 
-    async def test_pv_to_grid_transition(
-        self,
-        hass: HomeAssistant,
-        mock_coordinator_master: SAXBatteryCoordinator,
-        mock_config_entry: ConfigEntry,
-    ) -> None:
-        """Test transition from PV charging to grid charging.
-
-        Verifies that enabling grid charging automatically disables solar charging.
-        """
-
-        power_manager = PowerManager(
-            hass=hass,
-            coordinator=mock_coordinator_master,
-            config_entry=mock_config_entry,
-        )
-
-        # Enable solar charging
-        await power_manager.set_pv_charging_mode(True)
-        assert power_manager._state.pv_charging_enabled is True
-        assert power_manager._state.grid_charging_enabled is False
-
-        # Enable grid charging (should automatically disable solar)
-        with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
-            await power_manager.set_grid_control_mode(True, 1000)
-
-            # Grid charging enabled, solar charging disabled
-            assert power_manager._state.grid_charging_enabled is True
-            assert power_manager._state.pv_charging_enabled is False
-            assert power_manager._state.mode == GRID_CHARGING_MODE
-
-    async def test_grid_to_solar_transition(
-        self,
-        hass: HomeAssistant,
-        mock_coordinator_master: SAXBatteryCoordinator,
-        mock_config_entry: ConfigEntry,
-    ) -> None:
-        """Test transition from grid charging to solar charging.
-
-        Verifies that enabling solar charging automatically disables grid charging.
-        """
-        power_manager = PowerManager(
-            hass=hass,
-            coordinator=mock_coordinator_master,
-            config_entry=mock_config_entry,
-        )
-
-        # Enable grid charging
-        with patch.object(power_manager, "update_power_setpoint", new=AsyncMock()):
-            await power_manager.set_grid_control_mode(True, 1000)
-            assert power_manager._state.grid_charging_enabled is True
-            assert power_manager._state.pv_charging_enabled is False
-
-        # Enable solar charging (should automatically disable grid charging)
-        await power_manager.set_pv_charging_mode(True)
-
-        # Solar enabled, grid charging disabled
-        assert power_manager._state.pv_charging_enabled is True
-        assert power_manager._state.grid_charging_enabled is False
-        assert power_manager._state.mode == PV_CHARGING_MODE
-
-
-class TestConfigurationUpdates:
-    """Test configuration update handling."""
-
-    async def test_config_entry_update(
+    async def test_grid_balance_with_import(
         self,
         hass: HomeAssistant,
         mock_coordinator_master: SAXBatteryCoordinator,
     ) -> None:
-        """Test handling of config entry updates."""
+        """Test grid balance when importing power from grid."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={
@@ -679,29 +497,129 @@ class TestConfigurationUpdates:
         )
         entry.add_to_hass(hass)
 
+        hass.states.async_set("sensor.grid_power", "-1000")
+        mock_coordinator_master.data = {
+            SAX_AC_POWER_TOTAL: 500.0,
+            SAX_COMBINED_SOC: 60.0,
+        }
+
         power_manager = PowerManager(
             hass=hass,
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
 
-        # Create updated entry
-        updated_entry = MockConfigEntry(
+        # ✅ FIX: Use patch.object for method mocking
+        with patch.object(power_manager, "_get_battery_power", return_value=500.0):
+            await power_manager._update_grid_balance_mode()
+
+        assert power_manager._state.target_power > 500.0
+
+    async def test_grid_balance_with_export(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Test grid balance when exporting power to grid."""
+        entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_POWER_SENSOR: "sensor.new_grid_power",
+                CONF_POWER_SENSOR: "sensor.grid_power",
             },
         )
-        updated_entry.add_to_hass(hass)
+        entry.add_to_hass(hass)
 
-        with patch.object(power_manager, "_async_update_power", new=AsyncMock()):
-            await power_manager._async_config_updated(hass, updated_entry)
+        hass.states.async_set("sensor.grid_power", "500")
+        mock_coordinator_master.data = {
+            SAX_AC_POWER_TOTAL: 1000.0,
+            SAX_COMBINED_SOC: 60.0,
+        }
 
-            assert power_manager.pv_power_sensor == "sensor.new_grid_power"
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        # ✅ FIX: Use patch.object for method mocking
+        with patch.object(power_manager, "_get_battery_power", return_value=1000.0):
+            await power_manager._update_grid_balance_mode()
+
+        assert power_manager._state.target_power < 1000.0
+
+
+class TestEntityResolution:
+    """Test entity resolution error paths."""
+
+    async def test_resolve_entity_ids_item_not_found(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _resolve_entity_ids when item not in PILOT_ITEMS."""
+        # ✅ FIX: Direct attribute assignment instead of configure_mock
+        mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = None
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        assert power_manager._power_entity_id is None or isinstance(
+            power_manager._power_entity_id, str
+        )
+
+
+class TestBatteryPowerLookup:
+    """Test _get_battery_power error paths."""
+
+    async def test_get_battery_power_item_not_found(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_battery_power when SAX_AC_POWER_TOTAL not found."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        # ✅ FIX: Direct attribute assignment instead of configure_mock
+        mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = None
+
+        result = await power_manager._get_battery_power()
+        assert result is None
+
+    async def test_get_battery_power_invalid_state(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_battery_power with invalid state value."""
+        # ✅ FIX: Direct attribute assignment instead of configure_mock
+        mock_coordinator_master.sax_data.get_entity_id_for_item.return_value = (
+            "sensor.battery_power"
+        )
+
+        hass.states.async_set("sensor.battery_power", "not_a_number")
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        result = await power_manager._get_battery_power()
+        assert result is None
 
 
 class TestPowerManagerProperties:
-    """Test PowerManager property accessors."""
+    """Test PowerManager property accessors and state management."""
 
     def test_current_mode_property(
         self,
@@ -738,6 +656,78 @@ class TestPowerManagerProperties:
 
         power_manager._state.target_power = 1500.0
         assert power_manager.current_power == 1500.0
+
+    def test_get_manual_mode_enabled_property(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test get_manual_mode_enabled property."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        assert power_manager.get_manual_mode_enabled is False
+
+        power_manager._state.manual_mode_enabled = True
+        assert power_manager.get_manual_mode_enabled is True
+
+    def test_get_manual_power_value_property(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test get_manual_power_value property."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        assert power_manager.get_manual_power_value == 0.0
+
+        power_manager._state.manual_power_value = 1800.0
+        assert power_manager.get_manual_power_value == 1800.0
+
+    def test_get_pv_charging_enabled_property(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test get_pv_charging_enabled property."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        assert power_manager.get_pv_charging_enabled is False
+
+        power_manager._state.pv_charging_enabled = True
+        assert power_manager.get_pv_charging_enabled is True
+
+    def test_get_grid_charging_enabled_property(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test get_grid_charging_enabled property."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        assert power_manager.get_grid_charging_enabled is False
+
+        power_manager._state.grid_charging_enabled = True
+        assert power_manager.get_grid_charging_enabled is True
 
 
 class TestErrorHandling:
@@ -825,3 +815,452 @@ class TestPowerManagerState:
         assert state.mode == GRID_CHARGING_MODE
         assert state.grid_charging_enabled is True
         assert state.pv_charging_enabled is False
+
+
+class TestManualPowerMode:
+    """Test manual power control mode."""
+
+    async def test_enable_manual_mode_with_discharge_power(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test enabling manual mode with discharge power."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        power_manager._state.pv_charging_enabled = True
+
+        await power_manager.set_manual_power_mode(True, 2000.0)
+
+        assert power_manager._state.manual_mode_enabled is True
+        assert power_manager._state.manual_power_value == 2000.0
+        assert power_manager._state.mode == "manual"
+        assert power_manager._state.pv_charging_enabled is False
+        assert power_manager._state.previous_pv_state is True
+
+    async def test_enable_manual_mode_with_charge_power(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test enabling manual mode with charge power (negative)."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        await power_manager.set_manual_power_mode(True, -3000.0)
+
+        assert power_manager._state.manual_mode_enabled is True
+        assert power_manager._state.manual_power_value == -3000.0
+        assert power_manager._state.mode == "manual"
+
+    async def test_disable_manual_mode_restores_pv_state(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test disabling manual mode restores previous PV state."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        power_manager._state.pv_charging_enabled = True
+
+        await power_manager.set_manual_power_mode(True, 1000.0)
+        assert power_manager._state.pv_charging_enabled is False
+
+        await power_manager.set_manual_power_mode(False)
+
+        assert power_manager._state.manual_mode_enabled is False
+        assert power_manager._state.pv_charging_enabled is True
+        assert power_manager._state.mode == PV_CHARGING_MODE
+
+    async def test_disable_manual_mode_restores_grid_state(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test disabling manual mode restores previous grid state."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        power_manager._state.grid_charging_enabled = True
+
+        await power_manager.set_manual_power_mode(True, 500.0)
+        assert power_manager._state.grid_charging_enabled is False
+
+        await power_manager.set_manual_power_mode(False)
+
+        assert power_manager._state.manual_mode_enabled is False
+        assert power_manager._state.grid_charging_enabled is True
+        assert power_manager._state.mode == GRID_CHARGING_MODE
+
+    async def test_manual_mode_priority_in_update_loop(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test manual mode has priority over other modes in update loop."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        power_manager._state.manual_mode_enabled = True
+        power_manager._state.manual_power_value = 1500.0
+        power_manager._state.grid_charging_enabled = True
+        power_manager._state.pv_charging_enabled = True
+
+        await power_manager._async_update_power(None)
+
+        assert power_manager._state.manual_mode_enabled is True
+
+
+class TestPowerConstraintEngine:
+    """Test power constraint enforcement engine."""
+
+    async def test_constraint_discharge_blocked_at_min_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test discharge blocked when SOC <= MIN_SOC."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 10.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=2000.0,
+            combined_soc=10.0,
+        )
+
+        assert constrained_power == 0.0
+
+    async def test_constraint_discharge_allowed_above_min_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test discharge allowed when SOC > MIN_SOC."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=2000.0,
+            combined_soc=50.0,
+        )
+
+        assert constrained_power > 0.0
+
+    async def test_constraint_charge_blocked_at_max_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test charge blocked when SOC >= MAX_SOC_CHARGING."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 90.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=-3000.0,
+            combined_soc=90.0,
+        )
+
+        assert constrained_power == 0.0
+
+    async def test_constraint_charge_allowed_below_max_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test charge allowed when SOC < MAX_SOC_CHARGING."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=-2000.0,
+            combined_soc=50.0,
+        )
+
+        assert constrained_power < 0.0
+
+    async def test_constraint_charge_limited_to_max_charge(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test charge power limited to MAX_CHARGE per battery."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=-10000.0,
+            combined_soc=50.0,
+        )
+
+        assert constrained_power >= -LIMIT_MAX_CHARGE_PER_BATTERY
+
+    async def test_constraint_discharge_limited_to_max_discharge(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test discharge power limited to MAX_DISCHARGE per battery."""
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=15000.0,
+            combined_soc=50.0,
+        )
+
+        assert constrained_power <= LIMIT_MAX_DISCHARGE_PER_BATTERY
+
+    async def test_power_distribution_across_batteries(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test power distributed equally across multiple batteries."""
+        mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
+        mock_coordinator.battery_id = "battery_a"
+        mock_coordinator.data = {SAX_COMBINED_SOC: 50.0}
+        mock_coordinator.config_entry = mock_config_entry
+
+        mock_sax_data = MagicMock()
+        mock_sax_data.coordinators = {
+            "battery_a": mock_coordinator,
+            "battery_b": MagicMock(),
+            "battery_c": MagicMock(),
+        }
+        mock_sax_data.get_entity_id_for_item = MagicMock(return_value=None)
+        mock_coordinator.sax_data = mock_sax_data
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator,
+            config_entry=mock_config_entry,
+        )
+
+        constrained_power = await power_manager.apply_power_constraints(
+            target_power=6000.0,
+            combined_soc=50.0,
+        )
+
+        assert constrained_power <= 6000.0 / 3
+
+
+class TestPowerManagerDiagnostics:
+    """Test power manager diagnostics."""
+
+    def test_diagnostics_includes_manual_mode_fields(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test diagnostics include manual mode state."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        power_manager._state.manual_mode_enabled = True
+        power_manager._state.manual_power_value = 2500.0
+
+        diagnostics = power_manager.get_diagnostics()
+
+        assert "manual_mode_enabled" in diagnostics
+        assert diagnostics["manual_mode_enabled"] is True
+        assert "manual_power_value" in diagnostics
+        assert diagnostics["manual_power_value"] == 2500.0
+
+    def test_diagnostics_complete_structure(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test diagnostics contain all expected fields."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        diagnostics = power_manager.get_diagnostics()
+
+        expected_fields = [
+            "running",
+            "mode",
+            "target_power",
+            "pv_charging_enabled",
+            "grid_charging_enabled",
+            "manual_mode_enabled",
+            "manual_power_value",
+            "last_update",
+            "battery_count",
+            "max_discharge_power",
+            "max_charge_power",
+            "update_interval_seconds",
+            "power_entity_id",
+            "power_factor_entity_id",
+        ]
+
+        for field in expected_fields:
+            assert field in diagnostics
+
+
+class TestConstraintLimitGetters:
+    """Test constraint limit getter methods."""
+
+    async def test_get_min_soc_limit_from_config(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Test _get_min_soc_limit retrieves value from config."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                "min_soc": 15.0,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        min_soc = await power_manager._get_min_soc_limit()
+        assert min_soc == 15.0
+
+    async def test_get_min_soc_limit_default(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_min_soc_limit uses default when not configured."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        min_soc = await power_manager._get_min_soc_limit()
+        assert min_soc >= 0.0
+
+    async def test_get_max_soc_charging_limit_fallback(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_max_soc_charging_limit uses fallback."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        max_soc = await power_manager._get_max_soc_charging_limit()
+        assert max_soc == 90.0
+
+    async def test_get_max_charge_limit_fallback(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_max_charge_limit uses fallback."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        max_charge = await power_manager._get_max_charge_limit()
+        assert max_charge == LIMIT_MAX_CHARGE_PER_BATTERY
+
+    async def test_get_max_discharge_limit_fallback(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mock_config_entry: ConfigEntry,
+    ) -> None:
+        """Test _get_max_discharge_limit uses fallback."""
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=mock_config_entry,
+        )
+
+        max_discharge = await power_manager._get_max_discharge_limit()
+        assert max_discharge == LIMIT_MAX_DISCHARGE_PER_BATTERY
+

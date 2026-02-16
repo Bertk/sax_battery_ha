@@ -109,7 +109,7 @@ def create_register_access_config(
         battery_count = 1
 
     return RegisterAccessConfig(
-        pilot_from_ha=bool(config_data.get(CONF_CONTROL_POWER, False)),
+        control_power=bool(config_data.get(CONF_CONTROL_POWER, False)),
         limit_power=bool(config_data.get(CONF_LIMIT_POWER, False)),
         is_master_battery=bool(is_master),
         battery_count=battery_count,
@@ -144,7 +144,7 @@ class RegisterAccessConfig:
         Immutable configuration prevents tampering after creation
     """
 
-    pilot_from_ha: bool = False
+    control_power: bool = False
     limit_power: bool = False
     is_master_battery: bool = False
     battery_count: int = 1
@@ -161,8 +161,8 @@ class RegisterAccessConfig:
         """
         writable: set[int] = set()
 
-        # Pilot control registers require both pilot_from_ha AND master battery
-        if self.pilot_from_ha and self.is_master_battery:
+        # Pilot control registers require both control_power AND master battery
+        if self.control_power and self.is_master_battery:
             writable.update({41, 42})
 
         # Power limit registers require both limit_power AND master battery

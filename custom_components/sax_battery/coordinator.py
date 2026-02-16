@@ -914,13 +914,13 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             register_value,
         )
 
-    async def async_write_pilot_control_value(
+    async def async_write_power_control_value(
         self,
         power_item: ModbusItem,
         power: int,
         power_factor: int,
     ) -> bool:
-        """Write pilot control values with atomic Modbus operation.
+        """Write power control values with atomic Modbus operation.
 
         Args:
             power_item: Power register ModbusItem (for reference only)
@@ -941,18 +941,18 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if success:
                 _LOGGER.debug(
-                    "Successfully wrote pilot control values atomically: power=%s, factor=%s",
+                    "Successfully wrote power control values atomically: power=%s, factor=%s",
                     power,
                     power_factor,
                 )
             else:
-                _LOGGER.error("Failed to write pilot control values atomically")
+                _LOGGER.error("Failed to write power control values atomically")
 
             return success  # noqa: TRY300
 
         except (ModbusException, OSError, builtins.TimeoutError) as err:
-            _LOGGER.error("Modbus error in pilot control write operation: %s", err)
+            _LOGGER.error("Modbus error in power control write operation: %s", err)
             return False
         except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Unexpected error in pilot control write operation: %s", err)
+            _LOGGER.error("Unexpected error in power control write operation: %s", err)
             return False

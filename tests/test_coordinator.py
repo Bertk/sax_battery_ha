@@ -788,12 +788,12 @@ class TestSAXBatteryCoordinator:
         # Verify API reference was set
         assert item.modbus_api == mock_modbus_api_coord_unique
 
-    async def test_async_write_pilot_control_value_success(
+    async def test_async_write_power_control_value_success(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """Test async_write_pilot_control_value with successful writes."""
+        """Test async_write_power_control_value with successful writes."""
         # Create mock items
         power_item = MagicMock(spec=ModbusItem)
         power_item.modbus_api = mock_modbus_api_coord_unique
@@ -806,8 +806,8 @@ class TestSAXBatteryCoordinator:
         # Mock the write_nominal_power method on the modbus API
         mock_modbus_api_coord_unique.write_nominal_power = AsyncMock(return_value=True)
 
-        # Test pilot control write - fix: use the correct method name
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        # Test power control write - fix: use the correct method name
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             power_item, 1500.0, 8500
         )
 
@@ -816,27 +816,27 @@ class TestSAXBatteryCoordinator:
             value=1500.0, power_factor=8500, modbus_item=power_item
         )
 
-    async def test_async_write_pilot_control_value_invalid_items(
+    async def test_async_write_power_control_value_invalid_items(
         self,
         sax_battery_coordinator_instance,
     ) -> None:
-        """Test async_write_pilot_control_value with invalid item types."""
+        """Test async_write_power_control_value with invalid item types."""
         # Test with non-ModbusItem objects
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             "not_a_modbus_item", 1500.0, 8500.0
         )
 
         # Should return False for invalid item types
         assert result is False
 
-    async def test_async_write_pilot_control_value_invalid_values(
+    async def test_async_write_power_control_value_invalid_values(
         self,
         sax_battery_coordinator_instance,
         real_number_item_coord_unique,
     ) -> None:
-        """Test async_write_pilot_control_value with invalid value types."""
+        """Test async_write_power_control_value with invalid value types."""
         # Test with non-numeric values
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             real_number_item_coord_unique,
             "not_a_number",
             "also_not_a_number",
@@ -845,12 +845,12 @@ class TestSAXBatteryCoordinator:
         # Should return False for invalid value types
         assert result is False
 
-    async def test_async_write_pilot_control_value_partial_failure(
+    async def test_async_write_power_control_value_partial_failure(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """Test async_write_pilot_control_value with partial write failure."""
+        """Test async_write_power_control_value with partial write failure."""
         # Create items - one succeeds, one fails
         power_item = MagicMock(spec=ModbusItem)
         power_item.modbus_api = mock_modbus_api_coord_unique
@@ -860,20 +860,20 @@ class TestSAXBatteryCoordinator:
         power_factor_item.modbus_api = mock_modbus_api_coord_unique
         power_factor_item.async_write_value = AsyncMock(return_value=False)
 
-        # Test pilot control write
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        # Test power control write
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             power_item, 1500.0, 8500.0
         )
 
         # Should return False if any write fails
         assert result is False
 
-    async def test_async_write_pilot_control_value_sets_api_references(
+    async def test_async_write_power_control_value_sets_api_references(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """Test async_write_pilot_control_value sets API references when missing."""
+        """Test async_write_power_control_value sets API references when missing."""
         # Create items without API references
         power_item = ModbusItem(
             name="power_item",
@@ -889,7 +889,7 @@ class TestSAXBatteryCoordinator:
         mock_modbus_api_coord_unique.write_nominal_power = AsyncMock(return_value=True)
 
         # Test write
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             power_item, 1500.0, 8500
         )
 
@@ -899,12 +899,12 @@ class TestSAXBatteryCoordinator:
             value=1500.0, power_factor=8500, modbus_item=power_item
         )
 
-    async def test_async_write_pilot_control_value_exception_handling(
+    async def test_async_write_power_control_value_exception_handling(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """Test async_write_pilot_control_value with exception during write - checking actual behavior."""
+        """Test async_write_power_control_value with exception during write - checking actual behavior."""
         # Create items where one raises an exception
         power_item = MagicMock(spec=ModbusItem)
         power_item.modbus_api = mock_modbus_api_coord_unique
@@ -912,7 +912,7 @@ class TestSAXBatteryCoordinator:
 
         # Test write - the implementation uses gather with return_exceptions=True
         # So exceptions don't prevent the method from continuing
-        result = await sax_battery_coordinator_instance.async_write_pilot_control_value(
+        result = await sax_battery_coordinator_instance.async_write_power_control_value(
             power_item, 1500.0, 8500.0
         )
 

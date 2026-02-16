@@ -320,7 +320,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         mock_coordinator_modbus_base.config_entry.entry_id = "test_entry_id"
 
         # Mock pilot control atomic write method
-        mock_coordinator_modbus_base.async_write_pilot_control_value = AsyncMock(
+        mock_coordinator_modbus_base.async_write_power_control_value = AsyncMock(
             return_value=True
         )
 
@@ -344,10 +344,10 @@ class TestSAXBatteryModbusNumberNominalPower:
             await number.async_set_native_value(2000.0)
 
         # Verify pilot control write called with (item, power, factor)
-        mock_coordinator_modbus_base.async_write_pilot_control_value.assert_called_once()
+        mock_coordinator_modbus_base.async_write_power_control_value.assert_called_once()
 
         call_args = (
-            mock_coordinator_modbus_base.async_write_pilot_control_value.call_args
+            mock_coordinator_modbus_base.async_write_power_control_value.call_args
         )
         assert call_args[0][0] == mock_item  # First arg: ModbusItem
         assert call_args[0][1] == 2000.0  # Second arg: power
@@ -376,7 +376,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         mock_coordinator_modbus_base.soc_manager = MagicMock()
         mock_coordinator_modbus_base.config_entry = MagicMock()
         mock_coordinator_modbus_base.config_entry.entry_id = "test_entry_id"
-        mock_coordinator_modbus_base.async_write_pilot_control_value = AsyncMock(
+        mock_coordinator_modbus_base.async_write_power_control_value = AsyncMock(
             return_value=True
         )
 
@@ -397,10 +397,10 @@ class TestSAXBatteryModbusNumberNominalPower:
             await number.async_set_native_value(2000.0)
 
         # Verify pilot control write with fallback 100%
-        mock_coordinator_modbus_base.async_write_pilot_control_value.assert_called_once()
+        mock_coordinator_modbus_base.async_write_power_control_value.assert_called_once()
 
         call_args = (
-            mock_coordinator_modbus_base.async_write_pilot_control_value.call_args
+            mock_coordinator_modbus_base.async_write_power_control_value.call_args
         )
         assert call_args[0][0] == mock_item  # First arg: ModbusItem
         assert call_args[0][1] == 2000.0  # Second arg: power
@@ -424,7 +424,7 @@ class TestSAXBatteryModbusNumberNominalPower:
             mock_coordinator_modbus_base.config_entry.entry_id = "test_entry_id"
 
             # Mock coordinator write methods (should NOT be called)
-            mock_coordinator_modbus_base.async_write_pilot_control_value = AsyncMock()
+            mock_coordinator_modbus_base.async_write_power_control_value = AsyncMock()
             mock_coordinator_modbus_base.async_write_number_value = AsyncMock()
 
             number = SAXBatteryModbusNumber(
@@ -440,7 +440,7 @@ class TestSAXBatteryModbusNumberNominalPower:
                 await number.async_set_native_value(80.0)
 
             # Verify NO hardware write
-            mock_coordinator_modbus_base.async_write_pilot_control_value.assert_not_called()
+            mock_coordinator_modbus_base.async_write_power_control_value.assert_not_called()
             mock_coordinator_modbus_base.async_write_number_value.assert_not_called()
 
             # Verify cache updated

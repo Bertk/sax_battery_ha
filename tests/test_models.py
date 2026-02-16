@@ -73,7 +73,7 @@ class TestBatteryModel:
         """Test BatteryModel modbus items for slave battery."""
         battery = BatteryModel(
             **battery_model_data_slave,
-            config_data={"pilot_from_ha": False, "limit_power": False},
+            config_data={"control_power": False, "limit_power": False},
         )
 
         modbus_items = battery.get_modbus_items()
@@ -91,9 +91,9 @@ class TestBatteryModel:
 
     def test_battery_model_sax_items_master(self, battery_model_data_basic) -> None:
         """Test BatteryModel SAX items for master battery."""
-        # Ensure pilot_from_ha is enabled to generate SAX items
+        # Ensure control_power is enabled to generate SAX items
         battery_model_data_basic["config_data"] = {
-            "pilot_from_ha": True,
+            "control_power": True,
             "limit_power": True,
         }
         battery = BatteryModel(**battery_model_data_basic)

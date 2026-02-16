@@ -26,7 +26,6 @@ from .const import (
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
     CONF_DEVICE_ID,
-    CONF_ENABLE_PV_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
@@ -100,16 +99,11 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._limit_power = user_input[CONF_LIMIT_POWER]
             self._data.update(user_input)
 
-            #  Set PV charging default based on control power mode
-            if not self._control_power:
-                self._data[CONF_ENABLE_PV_CHARGING] = False
-
             # Debug logging to verify configuration storage
             _LOGGER.debug(
-                "Control options saved: control_power=%s, limit_power=%s, pv_charging=%s",
+                "Control options saved: control_power=%s, limit_power=%s",
                 self._control_power,
                 self._limit_power,
-                self._data.get(CONF_ENABLE_PV_CHARGING, False),
             )
 
             # Route to appropriate next step based on selections
@@ -133,45 +127,45 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_pilot_options(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Configure pilot options (simplified - only MIN_SOC)."""
-        errors: dict[str, str] = {}
+    # async def async_step_pilot_options(
+    #     self, user_input: dict[str, Any] | None = None
+    # ) -> ConfigFlowResult:
+    #     """Configure pilot options (simplified - only MIN_SOC)."""
+    #     errors: dict[str, str] = {}
 
-        if user_input is not None:
-            # Custom validation
-            validation_passed = True
+    #     if user_input is not None:
+    #         # Custom validation
+    #         validation_passed = True
 
-            try:
-                min_soc = int(user_input.get(CONF_MIN_SOC, DEFAULT_MIN_SOC))
-                if not 0 <= min_soc <= 100:
-                    errors[CONF_MIN_SOC] = "invalid_min_soc"
-                    validation_passed = False
-            except (ValueError, TypeError):
-                errors[CONF_MIN_SOC] = "invalid_min_soc"
-                validation_passed = False
+    #         try:
+    #             min_soc = int(user_input.get(CONF_MIN_SOC, DEFAULT_MIN_SOC))
+    #             if not 0 <= min_soc <= 100:
+    #                 errors[CONF_MIN_SOC] = "invalid_min_soc"
+    #                 validation_passed = False
+    #         except (ValueError, TypeError):
+    #             errors[CONF_MIN_SOC] = "invalid_min_soc"
+    #             validation_passed = False
 
-            # If validation passed, save data and move to next step
-            if validation_passed:
-                self._data.update(user_input)
-                _LOGGER.debug("Pilot options saved: %s", user_input)
-                # Move to sensors step
-                return await self.async_step_sensors()
+    #         # If validation passed, save data and move to next step
+    #         if validation_passed:
+    #             self._data.update(user_input)
+    #             _LOGGER.debug("Pilot options saved: %s", user_input)
+    #             # Move to sensors step
+    #             return await self.async_step_sensors()
 
-        # Show the form
-        return self.async_show_form(
-            step_id="pilot_options",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_MIN_SOC,
-                        default=self._data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                }
-            ),
-            errors=errors,
-        )
+    #     # Show the form
+    #     return self.async_show_form(
+    #         step_id="pilot_options",
+    #         data_schema=vol.Schema(
+    #             {
+    #                 vol.Required(
+    #                     CONF_MIN_SOC,
+    #                     default=self._data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
+    #                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+    #             }
+    #         ),
+    #         errors=errors,
+    #     )
 
     async def async_step_sensors(
         self, user_input: dict[str, Any] | None = None
@@ -417,10 +411,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             pilot_options: dict[str, Any] = {}
             if CONF_MIN_SOC in user_input:
                 pilot_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
-            if CONF_ENABLE_PV_CHARGING in user_input:
-                pilot_options[CONF_ENABLE_PV_CHARGING] = user_input[
-                    CONF_ENABLE_PV_CHARGING
-                ]
 
             # Build result data - always include feature toggles
             result_data = {
@@ -508,13 +498,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                             self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                    vol.Optional(
-                        CONF_ENABLE_PV_CHARGING,
-                        default=self.config_entry.options.get(
-                            CONF_ENABLE_PV_CHARGING,
-                            self.config_entry.data.get(CONF_ENABLE_PV_CHARGING, True),
-                        ),
-                    ): bool,
                 }
             )
 

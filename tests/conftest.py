@@ -15,7 +15,6 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
-    CONF_ENABLE_PV_CHARGING,
     CONF_MIN_SOC,
     CONF_PF_SENSOR,
     CONF_POWER_SENSOR,
@@ -169,7 +168,7 @@ def mock_coordinator_modbus_base(mock_config_entry):
 
     # Mock async methods
     coordinator.async_write_number_value = AsyncMock(return_value=True)
-    coordinator.async_write_pilot_control_value = AsyncMock(return_value=True)
+    coordinator.async_write_power_control_value = AsyncMock(return_value=True)
 
     return coordinator
 
@@ -245,7 +244,7 @@ def mock_coordinator_pilot_control_base(mock_hass_base, mock_config_entry_base):
     coordinator.sax_data.get_device_info.return_value = {"name": "Test Battery"}
     coordinator.config_entry = mock_config_entry_base
     coordinator.battery_config = {"is_master": True, "phase": "L1"}
-    coordinator.async_write_pilot_control_value = AsyncMock(return_value=True)
+    coordinator.async_write_power_control_value = AsyncMock(return_value=True)
     coordinator.last_update_success = True
     coordinator.last_update_success_time = MagicMock()
     return coordinator
@@ -846,7 +845,6 @@ def mock_config_entry():
         },
         # Power manager configuration
         CONF_CONTROL_POWER: False,
-        CONF_ENABLE_PV_CHARGING: False,
         CONF_ENABLE_GRID_CHARGING: False,
         # SOC configuration
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
@@ -907,7 +905,7 @@ def mock_config_entry_pilot():
         "master_battery": "bess_a",
         "bess_a_host": "192.168.1.100",
         "bess_a_port": 502,
-        "pilot_from_ha": True,
+        "control_power": True,
         "limit_power": True,
         "power_sensor": "sensor.grid_power",
         "pf_sensor": "sensor.power_factor",
@@ -929,15 +927,15 @@ def mock_config_entry_pilot_enabled():
         "master_battery": "bess_a",
         "bess_a_host": "192.168.1.100",
         "bess_a_port": 502,
-        "pilot_from_ha": True,
+        "control_power": True,
         "limit_power": True,
         "power_sensor": "sensor.grid_power",
         "pf_sensor": "sensor.power_factor",
         "priority_devices": ["switch.ev_charger"],
         "min_soc": 20,
         "auto_pilot_interval": 60,
-        "enable_solar_charging": True,
-        "manual_control": False,
+        "enable_pv_charging": True,
+        "grid_control": False,
     }
     return entry
 
@@ -1027,12 +1025,12 @@ def pilot_items_mixed():
             entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
         ),
         SAXItem(
-            name="manual_control_switch",
+            name="grid_control_switch",
             mtype=TypeConstants.SWITCH,
             device=DeviceConstants.BESS,
         ),
         SAXItem(
-            name="solar_charging_switch",
+            name="pv_charging_switch",
             mtype=TypeConstants.SWITCH,
             device=DeviceConstants.BESS,
         ),

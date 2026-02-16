@@ -1,6 +1,6 @@
 {
     "domain": "sax_battery",
-    "name": "SAX battery pilot for HomeAssistant",
+    "name": "SAX battery integration for HomeAssistant",
     "codeowners": [
         "@matfroh"
     ],
