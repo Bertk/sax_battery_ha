@@ -488,7 +488,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         This property is evaluated dynamically and overrides the static
         _attr_entity_registry_enabled_default from entity description.
 
-        Control switches (solar_charging, manual_control) are enabled/disabled
+        Control switches (solar_charging, grid_charging) are enabled/disabled
         based on CONF_CONTROL_POWER option.
 
         Returns:
@@ -555,9 +555,9 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
 
         # Default SAX item calculation
         if hasattr(self.coordinator, "power_manager"):
-            if self._sax_item.name == "solar_charging":
+            if self._sax_item.name == "pv_charging":
                 return bool(self.coordinator.power_manager.get_pv_charging_enabled())
-            if self._sax_item.name == "manual_control":
+            if self._sax_item.name == "grid_charging":
                 return bool(self.coordinator.power_manager.get_grid_charging_enabled())
         return False
 
@@ -693,7 +693,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
                 CONF_ENABLE_GRID_CHARGING: False,
             }
             _LOGGER.info(
-                "Updating config entry for manual control: CONF_ENABLE_GRID_CHARGING=False"
+                "Updating config entry for grid charging: CONF_ENABLE_GRID_CHARGING=False"
             )
             self.hass.config_entries.async_update_entry(
                 self.coordinator.config_entry,

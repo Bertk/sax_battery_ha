@@ -75,10 +75,10 @@ class TestPowerManagerInitialization:
         )
 
         assert power_manager.battery_count == 3
-        expected_max_discharge = 3 * LIMIT_MAX_CHARGE_PER_BATTERY
-        expected_max_charge = 3 * LIMIT_MAX_DISCHARGE_PER_BATTERY
-        assert power_manager.max_discharge_power == expected_max_discharge
-        assert power_manager.max_charge_power == expected_max_charge
+        expected_ui_max_discharge = 3 * LIMIT_MAX_DISCHARGE_PER_BATTERY
+        expected_ui_max_charge = 3 * LIMIT_MAX_CHARGE_PER_BATTERY
+        assert power_manager.ui_max_discharge_power == expected_ui_max_discharge
+        assert power_manager.ui_max_charge_power == expected_ui_max_charge
         assert power_manager._state.pv_charging_enabled is False
 
 
@@ -399,8 +399,8 @@ class TestPvChargingMode:
                 call_args = mock_update.call_args[0]
                 constrained_power = call_args[0]
 
-                # VERIFY: Power is clamped to max discharge
-                assert constrained_power == 3500.0
+                # VERIFY: Power is clamped to per-battery discharge limit
+                assert constrained_power == LIMIT_MAX_DISCHARGE_PER_BATTERY
 
     async def test_pv_charging_respects_soc_manager_constraints(
         self,
@@ -790,11 +790,11 @@ class TestChargeFromGridMode:
 
         power_manager._state.pv_charging_enabled = True
 
-        await power_manager.set_manual_power_mode(True, 2000.0)
+        await power_manager.set_grid_charging_mode(True, 2000.0)
 
         assert power_manager._state.grid_charging_enabled is False
         assert power_manager._state.pv_charging_enabled is False
-        assert power_manager._state.mode == "manual"
+        assert power_manager._state.mode == "grid_charging"
         assert power_manager._state.previous_pv_state is True
 
     async def test_enable_manual_mode_with_charge_power(
@@ -812,10 +812,10 @@ class TestChargeFromGridMode:
             config_entry=mock_config_entry,
         )
 
-        await power_manager.set_manual_power_mode(True, -3000.0)
+        await power_manager.set_grid_charging_mode(True, -3000.0)
 
         assert power_manager._state.grid_charging_enabled is False
-        assert power_manager._state.mode == "manual"
+        assert power_manager._state.mode == "grid_charging"
 
     async def test_disable_manual_mode_restores_pv_state(
         self,
@@ -834,10 +834,10 @@ class TestChargeFromGridMode:
 
         power_manager._state.pv_charging_enabled = True
 
-        await power_manager.set_manual_power_mode(True, 1000.0)
+        await power_manager.set_grid_charging_mode(True, 1000.0)
         assert power_manager._state.pv_charging_enabled is False
 
-        await power_manager.set_manual_power_mode(False)
+        await power_manager.set_grid_charging_mode(False)
 
         assert power_manager._state.grid_charging_enabled is False
         assert power_manager._state.pv_charging_enabled is True
@@ -860,10 +860,10 @@ class TestChargeFromGridMode:
 
         power_manager._state.grid_charging_enabled = True
 
-        await power_manager.set_manual_power_mode(True, 500.0)
+        await power_manager.set_grid_charging_mode(True, 500.0)
         assert power_manager._state.grid_charging_enabled is False
 
-        await power_manager.set_manual_power_mode(False)
+        await power_manager.set_grid_charging_mode(False)
 
         assert power_manager._state.grid_charging_enabled is True
         assert power_manager._state.mode == GRID_CHARGING_MODE
@@ -1057,7 +1057,9 @@ class TestPowerConstraintEngine:
             combined_soc=50.0,
         )
 
-        assert constrained_power <= 6000.0 / 3
+        # apply_power_constraints now receives per-battery values directly
+        # and clamps to per-battery hardware limits
+        assert constrained_power <= LIMIT_MAX_DISCHARGE_PER_BATTERY
 
 
 class TestPowerManagerDiagnostics:
@@ -1106,8 +1108,12 @@ class TestPowerManagerDiagnostics:
             "grid_charging_enabled",
             "last_update",
             "battery_count",
-            "max_discharge_power",
-            "max_charge_power",
+            "ui_max_discharge_power",
+            "ui_max_charge_power",
+            "configured_max_charge",
+            "configured_max_discharge",
+            "hw_limit_charge_per_battery",
+            "hw_limit_discharge_per_battery",
             "update_interval_seconds",
         ]
 

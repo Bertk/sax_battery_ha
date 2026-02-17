@@ -104,11 +104,31 @@ CONF_LIMIT_POWER = "limit_power"
 PV_CHARGING_MODE = "enable_pv_charging"
 GRID_CHARGING_MODE = "enable_grid_charging"
 
-# Battery limits per individual battery unit 7.5kW model
-# Adjusted to realistic values based on SAX service feedback
-LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts per battery
-LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts per battery
-LIMIT_REFRESH_INTERVAL = 3  # minutes for periodic refresh of write-only registers
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ CRITICAL HARDWARE SAFETY LIMITS - DO NOT EXCEED                        ║
+# ║                                                                        ║
+# ║ These are absolute per-battery hardware limits for the SAX 7.5kW model.║
+# ║ The master battery distributes the nominal_power register value        ║
+# ║ WITHOUT modification to ALL batteries (master + slaves).               ║
+# ║ Each battery receives the EXACT same value written to the master.      ║
+# ║                                                                        ║
+# ║ Example (3-battery system):                                            ║
+# ║   Write 3500W to master register → each battery gets 3500W            ║
+# ║   Write 5000W to master register → each battery gets 5000W ⚠ DANGER  ║
+# ║                                                                        ║
+# ║ Values exceeding these limits WILL damage battery hardware.            ║
+# ║ All control values written to registers MUST be clamped to these       ║
+# ║ per-battery limits, NOT to battery_count * limit.                      ║
+# ║                                                                        ║
+# ║ The cluster-wide values (battery_count * limit) are for UI display     ║
+# ║ only (entity native_max_value) and must NEVER be used for register     ║
+# ║ writes.                                                                ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts - ABSOLUTE hardware limit per battery
+LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts - ABSOLUTE hardware limit per battery
+LIMIT_REFRESH_INTERVAL = (
+    3  # minutes for periodic refresh of write-only limits registers
+)
 # Registers 41-42 (nominal_power, nominal_factor) are managed by power manager
 REFRESH_REGISTERS = {
     43,
@@ -641,7 +661,7 @@ AGGREGATED_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CUMULATIVE_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED, translation_key="bms_cumulative_energy_consumed"),
     SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, translation_key="bms_combined_soc"),
 ]
-# Pilot items - switches for manual control and solar charging
+# Pilot items - switches for grid charing control and PV charging
 PILOT_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CHARGE_FROM_PV_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_PV_SWITCH, translation_key="bms_charge_from_pv"),
     SAXItem(name=SAX_CHARGE_FROM_GRID_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_GRID_SWITCH, translation_key="bms_charge_from_grid"),

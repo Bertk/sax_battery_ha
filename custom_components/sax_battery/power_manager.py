@@ -101,9 +101,14 @@ class PowerManager:
         self.config_entry = config_entry
         self.battery_count = len(coordinator.sax_data.coordinators)
 
-        # Power limits based on battery count
-        self.max_discharge_power = self.battery_count * LIMIT_MAX_CHARGE_PER_BATTERY
-        self.max_charge_power = self.battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
+        # UI display limits (cluster-wide totals for entity native_max_value).
+        # These are for UI sliders/boxes only and must NEVER be written to registers.
+        # The master distributes register values WITHOUT modification to ALL batteries,
+        # so register writes must use per-battery limits (LIMIT_MAX_*_PER_BATTERY).
+        self.ui_max_discharge_power = (
+            self.battery_count * LIMIT_MAX_DISCHARGE_PER_BATTERY
+        )
+        self.ui_max_charge_power = self.battery_count * LIMIT_MAX_CHARGE_PER_BATTERY
 
         # State tracking
         self._state = PowerManagerState(
@@ -278,7 +283,7 @@ class PowerManager:
             if self._state.grid_charging_enabled:
                 _LOGGER.debug(
                     "Charge from grid - maintaining power: %sW",
-                    self.max_charge_power,
+                    LIMIT_MAX_CHARGE_PER_BATTERY,
                 )
                 await self._update_grid_balance_mode()
                 return
@@ -292,7 +297,7 @@ class PowerManager:
             _LOGGER.error("Error updating power: %s", err)
 
     async def _update_pv_charging_power(self) -> None:
-        """Update power setpoint for PV charging mode.
+        """Update nominal power for PV charging mode.
 
         Uses the formula: New Battery Power = Current Battery Power - Grid Power
         This ensures grid power goes to zero by adjusting battery charge/discharge.
@@ -349,10 +354,14 @@ class PowerManager:
             target_power,
         )
 
-        # Apply power limits (Note: charging is negative, discharging is positive)
+        # Pre-clamp to per-battery hardware limits before constraint enforcement.
+        # CRITICAL: The master distributes register values unchanged to all batteries,
+        # so the value must never exceed per-battery hardware limits.
         target_power = max(
-            -self.max_charge_power,  # Maximum charge (negative value)
-            min(self.max_discharge_power, target_power),  # Maximum discharge
+            -LIMIT_MAX_CHARGE_PER_BATTERY,  # Max charge per battery (negative)
+            min(
+                LIMIT_MAX_DISCHARGE_PER_BATTERY, target_power
+            ),  # Max discharge per battery
         )
 
         _LOGGER.debug("After power limits: target=%sW", target_power)
@@ -363,11 +372,11 @@ class PowerManager:
             current_battery_power,
         )
 
-        # Update power setpoint via coordinator
+        # Update nominal power via coordinator
         await self.update_nominal_power(target_power)
 
     async def _update_grid_balance_mode(self) -> None:
-        """Update power setpoint to balance grid power.
+        """Update nominal power to balance grid power.
 
         Uses grid power sensor to calculate battery power needed
         to achieve zero grid import/export.
@@ -527,87 +536,102 @@ class PowerManager:
 
         return 90.0  # Default fallback
 
-    async def _get_max_charge_limit(self) -> float:
-        """Get maximum charge power limit from entity.
+    def _read_entity_power_value(
+        self,
+        entity_key: str,
+        hw_limit: float,
+    ) -> float:
+        """Read a power limit value from an entity state (sync).
 
-        Uses coordinator.sax_data.get_item_by_name() for correct item lookup
-        (SAX_MAX_CHARGE is in MODBUS_BATTERY_POWER_LIMIT_ITEMS).
+        Reads the entity's current state and clamps it to the absolute
+        per-battery hardware limit as a safety guard.
+
+        Args:
+            entity_key: Entity key name (e.g., SAX_MAX_CHARGE)
+            hw_limit: Absolute hardware limit (LIMIT_MAX_*_PER_BATTERY)
 
         Returns:
-            Maximum charge power in watts (per battery)
+            Power limit in watts, guaranteed <= hw_limit
 
         Security:
-            OWASP A05: Validates entity availability with fallback
+            OWASP A05: Validates entity availability, clamps to hardware limit
         """
         try:
-            max_charge_item = self.coordinator.sax_data.get_item_by_name(SAX_MAX_CHARGE)
+            item = self.coordinator.sax_data.get_item_by_name(entity_key)
+            if not item:
+                return hw_limit
 
-            if not max_charge_item:
-                return LIMIT_MAX_CHARGE_PER_BATTERY
-
-            max_charge_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-                max_charge_item,
+            entity_id = self.coordinator.sax_data.get_entity_id_for_item(
+                item,
                 battery_id=self.coordinator.battery_id,
             )
 
-            if max_charge_entity_id:
-                state = self.hass.states.get(max_charge_entity_id)
+            if entity_id:
+                state = self.hass.states.get(entity_id)
                 if state and state.state not in ("unknown", "unavailable"):
-                    return float(state.state)
+                    value = float(state.state)
+                    # SAFETY: Clamp to absolute hardware limit regardless
+                    # of what the entity reports
+                    return min(value, hw_limit)
 
         except (ValueError, TypeError, AttributeError) as err:
-            _LOGGER.debug("Could not get max charge limit: %s", err)
+            _LOGGER.debug("Could not get power limit for %s: %s", entity_key, err)
 
-        return LIMIT_MAX_CHARGE_PER_BATTERY
+        return hw_limit
+
+    async def _get_max_charge_limit(self) -> float:
+        """Get user-configured maximum charge power limit.
+
+        Reads SAX_MAX_CHARGE entity (user-configurable in BMS config dialog)
+        and clamps to absolute hardware limit.
+
+        Returns:
+            Maximum charge power in watts (per battery),
+            guaranteed <= LIMIT_MAX_CHARGE_PER_BATTERY
+
+        Security:
+            OWASP A05: Validates entity availability with hardware safety clamp
+        """
+        return self._read_entity_power_value(
+            SAX_MAX_CHARGE, LIMIT_MAX_CHARGE_PER_BATTERY
+        )
 
     async def _get_max_discharge_limit(self) -> float:
-        """Get maximum discharge power limit from entity.
+        """Get user-configured maximum discharge power limit.
 
-        Uses coordinator.sax_data.get_item_by_name() for correct item lookup
-        (SAX_MAX_DISCHARGE is in MODBUS_BATTERY_POWER_LIMIT_ITEMS).
+        Reads SAX_MAX_DISCHARGE entity (user-configurable in BMS config dialog)
+        and clamps to absolute hardware limit.
 
         Returns:
-            Maximum discharge power in watts (per battery)
+            Maximum discharge power in watts (per battery),
+            guaranteed <= LIMIT_MAX_DISCHARGE_PER_BATTERY
 
         Security:
-            OWASP A05: Validates entity availability with fallback
+            OWASP A05: Validates entity availability with hardware safety clamp
         """
-        try:
-            max_discharge_item = self.coordinator.sax_data.get_item_by_name(
-                SAX_MAX_DISCHARGE
-            )
-
-            if not max_discharge_item:
-                return LIMIT_MAX_DISCHARGE_PER_BATTERY
-
-            max_discharge_entity_id = self.coordinator.sax_data.get_entity_id_for_item(
-                max_discharge_item,
-                battery_id=self.coordinator.battery_id,
-            )
-
-            if max_discharge_entity_id:
-                state = self.hass.states.get(max_discharge_entity_id)
-                if state and state.state not in ("unknown", "unavailable"):
-                    return float(state.state)
-
-        except (ValueError, TypeError, AttributeError) as err:
-            _LOGGER.debug("Could not get max discharge limit: %s", err)
-
-        return LIMIT_MAX_DISCHARGE_PER_BATTERY
+        return self._read_entity_power_value(
+            SAX_MAX_DISCHARGE, LIMIT_MAX_DISCHARGE_PER_BATTERY
+        )
 
     async def apply_power_constraints(
         self,
         target_power: float,
         combined_soc: float,
     ) -> float:
-        """Apply all power constraints in correct order matching pilot.py logic.
+        """Apply all power constraints in correct order.
+
+        CRITICAL SAFETY: The master battery distributes the register value
+        WITHOUT modification to ALL batteries. The returned value is the
+        per-battery power that will be written to the master register and
+        applied identically to every battery in the cluster.
 
         Args:
-            target_power: Desired total power (positive=discharge, negative=charge)
+            target_power: Desired per-battery power (positive=discharge, negative=charge)
             combined_soc: Current cluster SOC percentage
 
         Returns:
-            Constrained power value per battery
+            Constrained per-battery power value, guaranteed to be within
+            [-LIMIT_MAX_CHARGE_PER_BATTERY, LIMIT_MAX_DISCHARGE_PER_BATTERY]
 
         Security:
             OWASP A05: Hardware protection via constraint enforcement
@@ -616,17 +640,16 @@ class PowerManager:
             O(1) constraint checks, no loops
 
         Note:
-            Constraint enforcement order (from pilot.py):
-            1. Distribute power across batteries
-            2. SOC-based discharge protection (MIN_SOC)
-            3. SOC-based charge limit (MAX_SOC_CHARGING)
-            4. Hardware charge limit (MAX_CHARGE)
-            5. Hardware discharge limit (MAX_DISCHARGE)
+            Constraint enforcement order:
+            1. SOC-based discharge protection (MIN_SOC)
+            2. SOC-based charge limit (MAX_SOC_CHARGING)
+            3. Hardware charge limit (MAX_CHARGE entity or LIMIT_MAX_CHARGE_PER_BATTERY)
+            4. Hardware discharge limit (MAX_DISCHARGE entity or LIMIT_MAX_DISCHARGE_PER_BATTERY)
+            5. Absolute hardware safety clamp (final guarantee)
         """
-        # Step 1: Distribute power across batteries
-        battery_power = target_power / self.battery_count
+        battery_power = target_power
 
-        # Step 2: Get constraint limits from entities
+        # Get constraint limits from entities (fall back to per-battery HW limits)
         min_soc = await self._get_min_soc_limit()
         max_soc_charging = await self._get_max_soc_charging_limit()
         max_charge = await self._get_max_charge_limit()
@@ -641,7 +664,7 @@ class PowerManager:
             max_discharge,
         )
 
-        # Step 3: SOC-based discharge protection
+        # Step 1: SOC-based discharge protection
         if combined_soc <= min_soc and battery_power > 0:
             _LOGGER.info(
                 "Discharge blocked: SOC %.1f%% <= min %.1f%%",
@@ -650,7 +673,7 @@ class PowerManager:
             )
             return 0.0
 
-        # Step 4: SOC-based charge limit
+        # Step 2: SOC-based charge limit
         if combined_soc >= max_soc_charging and battery_power < 0:
             _LOGGER.info(
                 "Charge blocked: SOC %.1f%% >= max %.1f%%",
@@ -659,7 +682,7 @@ class PowerManager:
             )
             return 0.0
 
-        # Step 5: Hardware charge limit (charging = negative power)
+        # Step 3: Hardware charge limit (charging = negative power)
         if battery_power < 0:
             original_power = battery_power
             battery_power = max(battery_power, -max_charge)
@@ -670,7 +693,7 @@ class PowerManager:
                     battery_power,
                 )
 
-        # Step 6: Hardware discharge limit (discharging = positive power)
+        # Step 4: Hardware discharge limit (discharging = positive power)
         if battery_power > 0:
             original_power = battery_power
             battery_power = min(battery_power, max_discharge)
@@ -681,10 +704,19 @@ class PowerManager:
                     battery_power,
                 )
 
-        return battery_power
+        # Step 5: ABSOLUTE HARDWARE SAFETY CLAMP
+        # Final guarantee: regardless of entity values or calculation errors,
+        # NEVER exceed per-battery hardware limits. The master distributes
+        # this value unchanged to every battery in the cluster.
+        battery_power = max(
+            -LIMIT_MAX_CHARGE_PER_BATTERY,
+            min(LIMIT_MAX_DISCHARGE_PER_BATTERY, battery_power),
+        )
+
+        return battery_power  # noqa: RET504
 
     async def update_nominal_power(self, power: float) -> None:
-        """Update power setpoint via coordinator atomic write.
+        """Update nominal power via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
         SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42)
@@ -698,7 +730,10 @@ class PowerManager:
             5. modbus_api.write_nominal_power() writes both registers
 
         Args:
-            power: Power value in watts (positive = discharge, negative = charge)
+            power: Per-battery power value in watts (positive = discharge, negative = charge)
+                   CRITICAL: This value is written to the master register and distributed
+                   WITHOUT modification to ALL batteries. Must never exceed per-battery
+                   hardware limits (LIMIT_MAX_CHARGE/DISCHARGE_PER_BATTERY).
 
         Security:
             OWASP A05: Validates power limits, SOC constraints, and item availability
@@ -716,10 +751,19 @@ class PowerManager:
             _LOGGER.warning("Combined SOC not available, cannot apply constraints")
             return
 
-        # Apply all power constraints (SOC protection, hardware limits, distribution)
+        # Apply all power constraints (SOC protection, hardware limits)
+        # Returns per-battery value already clamped to hardware limits
         constrained_power = await self.apply_power_constraints(
             target_power=power,
             combined_soc=combined_soc,
+        )
+
+        # CRITICAL SAFETY: Final absolute per-battery hardware clamp before register write.
+        # The master distributes this value unchanged to ALL batteries.
+        # This is a defense-in-depth guard against any upstream calculation error.
+        constrained_power = max(
+            -LIMIT_MAX_CHARGE_PER_BATTERY,
+            min(LIMIT_MAX_DISCHARGE_PER_BATTERY, constrained_power),
         )
 
         if constrained_power != power:
@@ -758,7 +802,7 @@ class PowerManager:
                     constrained_power,
                 )
             else:
-                _LOGGER.error("Failed to write power setpoint via coordinator")
+                _LOGGER.error("Failed to write nominal power via coordinator")
 
         except TimeoutError:
             _LOGGER.error(
@@ -766,7 +810,7 @@ class PowerManager:
                 constrained_power,
             )
         except (OSError, ValueError) as err:
-            _LOGGER.error("Failed to update power setpoint: %s", err)
+            _LOGGER.error("Failed to update nominal power: %s", err)
 
     async def set_pv_charging_mode(self, enabled: bool) -> None:
         """Enable or disable PV charging mode.
@@ -830,21 +874,21 @@ class PowerManager:
         )
 
         if enabled:
-            # Apply manual power if specified
+            # Apply grid charging power if specified
             if power != 0.0:
                 await self.update_nominal_power(power)
             # Otherwise, grid charging logic will be handled by _async_update_power
 
-    async def set_manual_power_mode(
+    async def set_grid_charging_mode(
         self,
         enabled: bool,
         target_power: float = 0.0,
     ) -> None:
-        """Enable or disable manual power control mode.
+        """Enable or disable grid charging power control mode.
 
         Args:
-            enabled: True to enable manual mode
-            target_power: Fixed power setpoint (W)
+            enabled: True to enable grid charging mode
+            target_power: Fixed nominal power (W)
                          Positive = discharge to grid
                          Negative = charge from grid/PV
                          Default = 0.0 (standby)
@@ -855,33 +899,37 @@ class PowerManager:
 
         Example:
             # Charge at 3000W from grid
-            await manager.set_manual_power_mode(True, -3000.0)
+            await manager.set_grid_charging_mode(True, -3000.0)
 
             # Discharge at 2000W to grid
-            await manager.set_manual_power_mode(True, 2000.0)
+            await manager.set_grid_charging_mode(True, 2000.0)
 
-            # Disable manual mode
-            await manager.set_manual_power_mode(False)
+            # Disable grid charging mode
+            await manager.set_grid_charging_mode(False)
         """
-        # Store previous states before enabling manual mode
+        # Store previous states before enabling grid charging mode
         if enabled:
             self._state.previous_pv_state = self._state.pv_charging_enabled
             self._state.previous_grid_state = self._state.grid_charging_enabled
             self._state.pv_charging_enabled = False  # Mutual exclusion
             self._state.grid_charging_enabled = False  # Mutual exclusion
         elif self._state.previous_pv_state or self._state.previous_grid_state:
-            # Restore previous state when disabling manual mode
+            # Restore previous state when disabling grid charging mode
             if self._state.previous_grid_state:
-                _LOGGER.info("Restoring grid charging mode after manual mode disabled")
+                _LOGGER.info(
+                    "Restoring grid charging mode after grid charging mode disabled"
+                )
                 self._state.grid_charging_enabled = True
             elif self._state.previous_pv_state:
-                _LOGGER.info("Restoring PV charging mode after manual mode disabled")
+                _LOGGER.info(
+                    "Restoring PV charging mode after grid charging mode disabled"
+                )
                 self._state.pv_charging_enabled = True
             self._state.previous_pv_state = False
             self._state.previous_grid_state = False
         # charge from grid uses actual value of number.sax_bms_max_charge
         self._state.mode = (
-            "manual"
+            "grid_charging"
             if enabled
             else (
                 GRID_CHARGING_MODE
@@ -899,7 +947,7 @@ class PowerManager:
         )
 
         if enabled:
-            # Apply power setpoint with constraint enforcement
+            # Apply nominal power with constraint enforcement
             await self.update_nominal_power(target_power)
         else:
             # Reset to standby when disabling
@@ -912,7 +960,7 @@ class PowerManager:
 
     @property
     def current_power(self) -> float:
-        """Get current power setpoint."""
+        """Get current nominal power."""
         return self._state.target_power
 
     @property
@@ -928,6 +976,9 @@ class PowerManager:
     def get_diagnostics(self) -> dict[str, object]:
         """Return diagnostic information for troubleshooting.
 
+        Includes user-configured limits (from BMS config dialog entities)
+        and absolute hardware safety limits.
+
         Returns:
             Dictionary with power manager state and configuration
 
@@ -939,6 +990,17 @@ class PowerManager:
             if self.coordinator.update_interval is not None
             else timedelta(seconds=60)
         )
+
+        # Read user-configured limits from entity states (sync).
+        # These are the effective limits used for power control,
+        # always <= the absolute hardware limits.
+        user_max_charge = self._read_entity_power_value(
+            SAX_MAX_CHARGE, LIMIT_MAX_CHARGE_PER_BATTERY
+        )
+        user_max_discharge = self._read_entity_power_value(
+            SAX_MAX_DISCHARGE, LIMIT_MAX_DISCHARGE_PER_BATTERY
+        )
+
         return {
             "running": self._running,
             "mode": self._state.mode,
@@ -947,7 +1009,13 @@ class PowerManager:
             "grid_charging_enabled": self._state.grid_charging_enabled,
             "last_update": self._state.last_update.isoformat(),
             "battery_count": self.battery_count,
-            "max_discharge_power": self.max_discharge_power,
-            "max_charge_power": self.max_charge_power,
+            "ui_max_discharge_power": self.ui_max_discharge_power,
+            "ui_max_charge_power": self.ui_max_charge_power,
+            # Effective user-configured limits (from BMS config dialog)
+            "configured_max_charge": user_max_charge,
+            "configured_max_discharge": user_max_discharge,
+            # Absolute hardware safety limits (never exceeded)
+            "hw_limit_charge_per_battery": LIMIT_MAX_CHARGE_PER_BATTERY,
+            "hw_limit_discharge_per_battery": LIMIT_MAX_DISCHARGE_PER_BATTERY,
             "update_interval_seconds": update_interval.total_seconds(),
         }

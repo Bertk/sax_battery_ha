@@ -181,8 +181,12 @@ def mock_power_manager_diagnostics():
         "grid_charging_enabled": True,
         "last_update": "2026-02-08T10:00:00",
         "battery_count": 2,
-        "max_discharge_power": 7000,
-        "max_charge_power": 9200,
+        "ui_max_discharge_power": 9200,
+        "ui_max_charge_power": 7000,
+        "configured_max_charge": 3500,
+        "configured_max_discharge": 4600,
+        "hw_limit_charge_per_battery": 3500,
+        "hw_limit_discharge_per_battery": 4600,
         "update_interval_seconds": 30.0,
     }
     return pm
@@ -753,8 +757,15 @@ class TestPowerManagerGetDiagnostics:
         )
         result = pm.get_diagnostics()
 
-        assert "max_discharge_power" in result
-        assert "max_charge_power" in result
+        assert "ui_max_discharge_power" in result
+        assert "ui_max_charge_power" in result
+        assert "configured_max_charge" in result
+        assert "configured_max_discharge" in result
+        assert "hw_limit_charge_per_battery" in result
+        assert "hw_limit_discharge_per_battery" in result
+        # User-configured limits must never exceed hardware limits
+        assert result["configured_max_charge"] <= result["hw_limit_charge_per_battery"]  # type: ignore[operator]
+        assert result["configured_max_discharge"] <= result["hw_limit_discharge_per_battery"]  # type: ignore[operator] # fmt: skip
 
     def test_returns_update_interval(
         self, mock_coordinator_master, mock_config_entry

@@ -49,12 +49,12 @@
                 "description": "Select the sensors that monitor your home's power usage for intelligent battery control.",
                 "data": {
                     "grid_power_sensor": "Grid Power Sensor (required for power manager)",
-                    "power_control_setpoint": "Power Consumption Sensor, in Watts, a negative value means consuming from the grid and positive value equals injection into the grid",
+                    "power_sensor": "Power Consumption Sensor, in Watts, a negative value means consuming from the grid and positive value equals injection into the grid",
                     "pf_sensor": "Power Factor Sensor, called cos(phi) or PF"
                 },
                 "data_description": {
                     "grid_power_sensor": "Select grid power sensor for power manager (required)",
-                    "power_control_setpoint": "Select smart meter power sensor (optional, for legacy pilot)",
+                    "power_sensor": "Select smart meter power sensor (optional, for legacy pilot)",
                     "pf_sensor": "Select power factor sensor (optional, for legacy pilot)"
                 }
             },
@@ -100,12 +100,12 @@
                 "data": {
                     "control_power": "Control battery from Home Assistant",
                     "limit_power": "Enable power limitations",
-                    "min_soc": "Minimum State of Charge (%)",
+                    "min_soc": "Minimum State of Charge (%)"
                 },
                 "data_description": {
-                    "control_power": "Enable or disable pilot mode (registers 41,42)",
-                    "limit_power": "Enable or disable power limits (registers 43,44)",
-                    "min_soc": "Minimum battery charge level (0-100%)",
+                    "control_power": "Enable or disable power control mode (registers 41,42)",
+                    "limit_power": "Enable or disable power limits (registers 43,44)"
+
                 }
             }
         }
@@ -271,8 +271,8 @@
                     }
                 }
             },
-            "bms_manual_control": {
-                "name": "Manual Control",
+            "bms_charge_from_grid": {
+                "name": "Charging from Grid",
                 "state": {
                     "off": "Disabled",
                     "on": "Enabled"

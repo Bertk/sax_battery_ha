@@ -63,7 +63,7 @@ async def async_setup_entry(
 
     Creates two types of number entities:
     1. Cluster-wide config numbers (SAXItem → SAXBatteryConfigNumber)
-       - Examples: min_soc, pv_power, manual_power
+       - Examples: min_soc
        - Single instance per installation
        - Always available (no hardware dependency)
 
@@ -159,7 +159,7 @@ async def async_setup_entry(
     # STEP 2: Create cluster-wide config numbers (SAXItem → SAXBatteryConfigNumber)
     # ============================================================================
     # These entities are system-wide (not per-battery) and always available
-    # Examples: sax_min_soc, sax_power_control_setpoint, sax_max_soc_charging
+    # Examples: sax_min_soc, sax_max_soc_charging
 
     # Find master coordinator
     master_coordinators = {
@@ -490,11 +490,11 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             return int(config_entry.data.get(CONF_BATTERY_COUNT, 1))
         return 1
 
-    def _is_manual_control_enabled(self) -> bool:
-        """Check if manual control is enabled in config.
+    def _is_grid_charging_enabled(self) -> bool:
+        """Check if grid charging is enabled in config.
 
         Returns:
-            True if manual control is enabled, False otherwise.
+            True if grid charging is enabled, False otherwise.
 
         Security:
             OWASP A05: Validates config entry exists before access
@@ -886,7 +886,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         return factor_entity
 
     async def _notify_power_manager_update(self, value: float) -> None:
-        """Notify power manager of manual power updates.
+        """Notify power manager of control power updates.
 
         Args:
             value: New power value set by user
@@ -909,7 +909,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             return
 
         # Apply SOC constraints to the power value
-        _LOGGER.debug("Applying SOC constraints to manual power update: %sW", value)
+        _LOGGER.debug("Applying SOC constraints to control power update: %sW", value)
 
         # Access through coordinator property
         await self.coordinator.async_write_number_value(self._modbus_item, int(value))
@@ -1098,7 +1098,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
     Architecture:
         - SAXBatteryConfigNumber: Virtual configuration entities (separate class)
-        * Examples: min_soc, pv_power, manual_power
+        * Examples: min_soc, max_soc_charging
         * Data source: Coordinator memory/config entry (no hardware)
         * Availability: Always available (independent of hardware state)
         * Write operations: Config/state updates only (no hardware writes)
