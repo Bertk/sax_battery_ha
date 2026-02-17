@@ -199,7 +199,7 @@ Provides control entities for battery operation:
 - Maximum charge/discharge limits
 - Configuration numbers (min SOC, pilot power)
 
-![SAX BMS device](assets/sax-bms-dialog.png)
+![SAX BMS device](assets/sax-bms-device.png)
 
 ### SAX-BESS Device (Battery Energy Storage System)
 

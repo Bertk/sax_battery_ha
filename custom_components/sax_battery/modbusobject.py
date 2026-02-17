@@ -195,7 +195,7 @@ class ModbusAPI:
             # Close existing connection if any
             if self._modbus_client is not None:
                 try:
-                    self._modbus_client.close()  # type: ignore[func-returns-value]
+                    self._modbus_client.close()
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.debug(
                         "%s: Error closing old connection: %s",
@@ -881,7 +881,7 @@ class ModbusAPI:
         if self._modbus_client:
             try:
                 # Close connection gracefully
-                self._modbus_client.close()  # type: ignore[func-returns-value]
+                self._modbus_client.close()
 
                 # Wait for socket cleanup (OS needs time to release resources)
                 await asyncio.sleep(0.2)
