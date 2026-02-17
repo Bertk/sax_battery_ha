@@ -195,7 +195,7 @@ class ModbusAPI:
             # Close existing connection if any
             if self._modbus_client is not None:
                 try:
-                    await self._modbus_client.close()  # type: ignore[func-returns-value]
+                    self._modbus_client.close()  # type: ignore[func-returns-value]
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.debug(
                         "%s: Error closing old connection: %s",
@@ -303,15 +303,35 @@ class ModbusAPI:
         Returns:
             bool: True if closed successfully, False otherwise
 
-        Security: Handles cleanup errors gracefully
+        Security:
+            OWASP A05: Ensures proper resource cleanup
         """
+        if self._modbus_client is None:
+            return True  # Already closed
+
         try:
-            if self._modbus_client is not None:
-                await self._modbus_client.close()  # type: ignore[func-returns-value]
+            # Check if actually connected before closing
+            if (
+                hasattr(self._modbus_client, "connected")
+                and self._modbus_client.connected
+            ):
+                self._modbus_client.close()
+            else:
+                _LOGGER.debug(
+                    "Modbus client for %s already disconnected",
+                    self.battery_id,
+                )
             return True  # noqa: TRY300
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.error("Error closing connection for %s: %s", self.battery_id, exc)
+            _LOGGER.error(
+                "Error closing connection for %s: %s",
+                self.battery_id,
+                exc,
+            )
             return False
+        finally:
+            # Always clean up the reference
+            self._modbus_client = None
 
     async def read_holding_registers(
         self, count: int, modbus_item: ModbusItem
@@ -861,7 +881,7 @@ class ModbusAPI:
         if self._modbus_client:
             try:
                 # Close connection gracefully
-                await self._modbus_client.close()  # type: ignore[func-returns-value]
+                self._modbus_client.close()  # type: ignore[func-returns-value]
 
                 # Wait for socket cleanup (OS needs time to release resources)
                 await asyncio.sleep(0.2)

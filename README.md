@@ -144,57 +144,33 @@ Before configuring the integration, ensure:
    - **Pilot from Home Assistant**: Direct power control (requires registers 43-44)
    - **Limit Power**: Set max charge/discharge limits (requires registers 41-42)
 
-   ![Enable write register groups](assets/conf-enable-write-registers.png)
+   ![Enable write register groups](assets/conf-control-options.png)
 
    > [!IMPORTANT]
    > Write registers must be enabled in SAX-power portal settings before these options work.
 
-4. **Configure Protection Settings** *(if Pilot/Limit Power enabled)*
-
-   Set battery protection parameters:
-   - **Minimum SOC**: Prevents deep discharge (recommended: 15-20%)
-   - **Auto Pilot Interval**: How often to recalculate power levels
-   - **Solar Charging**: Enable/disable solar charging
-
-   ![Configure min SOC and PV charging](assets/conf-SOC-charge-PV.png)
-
-   > [!WARNING]
-   > **Battery Protection Critical**  
-   > Configure minimum SOC threshold to prevent deep discharge (SOC 0%), which can damage your battery system. Recommended minimum: 15% (stops discharge at 10% with safety margin).
-
-5. **Configure Grid Sensors** *(if power management enabled)*
+4. **Configure Grid Sensors** *(if power management enabled)*
 
    Select Home Assistant sensors for:
-   - **Grid Power**: Total household power consumption
-   - **Power Factor**: Grid power factor (optional, for accurate calculations)
+   - **Power monitor sensor**: Total household power consumption (Watt)
 
-   ![Grid power sensor](assets/conf-grid-power-sensor.png)
+   ![Power monitor sensor](assets/conf-power-sensor.png)
 
-6. **Configure Priority Devices** *(optional)*
-
-   Select devices that should have priority over battery usage:
-   - EV chargers
-   - Heat pumps
-   - Other high-priority loads
-
-   When priority devices are active, the battery will not discharge to power them.
-
-   ![Configure Priority Devices](assets/conf-priorities-consumer-device.png)
-
-7. **Configure Battery Connection**
+5. **Configure Battery Connection**
 
    For each battery, provide:
    - **IP Address**: Battery's local network IP
    - **Port**: Modbus TCP port (default: 502)
-   - **Master Battery**: Select which battery is the master (if multiple)
+
+   Note: **Master Battery (L1)** shall be configured first (if multiple). The battery display shows "A".
 
    ![Configure Battery Connection](assets/conf-connection.png)
 
-8. **Complete Setup**
+6. **Finish Setup**
 
    Add location area and click **FINISH**.
 
-   ![Configuration done](assets/conf-done-dialog.png)
+   ![Configuration done](assets/conf-finish.png)
 
 ### Post-Configuration
 
