@@ -437,7 +437,7 @@ automation:
 
 1. Check Home Assistant logs for Modbus timeout errors:
 
-   ```
+   ```text
    Logger: custom_components.sax_battery
    ```
 
