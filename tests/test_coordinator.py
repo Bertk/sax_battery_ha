@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-import logging
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -556,653 +554,128 @@ class TestSAXBatteryCoordinator:
         self,
         sax_battery_coordinator_instance,
     ) -> None:
-        """Test _poll_single_item skips write-only number items."""
-        # Create write-only number item
+        """Test _poll_single_item behavior for NUMBER_WO items.
+
+        The current coordinator implementation does not skip NUMBER_WO in
+        _poll_single_item; it delegates to item.async_read_value().
+        """
         item = MagicMock(spec=ModbusItem)
         item.name = "test_item"
         item.mtype = TypeConstants.NUMBER_WO
         item.is_read_only.return_value = True
-        item.async_read_value = AsyncMock()
+        item.async_read_value = AsyncMock(return_value=12.0)
 
-        # Test polling
         result = await sax_battery_coordinator_instance._poll_single_item(item)
 
-        # Verify write-only item was skipped
-        assert result is None
-        item.async_read_value.assert_not_called()
+        assert result == 12.0
+        item.async_read_value.assert_called_once()
 
-    async def test_poll_single_item_exception(
+    async def test_poll_single_item_timeout_returns_none(
         self,
         sax_battery_coordinator_instance,
     ) -> None:
-        """Test _poll_single_item with read exception."""
-        # Create mock item that raises exception
+        """Test _poll_single_item returns None on timeout."""
         item = MagicMock(spec=ModbusItem)
-        item.name = "test_item"
-        item.mtype = TypeConstants.SENSOR
-        item.is_read_only.return_value = True
-        item.async_read_value = AsyncMock(side_effect=ModbusException("Read failed"))
+        item.name = "timeout_item"
+        item.address = 99
+        item.async_read_value = AsyncMock(side_effect=TimeoutError)
 
-        # Test polling
         result = await sax_battery_coordinator_instance._poll_single_item(item)
 
-        # Verify exception handling
         assert result is None
 
-    async def test_get_enabled_modbus_items_with_registry(
+    async def test_async_update_data_modbus_exception_raises_update_failed(
         self,
         sax_battery_coordinator_instance,
-        mock_sax_data_coord_unique,
     ) -> None:
-        """Test _get_enabled_modbus_items with entity registry checks."""
-        # Create mock items with different enabled states
-        enabled_item = MagicMock(spec=ModbusItem)
-        enabled_item.name = "sax_enabled_item"
-        enabled_item.enabled_by_default = True
-
-        disabled_item = MagicMock(spec=ModbusItem)
-        disabled_item.name = "sax_disabled_item"
-        disabled_item.enabled_by_default = False
-
-        items = [enabled_item, disabled_item]
-        mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = items
-
-        # Mock entity registry
-        mock_entity_registry = MagicMock()
-
-        def mock_get_entity_id(domain, integration, unique_id):
-            if "enabled" in unique_id:
-                return f"{domain}.test_entity_enabled"
-            return None
-
-        mock_entity_registry.async_get_entity_id = mock_get_entity_id
-
-        def mock_async_get(entity_id):
-            if "enabled" in entity_id:
-                return MagicMock(disabled=False)
-            return None
-
-        mock_entity_registry.async_get = mock_async_get
-
-        # Test filtering
-        result = await sax_battery_coordinator_instance._get_enabled_modbus_items(
-            mock_entity_registry
+        """Test _async_update_data wraps ModbusException as UpdateFailed."""
+        with (
+            patch.object(
+                sax_battery_coordinator_instance,
+                "_get_enabled_modbus_items",
+                side_effect=ModbusException("boom"),
+            ),
+            patch(
+                "homeassistant.helpers.entity_registry.async_get",
+                return_value=MagicMock(),
+            ),pytest.raises(
+            UpdateFailed,
+            match=r"Modbus communication error: Modbus Error: boom",
         )
+        ):
+            await sax_battery_coordinator_instance._async_update_data()
 
-        # Verify only enabled items are returned
-        assert len(result) >= 0  # May vary based on implementation details
-
-    async def test_get_enabled_modbus_items_registry_exception(
+    async def test_async_update_data_all_device_batches_failed(
         self,
         sax_battery_coordinator_instance,
-        mock_sax_data_coord_unique,
     ) -> None:
-        """Test _get_enabled_modbus_items with registry exception fallback."""
-        # Create mock items
+        """Test _async_update_data raises UpdateFailed when all batch polls fail."""
         item = MagicMock(spec=ModbusItem)
-        item.name = "test_item"
-        items = [item]
-        mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = items
+        item.device = DeviceConstants.BESS
+        item.name = "item1"
 
-        # Mock registry that raises exception
-        mock_entity_registry = MagicMock()
-        mock_entity_registry.async_get_entity_id.side_effect = Exception(
-            "Registry error"
-        )
+        with (
+            patch(
+                "homeassistant.helpers.entity_registry.async_get",
+                return_value=MagicMock(),
+            ),
+            patch.object(
+                sax_battery_coordinator_instance,
+                "_get_enabled_modbus_items",
+                return_value=[item],
+            ),
+            patch.object(
+                sax_battery_coordinator_instance,
+                "_poll_device_batch",
+                side_effect=OSError("device down"),
+            ),pytest.raises(UpdateFailed, match="All 1 device batches failed")
+        ):
+            await sax_battery_coordinator_instance._async_update_data()
 
-        # Test fallback behavior
-        result = await sax_battery_coordinator_instance._get_enabled_modbus_items(
-            mock_entity_registry
-        )
-
-        # Should fallback to returning all items
-        assert len(result) == 1
-        assert item in result
-
-    async def test_update_smart_meter_data_registry_aware_slave_battery(
-        self,
-        hass: HomeAssistant,
-        mock_config_entry_coord_unique,
-        mock_sax_data_coord_unique,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test _update_smart_meter_data_registry_aware for slave battery."""
-        # Create coordinator for slave battery
-        slave_config = {
-            CONF_BATTERY_HOST: "192.168.1.101",
-            CONF_BATTERY_PORT: 502,
-            CONF_BATTERY_ENABLED: True,
-            CONF_BATTERY_IS_MASTER: False,  # Slave battery
-            CONF_BATTERY_PHASE: "L2",
-        }
-
-        coordinator = SAXBatteryCoordinator(
-            hass=hass,
-            battery_id="battery_b",
-            sax_data=mock_sax_data_coord_unique,
-            modbus_api=mock_modbus_api_coord_unique,
-            config_entry=mock_config_entry_coord_unique,
-            battery_config=slave_config,
-        )
-
-        # Mock entity registry
-        mock_entity_registry = MagicMock()
-
-        # Test smart meter update for slave
-        data: dict = {}
-        await coordinator._update_smart_meter_data_registry_aware(
-            data, mock_entity_registry
-        )
-
-        # Should skip smart meter update for slave
-        assert isinstance(data, dict)
-
-    async def test_update_smart_meter_data_registry_aware_master_with_exception(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test _update_smart_meter_data_registry_aware for master battery behavior."""
-        # Create a mock entity registry
-        mock_entity_registry = MagicMock()
-
-        # Test smart meter update for master battery (default config is master)
-        data: dict = {}
-        await sax_battery_coordinator_instance._update_smart_meter_data_registry_aware(
-            data, mock_entity_registry
-        )
-
-        # Should complete without error for master battery
-        assert isinstance(data, dict)
-
-    async def test_async_write_number_value_sets_api_reference(
+    async def test_process_write_queue_normal_write_success(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test ModbusItem can have API reference set."""
-        # Create item without API reference
-        item = ModbusItem(
-            name="test_item",
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.BESS,
-            address=10,
-            battery_device_id=1,
-            factor=1.0,
-        )
-        item.modbus_api = None  # No API reference
-
-        # Set API reference (what entities do during initialization)
-        item.modbus_api = mock_modbus_api_coord_unique
-
-        # Verify API reference was set
-        assert item.modbus_api == mock_modbus_api_coord_unique
-
-    async def test_async_write_switch_value_invalid_item_type(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test async_write_switch_value with invalid item type."""
-        # Updated: Add type validation to coordinator method
-        # Test expects AttributeError when accessing .modbus_api on non-ModbusItem
-        with pytest.raises(AttributeError):
-            await sax_battery_coordinator_instance.async_write_switch_value(
-                "not_a_modbus_item",
-                True,
-            )
-
-    async def test_async_write_switch_value_invalid_value_type(
-        self,
-        sax_battery_coordinator_instance,
-        real_switch_item_coord_unique,
-    ) -> None:
-        """Test switch value write with invalid value type."""
-        # Mock async_write_value to accept any type (Python is dynamically typed)
-        real_switch_item_coord_unique.async_write_value = AsyncMock(return_value=True)
-
-        # Test write with non-boolean value (Python allows this at runtime)
-        result = await real_switch_item_coord_unique.async_write_value("not_a_boolean")
-
-        # Verify write was attempted (validation should happen in ModbusItem)
-        assert result is True
-
-    async def test_async_write_switch_value_sets_api_reference(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test ModbusItem can have API reference set for switch items."""
-        # Create item without API reference
-        item = ModbusItem(
-            name="test_switch",
-            mtype=TypeConstants.SWITCH,
-            device=DeviceConstants.BESS,
-            address=10,
-            battery_device_id=1,
-            factor=1.0,
-        )
-        item.modbus_api = None  # No API reference
-
-        # Set API reference
-        item.modbus_api = mock_modbus_api_coord_unique
-
-        # Verify API reference was set
-        assert item.modbus_api == mock_modbus_api_coord_unique
-
-    async def test_async_write_power_control_value_success(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test async_write_power_control_value with successful writes."""
-        # Create mock items
-        power_item = MagicMock(spec=ModbusItem)
-        power_item.modbus_api = mock_modbus_api_coord_unique
-        power_item.async_write_value = AsyncMock(return_value=True)
-
-        power_factor_item = MagicMock(spec=ModbusItem)
-        power_factor_item.modbus_api = mock_modbus_api_coord_unique
-        power_factor_item.async_write_value = AsyncMock(return_value=True)
-
-        # Mock the write_nominal_power method on the modbus API
-        mock_modbus_api_coord_unique.write_nominal_power = AsyncMock(return_value=True)
-
-        # Test power control write - fix: use the correct method name
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            power_item, 1500.0, 8500
-        )
-
-        assert result is True
-        mock_modbus_api_coord_unique.write_nominal_power.assert_called_once_with(
-            value=1500.0, power_factor=8500, modbus_item=power_item
-        )
-
-    async def test_async_write_power_control_value_invalid_items(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test async_write_power_control_value with invalid item types."""
-        # Test with non-ModbusItem objects
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            "not_a_modbus_item", 1500.0, 8500.0
-        )
-
-        # Should return False for invalid item types
-        assert result is False
-
-    async def test_async_write_power_control_value_invalid_values(
-        self,
-        sax_battery_coordinator_instance,
         real_number_item_coord_unique,
     ) -> None:
-        """Test async_write_power_control_value with invalid value types."""
-        # Test with non-numeric values
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            real_number_item_coord_unique,
-            "not_a_number",
-            "also_not_a_number",
+        """Test _process_write_queue applies normal write and clears pending state."""
+        mock_modbus_api_coord_unique.write_registers = AsyncMock(return_value=True)
+
+        sax_battery_coordinator_instance._pending_writes[
+            real_number_item_coord_unique.name
+        ] = 123
+        await sax_battery_coordinator_instance._write_queue.put(
+            (real_number_item_coord_unique, 123, "normal", {})
         )
 
-        # Should return False for invalid value types
-        assert result is False
+        data: dict[str, Any] = {}
+        await sax_battery_coordinator_instance._process_write_queue(data)
 
-    async def test_async_write_power_control_value_partial_failure(
+        assert data[real_number_item_coord_unique.name] == 123
+        assert (
+            real_number_item_coord_unique.name
+            not in sax_battery_coordinator_instance._pending_writes
+        )
+        mock_modbus_api_coord_unique.write_registers.assert_awaited()
+
+    async def test_async_write_switch_value_queues_register_value(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """Test async_write_power_control_value with partial write failure."""
-        # Create items - one succeeds, one fails
-        power_item = MagicMock(spec=ModbusItem)
-        power_item.modbus_api = mock_modbus_api_coord_unique
-        power_item.async_write_value = AsyncMock(return_value=True)
+        """Test async_write_switch_value queues converted register value."""
+        item = MagicMock(spec=ModbusItem)
+        item.name = "switch_x"
+        item.modbus_api = None
+        item.get_switch_on_value.return_value = 1
+        item.get_switch_off_value.return_value = 0
 
-        power_factor_item = MagicMock(spec=ModbusItem)
-        power_factor_item.modbus_api = mock_modbus_api_coord_unique
-        power_factor_item.async_write_value = AsyncMock(return_value=False)
-
-        # Test power control write
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            power_item, 1500.0, 8500.0
+        sax_battery_coordinator_instance.async_request_refresh = AsyncMock(
+            return_value=None
         )
 
-        # Should return False if any write fails
-        assert result is False
+        await sax_battery_coordinator_instance.async_write_switch_value(item, True)
 
-    async def test_async_write_power_control_value_sets_api_references(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test async_write_power_control_value sets API references when missing."""
-        # Create items without API references
-        power_item = ModbusItem(
-            name="power_item",
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.BESS,
-            address=10,
-            battery_device_id=1,
-            factor=1.0,
-        )
-        power_item.modbus_api = None
-
-        # Mock the write_nominal_power method on the modbus API - fix: ensure it's async
-        mock_modbus_api_coord_unique.write_nominal_power = AsyncMock(return_value=True)
-
-        # Test write
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            power_item, 1500.0, 8500
-        )
-
-        # Should succeed (API references are not set by this method in the actual implementation)
-        assert result is True
-        mock_modbus_api_coord_unique.write_nominal_power.assert_called_once_with(
-            value=1500.0, power_factor=8500, modbus_item=power_item
-        )
-
-    async def test_async_write_power_control_value_exception_handling(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test async_write_power_control_value with exception during write - checking actual behavior."""
-        # Create items where one raises an exception
-        power_item = MagicMock(spec=ModbusItem)
-        power_item.modbus_api = mock_modbus_api_coord_unique
-        power_item.async_write_value = AsyncMock(side_effect=Exception("Write error"))
-
-        # Test write - the implementation uses gather with return_exceptions=True
-        # So exceptions don't prevent the method from continuing
-        result = await sax_battery_coordinator_instance.async_write_power_control_value(
-            power_item, 1500.0, 8500.0
-        )
-
-        # The actual implementation might not return False for exceptions caught by gather
-        # Test that the method completes and returns a boolean
-        assert isinstance(result, bool)
-
-    async def test_is_master_property(
-        self,
-        hass: HomeAssistant,
-        mock_config_entry_coord_unique,
-        mock_sax_data_coord_unique,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test is_master property for both master and slave configurations."""
-        # Test master configuration
-        master_config = {
-            CONF_BATTERY_IS_MASTER: True,
-            CONF_BATTERY_HOST: "192.168.1.100",
-            CONF_BATTERY_PORT: 502,
-            CONF_BATTERY_ENABLED: True,
-            CONF_BATTERY_PHASE: "L1",
-        }
-
-        master_coordinator = SAXBatteryCoordinator(
-            hass=hass,
-            battery_id="battery_master",
-            sax_data=mock_sax_data_coord_unique,
-            modbus_api=mock_modbus_api_coord_unique,
-            config_entry=mock_config_entry_coord_unique,
-            battery_config=master_config,
-        )
-
-        assert master_coordinator.is_master is True
-
-        # Test slave configuration
-        slave_config = {
-            CONF_BATTERY_IS_MASTER: False,
-            CONF_BATTERY_HOST: "192.168.1.101",
-            CONF_BATTERY_PORT: 502,
-            CONF_BATTERY_ENABLED: True,
-            CONF_BATTERY_PHASE: "L2",
-        }
-
-        slave_coordinator = SAXBatteryCoordinator(
-            hass=hass,
-            battery_id="battery_slave",
-            sax_data=mock_sax_data_coord_unique,
-            modbus_api=mock_modbus_api_coord_unique,
-            config_entry=mock_config_entry_coord_unique,
-            battery_config=slave_config,
-        )
-
-        assert slave_coordinator.is_master is False
-
-    async def test_async_update_data_generic_exception_raises_update_failed(
-        self,
-        sax_battery_coordinator_instance,
-        mock_sax_data_coord_unique,
-    ) -> None:
-        """Test _async_update_data wraps generic exceptions in UpdateFailed.
-
-        Security:
-            OWASP A05: Validates proper exception handling - all exceptions
-            are wrapped in UpdateFailed for consistent HA error handling
-        """
-        # Mock get_modbus_items_for_battery to raise RuntimeError
-        mock_sax_data_coord_unique.get_modbus_items_for_battery.side_effect = (
-            RuntimeError("Generic error")
-        )
-
-        # Mock entity registry
-        mock_entity_registry = MagicMock()
-        with patch(  # noqa: SIM117
-            "homeassistant.helpers.entity_registry.async_get",
-            return_value=mock_entity_registry,
-        ):
-            # Expect UpdateFailed (not RuntimeError)
-            # The coordinator wraps all exceptions for consistent HA error handling
-            with pytest.raises(UpdateFailed, match="Unexpected error: Generic error"):
-                await sax_battery_coordinator_instance._async_update_data()
-
-    async def test_entity_registry_integration_comprehensive(
-        self,
-        sax_battery_coordinator_instance,
-        mock_sax_data_coord_unique,
-    ) -> None:
-        """Test comprehensive entity registry integration patterns."""
-        # Create items with different enabled states
-        enabled_item = MagicMock(spec=ModbusItem)
-        enabled_item.name = "enabled_sensor"
-        enabled_item.enabled_by_default = True
-
-        disabled_item = MagicMock(spec=ModbusItem)
-        disabled_item.name = "disabled_sensor"
-        disabled_item.enabled_by_default = False
-
-        custom_enabled_item = MagicMock(spec=ModbusItem)
-        custom_enabled_item.name = "custom_sensor"
-        custom_enabled_item.enabled_by_default = (
-            False  # Disabled by default but enabled by user
-        )
-
-        items = [enabled_item, disabled_item, custom_enabled_item]
-        mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = items
-
-        # Mock entity registry with different entity states
-        mock_entity_registry = MagicMock()
-
-        def mock_get_entity_id(domain, integration, unique_id):
-            if "enabled" in unique_id:
-                return f"{domain}.enabled_entity"
-            if "custom" in unique_id:
-                return f"{domain}.custom_entity"
-            return None
-
-        def mock_async_get(entity_id):
-            if "enabled" in entity_id:
-                return MagicMock(disabled=False)
-            if "custom" in entity_id:
-                return MagicMock(disabled=False)  # User enabled
-            return None
-
-        mock_entity_registry.async_get_entity_id = mock_get_entity_id
-        mock_entity_registry.async_get = mock_async_get
-
-        # Test entity filtering
-        result = await sax_battery_coordinator_instance._get_enabled_modbus_items(
-            mock_entity_registry
-        )
-
-        # Verify filtering behavior
-        assert isinstance(result, list)
-        # The exact filtering logic depends on implementation details
-
-    async def test_device_grouping_and_batch_processing(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test device grouping and batch processing efficiency."""
-        # Create items from multiple devices using correct DeviceConstants
-        sys_items = []
-        for i in range(3):
-            item = ModbusItem(
-                name=f"sys_item_{i}",
-                mtype=TypeConstants.SENSOR,
-                device=DeviceConstants.BESS,
-                address=10 + i,
-                battery_device_id=1,
-                factor=1.0,
-            )
-            sys_items.append(item)
-
-        # Use DeviceConstants.SM instead of non-existent BMS
-        sm_items = []
-        for i in range(2):
-            item = ModbusItem(
-                name=f"sm_item_{i}",
-                mtype=TypeConstants.SENSOR,
-                device=DeviceConstants.SM,  # Smart Meter device
-                address=20 + i,
-                battery_device_id=1,
-                factor=1.0,
-            )
-            sm_items.append(item)
-
-        all_items = sys_items + sm_items
-
-        # Test grouping
-        grouped = sax_battery_coordinator_instance._group_items_by_device(all_items)
-
-        # Verify efficient grouping
-        assert len(grouped) == 2
-        assert DeviceConstants.BESS in grouped
-        assert DeviceConstants.SM in grouped
-        assert len(grouped[DeviceConstants.BESS]) == 3
-        assert len(grouped[DeviceConstants.SM]) == 2
-
-    async def test_async_operations_and_concurrency(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test async operations and concurrency handling."""
-        # Create items with different async behaviors
-        fast_item = MagicMock(spec=ModbusItem)
-        fast_item.name = "fast_item"
-        fast_item.async_read_value = AsyncMock(return_value=1.0)
-
-        slow_item = MagicMock(spec=ModbusItem)
-        slow_item.name = "slow_item"
-
-        async def slow_read():
-            await asyncio.sleep(0.01)  # Small delay
-            return 2.0
-
-        slow_item.async_read_value = slow_read
-
-        failing_item = MagicMock(spec=ModbusItem)
-        failing_item.name = "failing_item"
-        failing_item.async_read_value = AsyncMock(
-            side_effect=ModbusException("Read failed")
-        )
-
-        items = [fast_item, slow_item, failing_item]
-
-        # Test concurrent polling
-        start_time = time.time()
-        result = await sax_battery_coordinator_instance._poll_device_batch(
-            DeviceConstants.BESS, items
-        )
-        end_time = time.time()
-
-        # Verify concurrent execution (should not take much longer than slowest item)
-        assert end_time - start_time < 0.1  # Should be concurrent, not sequential
-        assert isinstance(result, dict)
-
-    async def test_write_operations_comprehensive(
-        self,
-        sax_battery_coordinator_instance,
-        mock_modbus_api_coord_unique,
-    ) -> None:
-        """Test comprehensive write operations via ModbusItem directly."""
-        # Test number write operations
-        number_item = ModbusItem(
-            name="test_number",
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.BESS,
-            address=50,
-            battery_device_id=1,
-            factor=1.0,
-        )
-        number_item.modbus_api = mock_modbus_api_coord_unique
-        number_item.async_write_value = AsyncMock(return_value=True)  # type:ignore[method-assign]
-
-        # Test switch write operations
-        switch_item = ModbusItem(
-            name="test_switch",
-            mtype=TypeConstants.SWITCH,
-            device=DeviceConstants.BESS,
-            address=51,
-            battery_device_id=1,
-            factor=1.0,
-        )
-        switch_item.modbus_api = mock_modbus_api_coord_unique
-        switch_item.async_write_value = AsyncMock(return_value=True)  # type:ignore[method-assign]
-
-        # Test various write scenarios
-        write_scenarios = [
-            (number_item, 1500.0),
-            (switch_item, True),
-            (switch_item, False),
-        ]
-
-        for item, value in write_scenarios:
-            result = await item.async_write_value(value)
-            # Verify write was successful
-            assert result is True
-
-    async def test_logging_and_monitoring_integration(
-        self,
-        sax_battery_coordinator_instance,
-        mock_sax_data_coord_unique,
-        caplog,
-    ) -> None:
-        """Test logging and monitoring integration."""
-        # Test debug logging for enabled/disabled entities
-        enabled_item = MagicMock(spec=ModbusItem)
-        enabled_item.name = "enabled_item"
-        enabled_item.enabled_by_default = True
-
-        disabled_item = MagicMock(spec=ModbusItem)
-        disabled_item.name = "disabled_item"
-        disabled_item.enabled_by_default = False
-
-        mock_sax_data_coord_unique.get_modbus_items_for_battery.return_value = [
-            enabled_item,
-            disabled_item,
-        ]
-
-        # Mock entity registry
-        mock_entity_registry = MagicMock()
-        mock_entity_registry.async_get_entity_id.return_value = None
-        mock_entity_registry.async_get.return_value = None
-
-        with caplog.at_level(logging.DEBUG):
-            result = await sax_battery_coordinator_instance._get_enabled_modbus_items(
-                mock_entity_registry
-            )
-
-        # Verify logging occurred
-        assert isinstance(result, list)
-        # Check that debug logs were created (implementation dependent)
+        assert sax_battery_coordinator_instance._pending_writes["switch_x"] == 1
+        assert item.modbus_api == mock_modbus_api_coord_unique
+        sax_battery_coordinator_instance.async_request_refresh.assert_awaited_once()

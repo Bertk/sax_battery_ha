@@ -620,9 +620,9 @@ MODBUS_BATTERY_REALTIME_ITEMS: list[ModbusItem] = [
 ]
 # Battery undocumented items "single battery system" - https://community.simon42.com/t/einbindung-speicher-ueber-modbus-tcp/13450/46
 MODBUS_BATTERY_UNDOCUMENTED_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_device_id=40, address=40115, name=SAX_CAPACITY, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10.0 ,device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_CAPACITY, translation_key="bess_capacity"),
-    ModbusItem(battery_device_id=40, address=40116, name=SAX_CYCLES,  mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_CYCLES, translation_key="bess_cycles"),
-    ModbusItem(battery_device_id=40, address=40117, name=SAX_TEMPERATURE, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_TEMPERATURE, translation_key="bess_temperature"),
+    ModbusItem(battery_device_id=40, address=40115, name=SAX_CAPACITY, enabled_by_default=False, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=10.0 ,device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_CAPACITY, translation_key="bess_capacity"),
+    ModbusItem(battery_device_id=40, address=40116, name=SAX_CYCLES, enabled_by_default=False, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_CYCLES, translation_key="bess_cycles"),
+    ModbusItem(battery_device_id=40, address=40117, name=SAX_TEMPERATURE, enabled_by_default=False, mtype=TypeConstants.SENSOR, data_type=ModbusClientMixin.DATATYPE.INT16, factor=1.0, device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_TEMPERATURE, translation_key="bess_temperature"),
 ]
 # Battery BMS items - (polled at standard interval) - master battery only
 MODBUS_BATTERY_BMS_ITEMS: list[ModbusItem] = [

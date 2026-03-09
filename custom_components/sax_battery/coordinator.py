@@ -44,6 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 15  # master battery data polling (SOC, Power, Status)
 BATTERY_POLL_SLAVE_INTERVAL = 30  # slave battery data polling (SOC, Power, Status)
+SINGLE_ITEM_POLL_TIMEOUT = 10  # Per-item timeout to prevent cascade failures
 
 # Performance monitoring constants
 CYCLE_TIME_HISTORY_SIZE = 100  # Number of cycle times to keep for statistics
@@ -519,17 +520,28 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             Any: Polled value or None on error
 
-        Performance: Direct item polling with error handling
+        Performance: Direct item polling with per-item timeout
+        Security: Prevents single unresponsive register from blocking all polling
         """
         try:
-            if item.is_read_only() and item.mtype == TypeConstants.NUMBER_WO:
-                # Skip polling write-only items
-                return None
-
-            return await item.async_read_value()
-
+            return await asyncio.wait_for(
+                item.async_read_value(),
+                timeout=SINGLE_ITEM_POLL_TIMEOUT,
+            )
+        except TimeoutError:
+            _LOGGER.warning(
+                "Timeout polling %s at address %s after %ss",
+                item.name,
+                item.address,
+                SINGLE_ITEM_POLL_TIMEOUT,
+            )
+            return None
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug("Error polling item %s: %s", item.name, exc)
+            _LOGGER.debug(
+                "Error polling %s: %s",
+                item.name,
+                exc,
+            )
             return None
 
     async def _update_enabled_calculated_values(
