@@ -598,10 +598,11 @@ class TestSAXBatteryCoordinator:
             patch(
                 "homeassistant.helpers.entity_registry.async_get",
                 return_value=MagicMock(),
-            ),pytest.raises(
-            UpdateFailed,
-            match=r"Modbus communication error: Modbus Error: boom",
-        )
+            ),
+            pytest.raises(
+                UpdateFailed,
+                match=r"Modbus communication error: Modbus Error: boom",
+            ),
         ):
             await sax_battery_coordinator_instance._async_update_data()
 
@@ -628,7 +629,8 @@ class TestSAXBatteryCoordinator:
                 sax_battery_coordinator_instance,
                 "_poll_device_batch",
                 side_effect=OSError("device down"),
-            ),pytest.raises(UpdateFailed, match="All 1 device batches failed")
+            ),
+            pytest.raises(UpdateFailed, match="All 1 device batches failed"),
         ):
             await sax_battery_coordinator_instance._async_update_data()
 

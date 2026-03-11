@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
+import time
 from typing import Any
 
 from homeassistant.components.sensor import RestoreSensor, SensorEntity
@@ -28,8 +28,6 @@ from .const import (
     SAX_COMBINED_SOC,
     SAX_CUMULATIVE_ENERGY_CONSUMED,
     SAX_CUMULATIVE_ENERGY_PRODUCED,
-    SAX_SMARTMETER_ENERGY_CONSUMED,
-    SAX_SMARTMETER_ENERGY_PRODUCED,
     SAX_SOC,
 )
 from .coordinator import (
@@ -37,6 +35,8 @@ from .coordinator import (
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     SAXBatteryCoordinator,
 )
+from .energy_integration import EnergyIntegrator
+from .entity_keys import SAX_POWER
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import DeviceConstants, TypeConstants
 from .items import ModbusItem, SAXItem
@@ -276,9 +276,6 @@ class SAXBatteryCalculatedSensor(
         self._sax_item = sax_item
         self._coordinators = coordinators
 
-        # Cache the master coordinator during initialization
-        self._master_coordinator = self._find_master_coordinator()
-
         # Set coordinators on the SAX item for calculations
         self._sax_item.set_coordinators(coordinators)
 
@@ -300,12 +297,15 @@ class SAXBatteryCalculatedSensor(
         ):
             self._attr_name = self.entity_description.name.removeprefix("Sax ")
 
-        # State management for TOTAL_INCREASING sensors
-        self._previous_reading_produced: float | None = None
-        self._previous_reading_consumed: float | None = None
-        self._cumulative_produced: float = 0.0
-        self._cumulative_consumed: float = 0.0
-        self._last_update_time: datetime | None = None
+        # Per-battery energy integrators for trapezoidal integration
+        # Positive power (discharging) -> energy produced
+        # Negative power (charging) -> energy consumed (absolute value)
+        self._produced_integrators: dict[str, EnergyIntegrator] = {
+            battery_id: EnergyIntegrator() for battery_id in coordinators
+        }
+        self._consumed_integrators: dict[str, EnergyIntegrator] = {
+            battery_id: EnergyIntegrator() for battery_id in coordinators
+        }
 
         # Set system device info
         self._attr_device_info: DeviceInfo = coordinator.sax_data.get_device_info(
@@ -324,10 +324,14 @@ class SAXBatteryCalculatedSensor(
         """
         if self._sax_item.name == SAX_COMBINED_SOC:
             return self._calculate_combined_soc()
-        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
-            return self._calculate_cumulative_energy_produced()
-        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
-            return self._calculate_cumulative_energy_consumed()
+        if self._sax_item.name in (
+            SAX_CUMULATIVE_ENERGY_PRODUCED,
+            SAX_CUMULATIVE_ENERGY_CONSUMED,
+        ):
+            self._integrate_all_batteries()
+            if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
+                return self._get_total_produced()
+            return self._get_total_consumed()
 
         _LOGGER.warning("Unknown calculation type for sensor: %s", self._sax_item.name)
         return None
@@ -358,209 +362,66 @@ class SAXBatteryCalculatedSensor(
 
         return round(total_soc / battery_count, 1)
 
-    def _calculate_cumulative_energy_produced(self) -> float:
-        """Calculate cumulative energy produced from master battery smart meter.
+    def _integrate_all_batteries(self) -> None:
+        """Feed current power readings from all batteries into integrators.
 
-        For TOTAL_INCREASING sensors, accumulates hourly deltas from the master
-        battery's smart meter reading.
+        For each battery, reads SAX_POWER (signed watts):
+        - Positive power = discharging → energy produced
+        - Negative power = charging → energy consumed (absolute value)
 
-        Returns:
-            Total accumulated energy in Wh (always >= 0.0)
-
-        Performance:
-            Only updates once per hour to match smart meter reading interval
-
-        Security:
-            OWASP A05: Validates coordinator data availability
-        """
-        current_time = datetime.now()
-
-        # Only update once per hour (matches smart meter update interval)
-        should_update = (
-            self._last_update_time is None
-            or (current_time - self._last_update_time).total_seconds() >= 3600
-        )
-
-        if not should_update:
-            _LOGGER.debug(
-                "Cumulative energy produced: Too soon to update (last: %s)",
-                self._last_update_time,
-            )
-            return self._cumulative_produced
-
-        # Use cached master coordinator
-        if not self._master_coordinator:
-            _LOGGER.warning("No master battery found for cumulative energy calculation")
-            if isinstance(self._attr_native_value, float):
-                return self._attr_native_value
-            return 0.0
-
-        if not self._master_coordinator.data:
-            if isinstance(self._attr_native_value, float):
-                return self._attr_native_value
-            return 0.0
-
-        # Get smart meter energy produced value
-        current_reading = self._master_coordinator.data.get(
-            SAX_SMARTMETER_ENERGY_PRODUCED
-        )
-        if current_reading is None:
-            return self._cumulative_produced
-
-        # Calculate and accumulate delta
-        delta = self._calculate_energy_delta(
-            current_reading,
-            self._previous_reading_produced,
-            "produced",
-        )
-        if delta > 0:
-            old_cumulative = self._cumulative_produced
-            self._cumulative_produced += delta
-
-            _LOGGER.info(
-                "Cumulative energy produced updated: +%s Wh (total: %s Wh, was: %s Wh)",
-                delta,
-                self._cumulative_produced,
-                old_cumulative,
-            )
-
-        # Update state
-        self._previous_reading_produced = current_reading
-        self._last_update_time = current_time
-
-        return self._cumulative_produced
-
-    def _calculate_cumulative_energy_consumed(self) -> float:
-        """Calculate cumulative energy consumed from master battery smart meter.
-
-        For TOTAL_INCREASING sensors, accumulates hourly deltas from the master
-        battery's smart meter reading.
-
-        Returns:
-            Total accumulated energy in Wh (always >= 0.0)
+        Uses trapezoidal integration for high-resolution energy tracking,
+        matching the accuracy of HA's built-in Riemann sum integration.
 
         Performance:
-            Only updates once per hour to match smart meter reading interval
-
-        Security:
-            OWASP A05: Validates coordinator data availability
+            O(n) where n = number of batteries (typically 1-3)
         """
-        current_time = datetime.now()
+        now = time.monotonic()
 
-        # Only update once per hour (matches smart meter update interval)
-        should_update = (
-            self._last_update_time is None
-            or (current_time - self._last_update_time).total_seconds() >= 3600
+        for battery_id, coordinator in self._coordinators.items():
+            if not coordinator.data:
+                continue
+
+            power_value = coordinator.data.get(SAX_POWER)
+            if power_value is None:
+                continue
+
+            try:
+                power_w = float(power_value)
+            except (ValueError, TypeError):
+                _LOGGER.debug(
+                    "Invalid power value for battery %s: %s",
+                    battery_id,
+                    power_value,
+                )
+                continue
+
+            # Positive power = discharging = energy produced
+            produced_power = max(power_w, 0.0)
+            self._produced_integrators[battery_id].add_sample(produced_power, now)
+
+            # Negative power = charging = energy consumed (take abs)
+            consumed_power = abs(min(power_w, 0.0))
+            self._consumed_integrators[battery_id].add_sample(consumed_power, now)
+
+    def _get_total_produced(self) -> float:
+        """Return total energy produced across all batteries in Wh."""
+        return round(
+            sum(
+                integrator.accumulated_wh
+                for integrator in self._produced_integrators.values()
+            ),
+            2,
         )
 
-        if not should_update:
-            _LOGGER.debug(
-                "Cumulative energy consumed: Too soon to update (last: %s)",
-                self._last_update_time,
-            )
-            return self._cumulative_consumed
-
-        if not self._master_coordinator:
-            _LOGGER.warning("No master battery found for cumulative energy calculation")
-            if isinstance(self._attr_native_value, float):
-                return self._attr_native_value
-            return 0.0
-
-        if not self._master_coordinator.data:
-            if isinstance(self._attr_native_value, float):
-                return self._attr_native_value
-            return 0.0
-
-        # Get smart meter energy consumed value
-        current_reading = self._master_coordinator.data.get(
-            SAX_SMARTMETER_ENERGY_CONSUMED
+    def _get_total_consumed(self) -> float:
+        """Return total energy consumed across all batteries in Wh."""
+        return round(
+            sum(
+                integrator.accumulated_wh
+                for integrator in self._consumed_integrators.values()
+            ),
+            2,
         )
-
-        if current_reading is None:
-            return self._cumulative_consumed
-
-        # Calculate and accumulate delta
-        delta = self._calculate_energy_delta(
-            current_reading,
-            self._previous_reading_consumed,
-            "consumed",
-        )
-
-        if delta > 0:
-            old_cumulative = self._cumulative_consumed
-            self._cumulative_consumed += delta
-
-            _LOGGER.info(
-                "Cumulative energy consumed updated: +%s Wh (total: %s Wh, was: %s Wh)",
-                delta,
-                self._cumulative_consumed,
-                old_cumulative,
-            )
-
-        # Update state
-        self._previous_reading_consumed = current_reading
-        self._last_update_time = current_time
-
-        return self._cumulative_consumed
-
-    def _find_master_coordinator(self) -> SAXBatteryCoordinator | None:
-        """Find the master coordinator from available coordinators.
-
-        Returns:
-            Master coordinator if found, None otherwise
-        """
-        for coordinator in self._coordinators.values():
-            # Check coordinator's battery_config for is_master flag
-            if coordinator.battery_config.get(CONF_BATTERY_IS_MASTER, False):
-                _LOGGER.debug("Found master coordinator: %s", coordinator.battery_id)
-                return coordinator
-
-        _LOGGER.debug(
-            "No master coordinator found in %d coordinators", len(self._coordinators)
-        )
-        return None
-
-    def _calculate_energy_delta(
-        self,
-        current_reading: float,
-        previous_reading: float | None,
-        energy_type: str,
-    ) -> float:
-        """Calculate energy delta with counter reset handling.
-
-        Args:
-            current_reading: Current meter reading
-            previous_reading: Previous meter reading (None for first reading)
-            energy_type: "produced" or "consumed" for logging
-
-        Returns:
-            Energy delta (>= 0), or 0 for first reading
-
-        Security:
-            OWASP A05: Handles counter resets safely
-        """
-        if previous_reading is None:
-            # First reading - initialize but don't accumulate
-            _LOGGER.info(
-                "First energy %s reading: %s Wh",
-                energy_type,
-                current_reading,
-            )
-            return 0.0
-
-        delta = current_reading - previous_reading
-
-        # Handle counter reset (meter rolled over or was reset)
-        if delta < 0:
-            _LOGGER.warning(
-                "Energy %s counter reset: %s -> %s (treating as new baseline)",
-                energy_type,
-                previous_reading,
-                current_reading,
-            )
-            return current_reading  # Treat as new baseline
-
-        return delta
 
     async def async_added_to_hass(self) -> None:
         """Restore state when entity is added to hass.
@@ -580,6 +441,9 @@ class SAXBatteryCalculatedSensor(
     async def _restore_cumulative_state(self) -> None:
         """Restore cumulative energy state from last known value.
 
+        Distributes the restored value evenly across all battery integrators
+        so the total matches the previous state.
+
         Security:
             OWASP A05: Validates restored state
         """
@@ -596,15 +460,24 @@ class SAXBatteryCalculatedSensor(
             restored_value = float(last_state.state)
 
             if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
-                self._cumulative_produced = restored_value
-                _LOGGER.info(
-                    "Restored cumulative energy produced: %s Wh", restored_value
-                )
+                integrators = self._produced_integrators
             elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
-                self._cumulative_consumed = restored_value
-                _LOGGER.info(
-                    "Restored cumulative energy consumed: %s Wh", restored_value
-                )
+                integrators = self._consumed_integrators
+            else:
+                return
+
+            # Distribute restored value evenly across battery integrators
+            if integrators:
+                per_battery = restored_value / len(integrators)
+                for integrator in integrators.values():
+                    integrator.restore(per_battery)
+
+            _LOGGER.info(
+                "Restored %s: %s Wh across %d batteries",
+                self._sax_item.name,
+                restored_value,
+                len(integrators),
+            )
 
         except (ValueError, TypeError) as exc:
             _LOGGER.warning(
@@ -620,28 +493,19 @@ class SAXBatteryCalculatedSensor(
         Returns:
             Dictionary of extra attributes for diagnostics
         """
-        # Use dict[str, Any] to allow mixed value types
         attrs: dict[str, Any] = {ATTR_ATTRIBUTION: ATTRIBUTION}
 
-        # Add diagnostic info for energy sensors
+        # Add per-battery breakdown for energy sensors
         if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
-            attrs.update(
-                {
-                    "last_reading": self._previous_reading_produced,
-                    "last_update": self._last_update_time.isoformat()
-                    if self._last_update_time
-                    else None,
-                }
-            )
+            attrs["per_battery"] = {
+                bid: integrator.accumulated_wh
+                for bid, integrator in self._produced_integrators.items()
+            }
         elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
-            attrs.update(
-                {
-                    "last_reading": self._previous_reading_consumed,
-                    "last_update": self._last_update_time.isoformat()
-                    if self._last_update_time
-                    else None,
-                }
-            )
+            attrs["per_battery"] = {
+                bid: integrator.accumulated_wh
+                for bid, integrator in self._consumed_integrators.items()
+            }
 
         return attrs
 

@@ -15,11 +15,15 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
     DESCRIPTION_SAX_COMBINED_SOC,
+    DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED,
+    DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED,
     DESCRIPTION_SAX_POWER,
     DESCRIPTION_SAX_SOC,
     DESCRIPTION_SAX_TEMPERATURE,
     DOMAIN,
     SAX_COMBINED_SOC,
+    SAX_CUMULATIVE_ENERGY_CONSUMED,
+    SAX_CUMULATIVE_ENERGY_PRODUCED,
     SAX_TEMPERATURE,
     SAXDeviceInfo,
 )
@@ -39,7 +43,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    STATE_UNAVAILABLE,
+    UnitOfEnergy,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import async_generate_entity_id
 
@@ -464,6 +473,386 @@ class TestSAXBatteryCalculatedSensor:
         mock_coordinator.sax_data.get_device_info.assert_called_once_with(
             "cluster", DeviceConstants.SYS
         )
+
+
+class TestCumulativeEnergySensor:
+    """Test cumulative energy sensors using trapezoidal integration."""
+
+    def _create_energy_sensor(
+        self,
+        sensor_name: str,
+        coordinators: dict[str, Any],
+        master_coordinator: Any = None,
+    ) -> SAXBatteryCalculatedSensor:
+        """Create a cumulative energy sensor for testing."""
+
+        descriptions = {
+            SAX_CUMULATIVE_ENERGY_PRODUCED: DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED,
+            SAX_CUMULATIVE_ENERGY_CONSUMED: DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED,
+        }
+
+        sax_item = SAXItem(
+            name=sensor_name,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=descriptions[sensor_name],
+        )
+
+        coordinator = master_coordinator or next(iter(coordinators.values()))
+
+        return SAXBatteryCalculatedSensor(
+            coordinator=coordinator,
+            sax_item=sax_item,
+            coordinators=coordinators,
+        )
+
+    def test_energy_produced_init_creates_integrators(self) -> None:
+        """Test that energy produced sensor creates per-battery integrators."""
+        mock_coord_a = create_mock_coordinator({})
+        mock_coord_b = create_mock_coordinator({})
+        coordinators = {
+            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
+            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
+        }
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        assert "battery_a" in sensor._produced_integrators
+        assert "battery_b" in sensor._produced_integrators
+        assert "battery_a" in sensor._consumed_integrators
+        assert "battery_b" in sensor._consumed_integrators
+
+    def test_energy_produced_with_positive_power(self) -> None:
+        """Test energy produced accumulates from positive power (discharging)."""
+        mock_coord = create_mock_coordinator({SAX_POWER: 1000.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        # First call: establishes baseline (no integration yet)
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        # Second call: 15s later → 1000W * 15s / 3600 ≈ 4.17 Wh
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        assert result is not None
+        assert result == pytest.approx(4.17, abs=0.01)
+
+    def test_energy_consumed_with_negative_power(self) -> None:
+        """Test energy consumed accumulates from negative power (charging)."""
+        mock_coord = create_mock_coordinator({SAX_POWER: -2000.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_CONSUMED, coordinators
+        )
+
+        # First call: establishes baseline
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        # Second call: 15s later → abs(-2000) * 15s / 3600 ≈ 8.33 Wh
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        assert result is not None
+        assert result == pytest.approx(8.33, abs=0.01)
+
+    def test_positive_power_does_not_accumulate_consumed(self) -> None:
+        """Test positive power (discharging) does not add to consumed energy."""
+        mock_coord = create_mock_coordinator({SAX_POWER: 1000.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_CONSUMED, coordinators
+        )
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        # Positive power = discharging, consumed should be 0
+        assert result == 0.0
+
+    def test_negative_power_does_not_accumulate_produced(self) -> None:
+        """Test negative power (charging) does not add to produced energy."""
+        mock_coord = create_mock_coordinator({SAX_POWER: -1500.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        # Negative power = charging, produced should be 0
+        assert result == 0.0
+
+    def test_multi_battery_aggregation(self) -> None:
+        """Test energy aggregation across multiple batteries."""
+        mock_coord_a = create_mock_coordinator({SAX_POWER: 1000.0})
+        mock_coord_b = create_mock_coordinator({SAX_POWER: 2000.0})
+        coordinators = {
+            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
+            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
+        }
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        # First call: baseline
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        # Second call: 15s later
+        # battery_a: 1000W * 15s/3600 ≈ 4.17 Wh
+        # battery_b: 2000W * 15s/3600 ≈ 8.33 Wh
+        # Total ≈ 12.5 Wh
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        assert result is not None
+        assert result == pytest.approx(12.5, abs=0.01)
+
+    def test_no_coordinator_data_returns_zero(self) -> None:
+        """Test energy sensor returns 0 when coordinator has no data."""
+        mock_coord = create_mock_coordinator({})
+        mock_coord.data = None
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        result = sensor.native_value
+        assert result == 0.0
+
+    def test_missing_power_value_skipped(self) -> None:
+        """Test batteries with missing power values are skipped."""
+        mock_coord_a = create_mock_coordinator({SAX_POWER: 1000.0})
+        mock_coord_b = create_mock_coordinator({})  # No power data
+        coordinators = {
+            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
+            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
+        }
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        # Only battery_a contributed: 1000W * 15s / 3600 ≈ 4.17 Wh
+        assert result == pytest.approx(4.17, abs=0.01)
+
+    def test_zero_power_no_accumulation(self) -> None:
+        """Test zero power does not accumulate energy."""
+        mock_coord = create_mock_coordinator({SAX_POWER: 0.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 100.0
+            _ = sensor.native_value
+
+        with patch("custom_components.sax_battery.sensor.time") as mock_time:
+            mock_time.monotonic.return_value = 115.0
+            result = sensor.native_value
+
+        assert result == 0.0
+
+    def test_extra_state_attributes_produced(self) -> None:
+        """Test extra state attributes include per-battery breakdown for produced."""
+        mock_coord_a = create_mock_coordinator({SAX_POWER: 1000.0})
+        mock_coord_b = create_mock_coordinator({SAX_POWER: 2000.0})
+        coordinators = {
+            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
+            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
+        }
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        attrs = sensor.extra_state_attributes
+        assert "attribution" in attrs
+        assert "per_battery" in attrs
+        assert "battery_a" in attrs["per_battery"]
+        assert "battery_b" in attrs["per_battery"]
+
+    def test_extra_state_attributes_consumed(self) -> None:
+        """Test extra state attributes include per-battery breakdown for consumed."""
+        mock_coord = create_mock_coordinator({SAX_POWER: -500.0})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_CONSUMED, coordinators
+        )
+
+        attrs = sensor.extra_state_attributes
+        assert "per_battery" in attrs
+        assert "battery_a" in attrs["per_battery"]
+
+    def test_unknown_sensor_name_returns_none(self) -> None:
+        """Test unknown calculated sensor name returns None with warning."""
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sax_item = SAXItem(
+            name="sax_unknown_calculation",
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=None,
+        )
+
+        sensor = SAXBatteryCalculatedSensor(
+            coordinator=mock_coord,
+            sax_item=sax_item,
+            coordinators=coordinators,
+        )
+
+        assert sensor.native_value is None
+
+    async def test_restore_cumulative_state_produced(self, hass: HomeAssistant) -> None:
+        """Test restoring cumulative energy produced state after restart."""
+        mock_coord_a = create_mock_coordinator({})
+        mock_coord_b = create_mock_coordinator({})
+        coordinators = {
+            "battery_a": cast(SAXBatteryCoordinator, mock_coord_a),
+            "battery_b": cast(SAXBatteryCoordinator, mock_coord_b),
+        }
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        # Mock RestoreSensor's async_get_last_state
+        mock_state = MagicMock()
+        mock_state.state = "1000.0"
+
+        with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+            await sensor._restore_cumulative_state()
+
+        # Value should be distributed evenly across integrators
+        # 1000 Wh / 2 batteries = 500 Wh each
+        assert sensor._produced_integrators["battery_a"].accumulated_wh == 500.0
+        assert sensor._produced_integrators["battery_b"].accumulated_wh == 500.0
+        assert sensor._get_total_produced() == 1000.0
+
+    async def test_restore_cumulative_state_consumed(self, hass: HomeAssistant) -> None:
+        """Test restoring cumulative energy consumed state after restart."""
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_CONSUMED, coordinators
+        )
+
+        mock_state = MagicMock()
+        mock_state.state = "500.0"
+
+        with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+            await sensor._restore_cumulative_state()
+
+        assert sensor._consumed_integrators["battery_a"].accumulated_wh == 500.0
+        assert sensor._get_total_consumed() == 500.0
+
+    async def test_restore_no_previous_state(self, hass: HomeAssistant) -> None:
+        """Test restoration when no previous state exists."""
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        with patch.object(sensor, "async_get_last_state", return_value=None):
+            await sensor._restore_cumulative_state()
+
+        assert sensor._get_total_produced() == 0.0
+
+    async def test_restore_unavailable_state(self, hass: HomeAssistant) -> None:
+        """Test restoration when previous state is unavailable."""
+
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        mock_state = MagicMock()
+        mock_state.state = STATE_UNAVAILABLE
+
+        with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+            await sensor._restore_cumulative_state()
+
+        assert sensor._get_total_produced() == 0.0
+
+    async def test_restore_invalid_state_value(self, hass: HomeAssistant) -> None:
+        """Test restoration with invalid (non-numeric) state value."""
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        mock_state = MagicMock()
+        mock_state.state = "not_a_number"
+
+        with patch.object(sensor, "async_get_last_state", return_value=mock_state):
+            await sensor._restore_cumulative_state()
+
+        # Should not crash, just log warning
+        assert sensor._get_total_produced() == 0.0
+
+    def test_entity_description_properties(self) -> None:
+        """Test energy sensor has correct entity description properties."""
+
+        mock_coord = create_mock_coordinator({})
+        coordinators = {"battery_a": cast(SAXBatteryCoordinator, mock_coord)}
+
+        sensor = self._create_energy_sensor(
+            SAX_CUMULATIVE_ENERGY_PRODUCED, coordinators
+        )
+
+        assert sensor.device_class == SensorDeviceClass.ENERGY
+        assert sensor.state_class == SensorStateClass.TOTAL_INCREASING
+        assert sensor.native_unit_of_measurement == UnitOfEnergy.WATT_HOUR
+        assert sensor.name == "Cumulative Energy Produced"
 
 
 class TestSensorEntityConfiguration:
