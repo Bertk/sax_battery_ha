@@ -4,24 +4,22 @@
 [![HACS][hacs-shield]][hacs]
 [![License][license-shield]](LICENSE)
 
-A comprehensive Home Assistant custom integration for monitoring and controlling SAX-power energy storage systems. This integration provides real-time data collection, intelligent battery management, and automation capabilities for single or multi-battery installations across three-phase power systems.
+A Home Assistant add-on that helps you monitor and control your SAX-power home battery system. Get real-time information about your battery's charge level, power usage, and control how it charges and discharges - all from your Home Assistant dashboard.
 
 ## Key Features
 
-- **Multi-Battery Support**: Manage up to 3 batteries with master/slave coordination across L1, L2, L3 phases
-- **Real-Time Monitoring**: Track state of charge (SOC), voltage, current, temperature, and power metrics
-- **Smart Power Management**: Automatic discharge limits based on minimum SOC thresholds
-- **Solar Charging Control**: Enable/disable solar charging independently from grid operations
-- **Priority Device Support**: Configure priority devices (EV chargers, heat pumps) to prevent battery discharge
-- **Comprehensive Diagnostics**: Circuit breaker statistics, connection health, and firmware information
-- **Local Communication**: All data stays on your local network via Modbus TCP/IP
-- **Home Assistant Native**: Built following Home Assistant best practices with full UI configuration
+- **Multi-Battery Support**: Control up to three batteries working together across your home's three electrical phases
+- **Real-Time Monitoring**: See your battery's charge level, temperature, and power flow updated every 15-30 seconds
+- **Smart Power Management**: Automatically protect your battery from over-discharge by setting minimum charge levels
+- **Solar Charging Control**: Choose when your battery charges from your solar panels
+- **Priority Device Support**: Prevent your battery from powering specific devices (like EV chargers) - save battery power for what matters
+- **Comprehensive Diagnostics**: Check connection health and troubleshoot issues easily
+- **Private & Local**: All data stays on your home network - no cloud connection required
+- **Easy Setup**: Configure everything through Home Assistant's friendly interface
 
 > [!IMPORTANT]  
-**Work in Progress**  
-Battery management system (power control) is actively developed. Several configuration options are available depending on which registers you have write permission to access.
-
-Refer to SAX-power portal documentation to learn how to enable write register permissions.
+**Currently Being Improved**  
+The battery control features are being actively enhanced. Some advanced control features require additional permissions to be enabled in your SAX-power online account settings. Check the SAX-power documentation or contact their support to learn how to enable these features.
 
 ## Supported Devices
 
@@ -32,11 +30,13 @@ This integration supports SAX-power battery energy storage systems with:
 - **Smart Meters**: SAX-compatible smart meters with RS485 connection
 - **Firmware**: Tested with SAX Battery Management System (BMS) current firmware version
 
-**Multi-Battery Configuration:**
+**For Homes with Multiple Batteries:**
 
-- Battery A (L1): Master - handles smart meter polling and system coordination
-- Battery B (L2): Slave - follows master instructions
-- Battery C (L3): Slave - follows master instructions
+- Battery A (connected to Phase 1): Main controller - reads your electricity meter and coordinates the system
+- Battery B (connected to Phase 2): Secondary battery - follows main controller's instructions
+- Battery C (connected to Phase 3): Secondary battery - follows main controller's instructions
+
+*Note: Most homes have three-phase electricity (Phase 1, 2, and 3). Your SAX batteries can be distributed across these phases for balanced power distribution.*
 
 ## Supported Functions
 
@@ -50,14 +50,16 @@ This integration supports SAX-power battery energy storage systems with:
 - Smart meter data (voltage, current, frequency, power factor)
 - Connection status and diagnostics
 
-### Control (Requires Write Permissions)
+### Control Features (Requires SAX Account Settings to be Enabled)
 
-- **Max Discharge Power**: Set maximum battery discharge limit (0-4600W per battery)
-- **Max Charge Power**: Set maximum battery charge limit (0-3500W per battery)
-- **Pilot Control**: Direct battery power control with automatic adjustments
-- **Solar Charging**: Enable/disable solar charging independently
-- **Manual Mode**: Override automatic controls for testing
-- **Minimum SOC Protection**: Prevent deep discharge by enforcing minimum SOC thresholds
+> These features let you tell your battery what to do. To use them, you need to enable 'Remote Control' in your SAX-power online account first. Contact SAX-power support if you need help with this.
+
+- **Max Discharge Power**: Limit how much power the battery can provide to your home (0-4600W per battery)
+- **Max Charge Power**: Limit how fast the battery charges (0-3500W per battery)
+- **Pilot Control**: Direct control over battery power with smart adjustments
+- **Solar Charging**: Turn solar charging on or off independently from grid charging
+- **Manual Mode**: Override automatic controls for testing purposes
+- **Minimum Charge Protection**: Prevent the battery from discharging completely by setting a minimum charge level
 
 ### Automation Features
 
@@ -66,23 +68,40 @@ This integration supports SAX-power battery energy storage systems with:
 - Time-based power management (via Home Assistant automations)
 - Grid power monitoring and response
 
-## Data Update Information
+## How Often Data Updates
 
-The integration uses efficient polling strategies optimized for multi-battery systems:
+Your battery information refreshes automatically:
 
-- **Master Battery (Phase L1)**:
-  - Smart meter data: 15 seconds
-  - Battery status: 30 seconds
-- **Slave Batteries (Phases L2/L3)**:
-  - Battery status: 30 seconds
+- **Main Battery (Phase 1)**:
+  - Electricity meter data: Every 15 seconds
+  - Battery status: Every 30 seconds
+- **Additional Batteries (Phases 2 & 3)**:
+  - Battery status: Every 30 seconds
 
-**Performance Characteristics:**
+This means you'll see near real-time information without overloading your network.
 
-- Non-blocking async communication
-- Batched Modbus register reads
-- Automatic retry with exponential backoff
-- Circuit breaker protection (5 errors in 60 seconds triggers 5-minute pause)
-- Local network only - no cloud dependencies
+**Technical Details:**
+
+- Uses efficient communication to minimize network traffic
+- Automatically retries if connection is lost
+- Pauses for 5 minutes after repeated connection errors to protect your network
+- Works entirely on your local network - no internet connection needed
+
+## Quick Start (5 Minutes)
+
+**Just want to see your battery data quickly?**
+
+1. Install the integration through HACS (see Installation section below)
+2. Go to Settings → Devices & Services → Add Integration
+3. Search for "SAX battery"
+4. Enter your battery's network address (IP address) - see "How to Find Your Battery's IP Address" below
+5. Click Finish
+
+That's it! Within a minute, you'll see your battery charge level, power usage, and status in Home Assistant.
+
+*For advanced features like automations and control, continue reading the full guide below.*
+
+---
 
 ## Installation
 
@@ -117,12 +136,27 @@ The integration uses efficient polling strategies optimized for multi-battery sy
 
 ### Prerequisites
 
-Before configuring the integration, ensure:
+Before you begin:
 
-- [ ] SAX Battery system is connected to your local network
-- [ ] You know the IP address(es) of your battery/batteries
-- [ ] Modbus TCP/IP communication is enabled on port 502 (default)
-- [ ] (Optional) Write register permissions are enabled via SAX-power portal for control features
+- [ ] Your SAX battery is connected to your home Wi-Fi or network (check the battery display)
+- [ ] You know your battery's network address (IP address) - *See "How to Find Your Battery's IP Address" below*
+- [ ] Your battery's network communication is working (this is automatic for most setups)
+- [ ] (Optional) Remote control features are enabled in your [SAX-power online account for advanced control](https://app.sax-power.net/settings)
+
+**How to Find Your Battery's IP Address:**
+
+1. **Option 1 - Check Your Router:**
+   - Log into your Wi-Fi router's admin page
+   - Look for "Connected Devices" or "DHCP Clients"
+   - Find a device named "SAX" or similar
+   - Write down the IP address shown (looks like: 192.168.1.100)
+
+2. **Option 2 - Check Battery Display:**
+   - Some SAX battery models show the IP address on their display screen
+   - Look in the network settings menu
+
+3. **Option 3 - Contact Support:**
+   - If you're not comfortable with the above steps, SAX-power support can help you find this information
 
 ### Configuration Steps
 
@@ -149,37 +183,44 @@ Before configuring the integration, ensure:
    > [!IMPORTANT]
    > Write registers must be enabled in SAX-power portal settings before these options work.
 
-4. **Configure Grid Sensors** *(if power management enabled)*
+4. **Select power management options** (41,42)
+  
+   - Disable SAX default smart meter setup (ADL400/C, ADW220)
+   - Enable balanced or manual loading
+
+   ![Power management options](assets/conf-power-management.png)
+
+5. **Configure Grid Sensors** *(if power management enabled)*
 
    Select Home Assistant sensors for:
    - **Power monitor sensor**: Total household power consumption (Watt)
 
    ![Power monitor sensor](assets/conf-power-sensor.png)
 
-5. **Configure Battery Connection**
+6. **Enter Battery Network Information**
 
-   For each battery, provide:
-   - **IP Address**: Battery's local network IP
-   - **Port**: Modbus TCP port (default: 502)
+   For each battery, you'll need:
+   - **IP Address**: Your battery's network address (from the steps above)
+   - **Port**: Leave as 502 (this is the standard setting)
 
-   Note: **Master Battery (L1)** shall be configured first (if multiple). The battery display shows "A".
+   **Important:** If you have multiple batteries, configure your **Main Battery (Battery A)** first. You can identify it by looking at the battery display - it will show "A".
 
    ![Configure Battery Connection](assets/conf-connection.png)
 
-6. **Finish Setup**
+7. **Finish Setup**
 
    Add location area and click **FINISH**.
 
    ![Configuration done](assets/conf-finish.png)
 
-### Post-Configuration
+### After Setup is Complete
 
-After configuration completes:
+Once you finish the setup wizard:
 
-- Sensors should appear immediately with current values
-- Enable additional entities (L2/L3 phases) in device settings if needed
-- Entities become available within 30 seconds after enabling
-- Clear browser cache or use private mode if upgrading from previous version
+- Your battery information should appear within a minute
+- If you have multiple batteries, you can turn on additional sensors for Phase 2 and Phase 3 in the device settings
+- New features will appear within 30 seconds of turning them on
+- If upgrading from an older version, you may need to refresh your browser (press Ctrl+F5 or Cmd+Shift+R)
 
 ## Integration Overview
 
@@ -232,16 +273,16 @@ Tracks grid measurements:
 
 ### 1. Solar Self-Consumption Optimization
 
-**Scenario**: Maximize use of solar energy by charging battery during excess production and preventing grid export.
+**What This Does:** When your solar panels produce more power than your home needs, this automatically charges your battery instead of sending excess power back to the grid. This maximizes your use of free solar energy.
 
-**Configuration**:
+**What You Need:**
 
-- Enable **Pilot from Home Assistant**
-- Enable **Solar Charging**
-- Set minimum SOC to 15-20%
-- Configure grid power sensor
+- Enable **Pilot from Home Assistant** (in integration settings)
+- Enable **Solar Charging** (in integration settings)
+- Set minimum charge level to 15-20% (protects battery health)
+- Tell the system which sensor measures your home's power usage
 
-**Automation Example**:
+**Example Automation Code:**
 
 ```yaml
 automation:
@@ -264,9 +305,9 @@ automation:
 
 ### 2. Peak Shaving / Time-of-Use Optimization
 
-**Scenario**: Reduce electricity costs by avoiding peak tariff periods using stored battery energy.
+**What This Does:** Save money on electricity bills by using your battery during expensive peak hours instead of buying power from the grid. The battery charges during cheap off-peak hours and powers your home during expensive peak hours.
 
-**Automation Example**:
+**Example Automation Code:**
 
 ```yaml
 automation:
@@ -299,14 +340,14 @@ automation:
 
 ### 3. Backup Power Reserve
 
-**Scenario**: Maintain minimum battery charge for emergency backup power.
+**What This Does:** Keep your battery charged enough to provide emergency power during outages. The system automatically prevents the battery from discharging below your set level.
 
-**Configuration**:
+**What You Need:**
 
-- Set **Minimum SOC** to 30% or higher
-- SOC manager automatically prevents discharge below threshold
+- Set **Minimum Charge Level** to 30% or higher (in integration settings)
+- The system automatically protects this reserve
 
-**Notification Example**:
+**Example Notification Code:**
 
 ```yaml
 automation:
@@ -324,14 +365,14 @@ automation:
 
 ### 4. EV Charging Protection
 
-**Scenario**: Prevent battery from powering EV charging (use grid instead).
+**What This Does:** When charging your electric vehicle, use power from the grid instead of draining your home battery. This saves your battery power for running your house.
 
-**Configuration**:
+**What You Need:**
 
-- Add EV charger to **Priority Devices** list during config flow
-- Battery automatically stops discharging when EV charger is active
+- Add your EV charger to the **Priority Devices** list during setup
+- The battery will automatically stop providing power when your EV is charging
 
-**Manual Override Example**:
+**Example Manual Control Code:**
 
 ```yaml
 automation:
@@ -350,9 +391,9 @@ automation:
 
 ### 5. Grid Outage Detection
 
-**Scenario**: Monitor battery usage to detect potential grid outages.
+**What This Does:** Get notified if your battery starts providing unusually high power during off-hours, which might indicate a power outage.
 
-**Automation Example**:
+**Example Automation Code:**
 
 ```yaml
 automation:
@@ -373,37 +414,37 @@ automation:
           message: "Unusual battery discharge detected - possible grid outage"
 ```
 
-## Known Limitations
+## Things to Know About Your Battery System
 
-### Hardware Limitations
+### How the Battery Hardware Works
 
-- **Write-Only Registers**: Registers 41-44 (max charge/discharge, pilot control) cannot be read back from hardware
-  - Integration caches values locally and restores them after restart
-  - Initial UI state may show maximum values until integration updates
-- **Smart Meter Polling**: Only master battery can poll smart meter data via RS485
-- **Phase Imbalance**: Individual battery control limited - master coordinates all units
-- **Modbus Transaction ID Bug**: Hardware sometimes returns incorrect transaction IDs with `write_registers` command
+- **Some Settings Can't Be Read Back**: When you set max charge/discharge limits, the battery doesn't report these values back
+  - The integration remembers your settings and restores them after Home Assistant restarts
+  - After a restart, it may briefly show maximum values until settings are restored (within 30 seconds)
+- **Only Main Battery Reads Electricity Meter**: The main battery (Battery A) reads your electricity meter and shares this data with the other batteries
+- **Batteries Work Together**: All batteries are coordinated by the main battery - you can't control each one completely independently
+- **Technical Note**: The battery hardware has a minor communication quirk that the integration works around automatically
 
-### Software Limitations
+### Integration Features
 
-- **Manual Mode Override**: When manual control is enabled, automated SOC protections are disabled
-- **Priority Device Detection**: Requires Home Assistant entities - cannot detect non-HA devices
-- **No Dynamic Battery Discovery**: Battery count must be configured during setup
-- **Restart Required**: Configuration changes require Home Assistant restart (deprecated config flow)
+- **Manual Control Mode**: When you turn on manual control, automatic battery protections are turned off - be careful not to over-discharge
+- **Priority Device Detection**: Only works with devices already in Home Assistant - can't detect devices not connected to Home Assistant
+- **Battery Count**: You need to tell the integration how many batteries you have during setup - it can't discover this automatically
+- **Configuration Changes**: Some setting changes may require restarting Home Assistant to take effect
 
-### Network Limitations
+### Network Requirements
 
-- **Local Network Only**: No remote access without VPN
-- **Modbus TCP Timeout**: Long network delays (>10s) may cause connection failures
-- **Single Connection**: Cannot share Modbus connection with other software
-- **No TLS/SSL**: Modbus TCP communication is unencrypted (use trusted network only)
+- **Local Network Only**: You can only access your battery data when connected to your home network (unless you set up VPN remote access)
+- **Network Speed**: If your home network is slow, you might see occasional connection issues
+- **One Connection at a Time**: Only one application can talk to the battery at once - close other SAX apps when using Home Assistant
+- **Security Note**: Communication between Home Assistant and your battery is not encrypted - ensure your home network is password-protected
 
-### Performance Considerations
+### System Performance
 
-- **Polling Overhead**: Multiple batteries increase network traffic (master: 5-10s, slaves: 30s)
-- **Entity Count**: Large installations may show 100+ entities
-- **Startup Time**: Initial data refresh may take 30-60 seconds for all entities
-- **Database Growth**: Energy statistics accumulate over time (HA recorder manages retention)
+- **Network Traffic**: Multiple batteries will use more network bandwidth (usually not noticeable)
+- **Number of Sensors**: Systems with three batteries might show 100+ different sensors and controls
+- **Startup Time**: When Home Assistant starts, it may take 30-60 seconds for all battery data to appear
+- **Storage**: Battery statistics are stored in your Home Assistant database - normal database cleanup handles this automatically
 
 ## Troubleshooting
 
@@ -411,121 +452,138 @@ automation:
 
 #### Problem: "Cannot connect to battery" error during setup
 
-**Solutions**:
+**Before trying technical solutions:**
 
-1. Verify battery IP address:
+1. Is your battery powered on? (Check the battery display)
+2. Is Home Assistant on the same Wi-Fi network as your battery?
+3. Try restarting your battery (power off, wait 30 seconds, power on)
+4. Try restarting Home Assistant
+5. Can you access your battery through the SAX-power app? (If yes, your battery is online)
+6. Double-check the IP address you entered - even one wrong number will cause this error
+
+**Technical Solutions** (For advanced users or when working with SAX support):
+
+1. Test if the battery responds to network requests:
 
    ```bash
    ping <battery_ip>
    ```
 
-2. Check Modbus TCP port (default 502):
+   (Replace `<battery_ip>` with your battery's IP address, like: ping 192.168.1.100)
+
+2. Check if the communication port is accessible:
 
    ```bash
    telnet <battery_ip> 502
    ```
 
-3. Ensure firewall allows Modbus TCP (port 502)
-4. Verify battery is on same network/VLAN as Home Assistant
-5. Check if another application is using Modbus connection
+3. Verify your firewall isn't blocking port 502
+4. Ensure the battery and Home Assistant are on the same network (not separated by VLANs)
+5. Check if the SAX-power app or other software is connected (only one connection allowed at a time)
 
-#### Problem: Integration becomes unavailable after running for hours
+#### Problem: Battery information shows "Unavailable" after working for hours
 
-**Symptoms**: Entities show "Unavailable", then recover after minutes
+**What's Happening**: The connection to your battery is dropping temporarily, then recovering
 
-**Solutions**:
+**Simple Solutions**:
 
-1. Check Home Assistant logs for Modbus timeout errors:
+1. Check if your Wi-Fi router is rebooting or having issues
+2. Move your battery or router closer together if signal is weak
+3. Restart your Wi-Fi router
+4. Check for firmware updates for your router
+5. Update to the latest version of this integration (Settings → HACS → SAX Battery → Update)
 
-   ```text
-   Logger: custom_components.sax_battery
-   ```
+**Advanced Troubleshooting** (If simple solutions don't help):
 
-2. Verify network stability (check for packet loss):
+1. Check Home Assistant logs for error details:
+   - Go to Settings → System → Logs
+   - Look for "sax_battery" entries
+
+2. Test network stability by running this command in Home Assistant Terminal:
 
    ```bash
-   ping -t <battery_ip>
+   ping -c 100 <battery_ip>
    ```
 
-3. Enable circuit breaker diagnostics to see error rates
-4. Reduce polling frequency if network is congested
-5. Update to latest integration version (improvements in connection handling)
+   (Should show 0% packet loss if network is stable)
+
+3. Check the circuit breaker diagnostics page to see connection error rates
+4. Contact SAX-power support if issues persist
 
 ### Data Issues
 
-#### Problem: SOC shows 0% or incorrect values
+#### Problem: Battery charge level shows 0% or wrong values
 
 **Solutions**:
 
-1. Wait 30-60 seconds for initial data refresh
-2. Check if battery is in standby mode
-3. Verify Modbus communication is working (check diagnostics)
-4. Restart integration:
-   - Settings → Devices & Services → SAX Battery → ⋮ → Reload
+1. Wait 30-60 seconds - initial data takes a moment to load
+2. Check if your battery is in sleep/standby mode (check the battery display)
+3. Look at the integration diagnostics to verify communication is working
+4. Try reloading the integration:
+   - Go to Settings → Devices & Services
+   - Find "SAX Battery"
+   - Click the three dots (⋮) → Reload
 
-#### Problem: Max discharge/charge sliders show maximum values after restart
+#### Problem: Power limit sliders show maximum values after restarting Home Assistant
 
-**Explanation**: Registers 41-42 are write-only; integration restores last known values
+**This is Normal**: The battery hardware doesn't report these settings back, so they briefly show maximum values until the integration restores your saved settings (within 30 seconds)
 
-**Solutions**:
+**What to Do**:
 
-1. Wait for integration to restore values (happens automatically within 30s)
-2. Check entity states in Developer Tools to see actual cached values
-3. If values not restored, manually set desired limits again
+1. Wait 30 seconds - the integration will automatically restore your previous settings
+2. If after 30 seconds values haven't restored, you can manually adjust the sliders back to your preferred settings
+3. The integration will remember the new settings for next time
 
 ### Control Issues
 
-#### Problem: Power limits not working (battery ignores settings)
+#### Problem: Changing power limits doesn't affect the battery
 
 **Checklist**:
 
-1. Verify write registers are enabled in SAX-power portal
-2. Check minimum SOC protection isn't overriding limits
-3. Ensure manual control mode is disabled (if not intended)
-4. Check Home Assistant logs for write errors
-5. Verify battery firmware supports remote control
+1. Have you enabled remote control in your SAX-power online account? (This must be done first)
+2. Is your battery charge level below the minimum you set? (Protection prevents discharge when charge is too low)
+3. Is manual control mode turned on when you don't want it to be?
+4. Check Home Assistant logs (Settings → System → Logs) for error messages
+5. Verify your battery firmware is up to date (contact SAX-power support)
 
-#### Problem: SOC constraint keeps resetting max discharge to 0W
+#### Problem: Battery keeps stopping discharge even though I set it to discharge
 
-**Explanation**: SOC manager enforces minimum SOC threshold for battery protection
+**This is a Safety Feature**: The integration automatically protects your battery from over-discharge when the charge level gets too low
+
+**What's Happening**: Your battery charge level has dropped below the minimum level you set, so the system stops discharge to protect battery health
 
 **Solutions**:
 
-1. Check current SOC - if below minimum threshold, this is correct behavior
-2. Adjust minimum SOC threshold if too aggressive:
-   - Lower `number.sax_min_soc` value
-3. Temporarily disable SOC manager (not recommended):
-
-   ```yaml
-   # In configuration.yaml (advanced users only)
-   sax_battery:
-     soc_enforcement: false
-   ```
-
-4. Charge battery above minimum threshold
+1. Check your battery's current charge level - if it's below your minimum setting, this is correct behavior
+2. If the minimum is too high for your needs, lower it:
+   - Go to your SAX Battery device
+   - Find "Minimum Charge Level" (sax_min_soc)
+   - Set it to a lower percentage
+3. Charge your battery above the minimum level
+4. **Not Recommended**: You can disable this protection in advanced settings, but this may damage your battery
 
 ### Configuration Issues
 
-#### Problem: Priority devices not preventing battery discharge
+#### Problem: Battery still discharges when priority devices (like EV charger) are running
 
 **Checklist**:
 
-1. Verify entities are correctly selected during config flow
-2. Check if entities are available and updating
-3. Ensure entity values are properly detected (>0W for power sensors, "on" for switches)
-4. Check power manager diagnostics for device detection status
-5. Review entity state history to confirm devices are active when expected
+1. Did you select the correct devices during setup? (You can reconfigure if needed)
+2. Are the device sensors working in Home Assistant? (Check they show current values)
+3. Is the device actually showing power usage or "on" status in Home Assistant?
+4. Check the power manager diagnostics to see if it's detecting your priority devices
+5. Look at the device's history graph to make sure it's reporting activity when you expect it to
 
-#### Problem: Multi-battery setup shows wrong phase assignment
+#### Problem: Multiple batteries are assigned to wrong electrical phases
 
 **Solution**:
 
-1. Verify master battery selection during configuration
-2. Check battery IDs match physical phase connections:
-   - Battery A → L1 (Master)
-   - Battery B → L2 (Slave)
-   - Battery C → L3 (Slave)
-3. Reconfigure integration if incorrect
+1. Verify you selected the correct main battery during setup (the one marked "A" on its display)
+2. Check that your battery connections match what you configured:
+   - Battery A → Phase 1 (Main Controller)
+   - Battery B → Phase 2 (Secondary)
+   - Battery C → Phase 3 (Secondary)
+3. If they don't match, you'll need to remove and reconfigure the integration with the correct settings
 
 ### Diagnostic Tools
 
@@ -571,6 +629,28 @@ If troubleshooting doesn't resolve your issue:
    - Relevant log excerpt (debug mode)
    - Steps to reproduce
 3. **Community forum**: [Home Assistant Community][community]
+
+## Glossary (Technical Terms Explained)
+
+This guide uses some technical terms. Here's what they mean in plain English:
+
+- **IP Address**: Your battery's unique number on your home network (like a house address for devices). Looks like: 192.168.1.100
+- **Modbus**: The communication language your battery uses to talk to Home Assistant
+- **SOC (State of Charge)**: How full your battery is, shown as a percentage (0-100%). Just like your phone's battery indicator
+- **Phase (L1, L2, L3 or Phase 1, 2, 3)**: The three electrical circuits in your home's power system. Most homes have three-phase power
+- **W (Watt)**: A measure of power at this moment. 1000W (1kW) is about as much as a small space heater uses
+- **kW (Kilowatt)**: 1000 Watts. A typical home might use 1-3kW normally
+- **kWh (Kilowatt-hour)**: Energy used over time. Your electricity bill measures this
+- **Grid**: Your home's connection to the main electricity supply from your power company
+- **Entity**: A piece of information or control in Home Assistant (like battery percentage, temperature sensor, or power switches)
+- **Modbus TCP/IP**: The technical name for how Home Assistant talks to your battery over your network
+- **Port 502**: A specific "door" on your network that the battery uses to communicate (like different channels on a radio)
+- **HACS**: Home Assistant Community Store - an add-on store for Home Assistant
+- **Integration**: An add-on that connects Home Assistant to devices (like this SAX Battery integration)
+- **Coordinator**: The part of the integration that fetches data from your battery
+- **Register**: A specific piece of information stored in the battery (like a memory address)
+
+---
 
 ## Removal Instructions
 

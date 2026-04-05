@@ -26,6 +26,7 @@ from .const import (
     CONF_CONTROL_POWER,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
+    CONF_SM_CONNECTED,
     DEFAULT_PORT,
     DOMAIN,
     MODBUS_BATTERY_POWER_LIMIT_ITEMS,
@@ -129,6 +130,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
         limit_power_enabled = entry.data.get(CONF_LIMIT_POWER, False)
         if limit_power_enabled:
             await _enable_power_limit_entities(hass, entry, sax_data)
+
+        # Disable SM entities when smart meter is not connected
+        sm_connected = entry.data.get(CONF_SM_CONNECTED, True)
+        if not sm_connected:
+            await _disable_sm_entities(hass, entry)
 
         # Wait for first coordinator update to ensure data is available
         for coordinator in coordinators.values():
@@ -237,6 +243,38 @@ async def _enable_power_limit_entities(
         _LOGGER.info(
             "Auto-enabled %d power limit entities based on CONF_LIMIT_POWER configuration",
             enabled_count,
+        )
+
+
+async def _disable_sm_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Disable smart meter entities when SM is not connected.
+
+    Args:
+        hass: Home Assistant instance
+        entry: Config entry
+
+    Security:
+        OWASP A05: Validates entity existence before disabling
+    """
+    ent_reg = er.async_get(hass)
+    disabled_count = 0
+
+    for entity_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if entity_entry.unique_id and "_sm_" in entity_entry.unique_id:
+            if entity_entry.disabled_by != er.RegistryEntryDisabler.INTEGRATION:
+                ent_reg.async_update_entity(
+                    entity_entry.entity_id,
+                    disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+                )
+                disabled_count += 1
+
+    if disabled_count > 0:
+        _LOGGER.info(
+            "Disabled %d smart meter entities because SM is not connected",
+            disabled_count,
         )
 
 

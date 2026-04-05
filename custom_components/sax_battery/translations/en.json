@@ -36,26 +36,26 @@
                     "limit_power": "Enable power limits to set max charge/discharge (registers 43, 44)"
                 }
             },
-            "pilot_options": {
-                "title": "Battery Control Settings",
-                "description": "Configure advanced battery control parameters when Home Assistant is managing your battery system.",
+            "power_options": {
+                "title": "Power Management Options",
+                "description": "Configure power management options. Select whether a SAX smart meter is connected via RS485 and configure intelligent balanced loading.",
                 "data": {
-                    "min_soc": "Minimum State of Charge (%)",
-                    "auto_pilot_interval": "Control Update Interval (seconds), 60 seconds should be enough"
+                    "sm_connected": "SAX smart meter connected via RS485",
+                    "balanced_loading": "Enable intelligent balanced loading"
+                },
+                "data_description": {
+                    "sm_connected": "Enable if the SAX smart meter is connected to the battery via RS485. When disabled, an external grid power sensor can be configured for balanced loading",
+                    "balanced_loading": "Enable balanced loading using an external grid power sensor. Negative grid power (production/export to grid) indicates surplus power available for charging — this typically means solar photovoltaic (PV) energy is available. Positive grid power (consumption/import from grid) means no surplus is available. Manual grid charging is always available independently"
                 }
             },
             "sensors": {
                 "title": "Power Monitoring Sensors",
                 "description": "Select the sensors that monitor your home's power usage for intelligent battery control.",
                 "data": {
-                    "grid_power_sensor": "Grid Power Sensor (required for power manager)",
-                    "power_sensor": "Power Consumption Sensor, in Watts, a negative value means consuming from the grid and positive value equals injection into the grid",
-                    "pf_sensor": "Power Factor Sensor, called cos(phi) or PF"
+                    "power_sensor": "Grid power sensor (W)"
                 },
                 "data_description": {
-                    "grid_power_sensor": "Select grid power sensor for power manager (required)",
-                    "power_sensor": "Select smart meter power sensor (optional, for legacy pilot)",
-                    "pf_sensor": "Select power factor sensor (optional, for legacy pilot)"
+                    "power_sensor": "Select the grid power sensor entity. Negative values (W) indicate power production/export to grid (typically from solar PV), positive values indicate power consumption/import from grid"
                 }
             },
             "priority_devices": {
@@ -100,11 +100,15 @@
                 "data": {
                     "control_power": "Control battery from Home Assistant",
                     "limit_power": "Enable power limitations",
+                    "sm_connected": "SAX smart meter connected via RS485",
+                    "balanced_loading": "Enable intelligent balanced loading",
                     "min_soc": "Minimum State of Charge (%)"
                 },
                 "data_description": {
                     "control_power": "Enable or disable power control mode (registers 41,42)",
-                    "limit_power": "Enable or disable power limits (registers 43,44)"
+                    "limit_power": "Enable or disable power limits (registers 43,44)",
+                    "sm_connected": "Enable if the SAX smart meter is connected to the battery via RS485. When disabled, an external grid power sensor can be configured for balanced loading",
+                    "balanced_loading": "Enable balanced loading using an external grid power sensor. Negative grid power (production/export) indicates surplus available for charging, typically from solar PV. Positive grid power (consumption/import) means no surplus"
 
                 }
             }

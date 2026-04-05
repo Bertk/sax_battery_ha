@@ -18,6 +18,7 @@ from homeassistant.helpers import entity_registry as er, selector
 from .const import (
     BATTERY_IDS,
     BATTERY_PHASES,
+    CONF_BALANCED_LOADING,
     CONF_BATTERIES,
     CONF_BATTERY_COUNT,
     CONF_BATTERY_ENABLED,
@@ -31,6 +32,7 @@ from .const import (
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
     CONF_POWER_SENSOR,
+    CONF_SM_CONNECTED,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
     DOMAIN,
@@ -54,6 +56,8 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._device_id: str = str(uuid.uuid4())  # Generate unique device ID
         self._control_power: bool = False
         self._limit_power: bool = False
+        self._sm_connected: bool = True
+        self._balanced_loading: bool = False
 
     @staticmethod
     @callback
@@ -109,7 +113,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Route to appropriate next step based on selections
             if self._control_power:
-                return await self.async_step_sensors()
+                return await self.async_step_power_options()
             # Skip control-specific steps if not enabled
             return await self.async_step_battery_config()
 
@@ -128,50 +132,48 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    # async def async_step_pilot_options(
-    #     self, user_input: dict[str, Any] | None = None
-    # ) -> ConfigFlowResult:
-    #     """Configure pilot options (simplified - only MIN_SOC)."""
-    #     errors: dict[str, str] = {}
+    async def async_step_power_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure power management options (smart meter, balanced loading)."""
+        errors: dict[str, str] = {}
 
-    #     if user_input is not None:
-    #         # Custom validation
-    #         validation_passed = True
+        if user_input is not None:
+            self._sm_connected = user_input.get(CONF_SM_CONNECTED, True)
+            self._balanced_loading = user_input.get(CONF_BALANCED_LOADING, False)
+            self._data.update(user_input)
 
-    #         try:
-    #             min_soc = int(user_input.get(CONF_MIN_SOC, DEFAULT_MIN_SOC))
-    #             if not 0 <= min_soc <= 100:
-    #                 errors[CONF_MIN_SOC] = "invalid_min_soc"
-    #                 validation_passed = False
-    #         except (ValueError, TypeError):
-    #             errors[CONF_MIN_SOC] = "invalid_min_soc"
-    #             validation_passed = False
+            _LOGGER.debug(
+                "Power options saved: sm_connected=%s, balanced_loading=%s",
+                self._sm_connected,
+                self._balanced_loading,
+            )
 
-    #         # If validation passed, save data and move to next step
-    #         if validation_passed:
-    #             self._data.update(user_input)
-    #             _LOGGER.debug("Pilot options saved: %s", user_input)
-    #             # Move to sensors step
-    #             return await self.async_step_sensors()
+            # Route based on selections
+            if not self._sm_connected and self._balanced_loading:
+                return await self.async_step_sensors()
+            if not self._sm_connected:
+                return await self.async_step_battery_config()
+            # sm_connected=True → smart meter handles power
+            return await self.async_step_battery_config()
 
-    #     # Show the form
-    #     return self.async_show_form(
-    #         step_id="pilot_options",
-    #         data_schema=vol.Schema(
-    #             {
-    #                 vol.Required(
-    #                     CONF_MIN_SOC,
-    #                     default=self._data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
-    #                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-    #             }
-    #         ),
-    #         errors=errors,
-    #     )
+        return self.async_show_form(
+            step_id="power_options",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SM_CONNECTED, default=self._sm_connected): bool,
+                    vol.Required(
+                        CONF_BALANCED_LOADING, default=self._balanced_loading
+                    ): bool,
+                }
+            ),
+            errors=errors,
+        )
 
     async def async_step_sensors(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure Grid power sensor for power balancing."""
+        """Configure Grid power sensor and PV sensor for power balancing."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -179,18 +181,18 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # No priority devices step - go directly to battery config
             return await self.async_step_battery_config()
 
-        # Only ask for Grid power sensor UnitOfPower.WATT (power control)
+        # Build schema based on current configuration
         schema = {}
-        if self._control_power:
-            schema.update(
-                {
-                    vol.Required(CONF_POWER_SENSOR): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="sensor",
-                            device_class="power",
-                        )
-                    ),
-                }
+        needs_grid_sensor = self._control_power or (
+            not self._sm_connected and self._balanced_loading
+        )
+
+        if needs_grid_sensor:
+            schema[vol.Required(CONF_POWER_SENSOR)] = selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="sensor",
+                    device_class="power",
+                )
             )
 
         return self.async_show_form(
@@ -389,6 +391,8 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._battery_count = self._data.get(CONF_BATTERY_COUNT, 1)
         self._control_power = self._data.get(CONF_CONTROL_POWER, False)
         self._limit_power = self._data.get(CONF_LIMIT_POWER, False)
+        self._sm_connected = self._data.get(CONF_SM_CONNECTED, True)
+        self._balanced_loading = self._data.get(CONF_BALANCED_LOADING, False)
 
         # Start reconfiguration from control options
         return await self.async_step_control_options()
@@ -407,11 +411,12 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_CONTROL_POWER, False
             )
             current_limit_power = self.config_entry.data.get(CONF_LIMIT_POWER, False)
+            current_sm_connected = self.config_entry.data.get(CONF_SM_CONNECTED, True)
 
-            # Extract pilot-specific options from user input
-            pilot_options: dict[str, Any] = {}
+            # Extract power-specific options from user input
+            power_options: dict[str, Any] = {}
             if CONF_MIN_SOC in user_input:
-                pilot_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
+                power_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
 
             # Build result data - always include feature toggles
             result_data = {
@@ -419,11 +424,24 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_CONTROL_POWER, current_control_power
                 ),
                 CONF_LIMIT_POWER: user_input.get(CONF_LIMIT_POWER, current_limit_power),
+                CONF_SM_CONNECTED: user_input.get(
+                    CONF_SM_CONNECTED, current_sm_connected
+                ),
             }
 
-            # Only include pilot-specific options when control power is enabled
+            # Smart meter and balanced loading options
+            new_sm_connected = result_data[CONF_SM_CONNECTED]
+            if not new_sm_connected:
+                result_data[CONF_BALANCED_LOADING] = user_input.get(
+                    CONF_BALANCED_LOADING, False
+                )
+            else:
+                # Clear balanced loading config when SM is connected
+                result_data[CONF_BALANCED_LOADING] = False
+
+            # Only include power-specific options when control power is enabled
             if user_input.get(CONF_CONTROL_POWER, current_control_power):
-                result_data.update(pilot_options)
+                result_data.update(power_options)
 
             # Update config entry data
             self.hass.config_entries.async_update_entry(
@@ -455,6 +473,13 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             if new_limit_power != current_limit_power:
                 await self._async_update_soc_manager_state(new_limit_power)
 
+            # Handle SM entity enable/disable when sm_connected changes
+            if new_sm_connected != current_sm_connected:
+                if new_sm_connected:
+                    await self._async_enable_sm_entities()
+                else:
+                    await self._async_disable_sm_entities()
+
             # Reload the integration to apply changes
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
@@ -465,6 +490,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current configuration for form display
         control_power_enabled = self.config_entry.data.get(CONF_CONTROL_POWER, False)
         limit_power_enabled = self.config_entry.data.get(CONF_LIMIT_POWER, False)
+        sm_connected = self.config_entry.data.get(CONF_SM_CONNECTED, True)
+        balanced_loading = self.config_entry.data.get(CONF_BALANCED_LOADING, False)  # noqa: F841
 
         schema: dict[vol.Marker, Any] = {}
 
@@ -485,8 +512,21 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                         self.config_entry.data.get(CONF_LIMIT_POWER, False),
                     ),
                 ): bool,
+                vol.Optional(
+                    CONF_SM_CONNECTED,
+                    default=self.config_entry.data.get(CONF_SM_CONNECTED, True),
+                ): bool,
             }
         )
+
+        # Show balanced loading options when SM is not connected
+        if not sm_connected:
+            schema[
+                vol.Optional(
+                    CONF_BALANCED_LOADING,
+                    default=self.config_entry.data.get(CONF_BALANCED_LOADING, False),
+                )
+            ] = bool
 
         # Show control-power-specific options if power control is currently enabled
         if control_power_enabled:
@@ -777,3 +817,51 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                 updated_count,
                 enabled,
             )
+
+    async def _async_enable_sm_entities(self) -> None:
+        """Enable SM device entities when smart meter is connected.
+
+        Security:
+            OWASP A01: Ensures entity access control follows configuration
+        """
+        await self._async_set_sm_entities_disabled_by(disabled_by=None)
+        _LOGGER.info("Enabled SM entities because sm_connected was set to True")
+
+    async def _async_disable_sm_entities(self) -> None:
+        """Disable SM device entities when smart meter is not connected.
+
+        Security:
+            OWASP A01: Prevents access to unavailable hardware entities
+        """
+        await self._async_set_sm_entities_disabled_by(
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION
+        )
+        _LOGGER.info("Disabled SM entities because sm_connected was set to False")
+
+    async def _async_set_sm_entities_disabled_by(
+        self, disabled_by: er.RegistryEntryDisabler | None
+    ) -> None:
+        """Set disabled_by for all SM device entities.
+
+        Args:
+            disabled_by: Disabler to set, or None to enable
+        """
+        ent_reg = er.async_get(self.hass)
+        updated_count = 0
+
+        for entity_entry in er.async_entries_for_config_entry(
+            ent_reg, self.config_entry.entry_id
+        ):
+            # SM entities have unique IDs containing "sax_sm_" prefix
+            if entity_entry.unique_id and "_sm_" in entity_entry.unique_id:
+                ent_reg.async_update_entity(
+                    entity_entry.entity_id,
+                    disabled_by=disabled_by,
+                )
+                updated_count += 1
+
+        _LOGGER.debug(
+            "Updated %d SM entities: disabled_by=%s",
+            updated_count,
+            disabled_by,
+        )

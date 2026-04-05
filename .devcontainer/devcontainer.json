@@ -46,7 +46,8 @@
         "ryanluker.vscode-coverage-gutters",
         "streetsidesoftware.code-spell-checker",
         "keesschollaart.vscode-home-assistant",
-        "timheuer.awesome-copilot"
+        "timheuer.awesome-copilot",
+        "mechatroner.rainbow-csv"
       ],
       // Please keep this file in sync with settings in home-assistant/.vscode/settings.default.json
       "settings": {

@@ -81,7 +81,7 @@ class TestSAXBatteryConfigFlowExtended:
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "sensors"
+        assert result.get("step_id") == "power_options"
         assert flow._control_power is True
         assert flow._limit_power is False
 

@@ -16,6 +16,9 @@ coverage.xml
 .vs
 .venv
 
+# Linux environment
+.env
+
 # Home Assistant configuration
 config/*
 !config/configuration.yaml

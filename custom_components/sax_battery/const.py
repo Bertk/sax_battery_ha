@@ -100,6 +100,10 @@ BATTERY_PHASES = {"bess_a": "L1", "bess_b": "L2", "bess_c": "L3"}
 CONF_CONTROL_POWER = "control_power"  # Renamed from CONF_PILOT_FROM_HA
 CONF_LIMIT_POWER = "limit_power"
 
+# Smart meter and balanced loading configuration
+CONF_SM_CONNECTED = "sm_connected"
+CONF_BALANCED_LOADING = "balanced_loading"
+
 # Control modes
 PV_CHARGING_MODE = "enable_pv_charging"
 GRID_CHARGING_MODE = "enable_grid_charging"

@@ -20,6 +20,7 @@ from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PORT,
     CONF_MASTER_BATTERY,
+    CONF_SM_CONNECTED,
     DEFAULT_DEVICE_INFO,
     DOMAIN,
     MODBUS_BATTERY_BMS_ITEMS,
@@ -105,18 +106,25 @@ class BatteryModel(BaseModel):
 
         # Master battery also gets consolidated smart meter items
         if self.is_master:
-            # MODBUS_BATTERY_SMARTMETER_ITEMS already includes all smart meter data
-            # Including basic items, phase items, and battery-accessible smart meter data
             items.extend(MODBUS_BATTERY_BMS_ITEMS)
-            items.extend(MODBUS_BATTERY_SMARTMETER_ITEMS)
+            # Only include smart meter items when SM is connected via RS485
+            sm_connected = self.config_data.get(CONF_SM_CONNECTED, True)
+            if sm_connected:
+                items.extend(MODBUS_BATTERY_SMARTMETER_ITEMS)
             items.extend(MODBUS_BATTERY_UNDOCUMENTED_ITEMS)
             switch_item: ModbusItem = MODBUS_BATTERY_SWITCH_ITEMS[0]
             switch_item.device = DeviceConstants.SYS
             items.append(switch_item)  # Add system-level switch for master battery
-            _LOGGER.debug(
-                "Added %d smart meter items to master battery",
-                len(MODBUS_BATTERY_SMARTMETER_ITEMS),
-            )
+            if sm_connected:
+                _LOGGER.debug(
+                    "Added %d smart meter items to master battery",
+                    len(MODBUS_BATTERY_SMARTMETER_ITEMS),
+                )
+            else:
+                _LOGGER.debug(
+                    "Smart meter not connected - skipping %d SM items",
+                    len(MODBUS_BATTERY_SMARTMETER_ITEMS),
+                )
 
         return items
 

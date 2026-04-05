@@ -59,7 +59,7 @@ class TestModbusAPIConnection:
         mock_client = AsyncMock(spec=AsyncModbusTcpClient)
         mock_client.connected = False
         mock_client.connect = AsyncMock(return_value=True)
-        mock_client.close = AsyncMock()
+        mock_client.close = MagicMock()
 
         # Mock comm_params for timeout scaling tests
         mock_comm_params = MagicMock()
@@ -107,7 +107,7 @@ class TestModbusAPIConnection:
         """Test connection when already connected with logging."""
         # Set client to already connected and validated state
         mock_modbus_client.connected = True
-        mock_modbus_client.close = AsyncMock()
+        mock_modbus_client.close = MagicMock()
         mock_modbus_client.connect = AsyncMock(return_value=True)
 
         with caplog.at_level(logging.DEBUG):
@@ -177,7 +177,7 @@ class TestModbusAPIRead:
         mock_client = AsyncMock(spec=AsyncModbusTcpClient)
         mock_client.connected = True
         mock_client.connect = AsyncMock(return_value=True)
-        mock_client.close = AsyncMock()
+        mock_client.close = MagicMock()
 
         # Mock comm_params for timeout scaling tests
         mock_comm_params = MagicMock()
@@ -313,7 +313,7 @@ class TestModbusAPIWrite:
         mock_client = AsyncMock(spec=AsyncModbusTcpClient)
         mock_client.connected = True
         mock_client.connect = AsyncMock(return_value=True)
-        mock_client.close = AsyncMock()
+        mock_client.close = MagicMock()
 
         # Mock comm_params for timeout scaling tests
         mock_comm_params = MagicMock()
@@ -685,7 +685,7 @@ class TestModbusAPIEdgeCases:
         mock_client = AsyncMock(spec=AsyncModbusTcpClient)
         mock_client.connected = False
         mock_client.connect = AsyncMock(return_value=True)
-        mock_client.close = AsyncMock()
+        mock_client.close = MagicMock()
 
         # Mock comm_params for timeout scaling tests
         mock_comm_params = MagicMock()
@@ -814,6 +814,7 @@ class TestReconnectionBackoff:
         # Mock successful write
         mock_client = AsyncMock()
         mock_client.connected = True
+        mock_client.close = MagicMock()
         mock_result = MagicMock()
         mock_result.isError = MagicMock(return_value=False)
         mock_client.write_registers = AsyncMock(return_value=mock_result)

@@ -27,9 +27,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
+    CONF_BALANCED_LOADING,
     CONF_ENABLE_GRID_CHARGING,
     CONF_MIN_SOC,
     CONF_POWER_SENSOR,
+    CONF_SM_CONNECTED,
     DEFAULT_MIN_SOC,
     GRID_CHARGING_MODE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
@@ -42,6 +44,7 @@ from .const import (
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC_CHARGING,
     SAX_NOMINAL_POWER,
+    SAX_SMARTMETER_TOTAL_POWER,
 )
 from .coordinator import SAXBatteryCoordinator
 from .items import ModbusItem
@@ -172,6 +175,10 @@ class PowerManager:
         """
         self.pv_power_sensor = self.config_entry.data.get(CONF_POWER_SENSOR)
 
+        # Smart meter and balanced loading configuration
+        self.sm_connected = self.config_entry.data.get(CONF_SM_CONNECTED, True)
+        self.balanced_loading = self.config_entry.data.get(CONF_BALANCED_LOADING, False)
+
         # Read switch entity states for runtime control (not config)
         pv_enabled = self._get_switch_state(SAX_CHARGE_FROM_PV_SWITCH)
         grid_enabled = bool(
@@ -191,10 +198,13 @@ class PowerManager:
         self._state.grid_charging_enabled = grid_enabled
 
         _LOGGER.info(
-            "Power manager config updated: PV=%s, grid=%s, pv_sensor=%s",
+            "Power manager config updated: PV=%s, grid=%s, pv_sensor=%s, "
+            "sm_connected=%s, balanced_loading=%s",
             pv_enabled,
             grid_enabled,
             self.pv_power_sensor,
+            self.sm_connected,
+            self.balanced_loading,
         )
 
     async def async_start(self) -> None:
@@ -272,6 +282,12 @@ class PowerManager:
     async def _async_update_power(self, now: Any = None) -> None:
         """Update power via coordinator based on current mode.
 
+        Power source selection:
+        - sm_connected=True: Use SAX_SMARTMETER_TOTAL_POWER from coordinator
+        - sm_connected=False, balanced_loading=True: Check PV threshold,
+          use balanced loading if sufficient PV, otherwise charge from grid
+        - sm_connected=False, balanced_loading=False: Standard PV/grid modes
+
         Args:
             now: Current time (from time interval trigger)
 
@@ -289,6 +305,40 @@ class PowerManager:
                 return
 
             if self._state.pv_charging_enabled:
+                # Smart meter connected: use SAX smart meter data directly
+                if self.sm_connected:
+                    _LOGGER.debug(
+                        "Smart meter connected: using SAX smart meter for power balancing"
+                    )
+                    await self._update_sm_balanced_power()
+                    return
+
+                # SM not connected but balanced loading enabled:
+                # Use grid power sign to decide mode
+                # Negative grid power = production/export to grid (surplus available, typically solar PV)
+                # Positive grid power = consumption/import from grid (no surplus)
+                if self.balanced_loading:
+                    grid_power = await self._get_grid_power()
+                    if grid_power is not None and grid_power < 0:
+                        _LOGGER.debug(
+                            "Balanced loading: grid production %.0fW (surplus available, "
+                            "typically solar PV), using PV charging mode",
+                            grid_power,
+                        )
+                        await self._update_pv_charging_power()
+                    else:
+                        grid_display = (
+                            f"{grid_power:.0f}" if grid_power is not None else "N/A"
+                        )
+                        _LOGGER.debug(
+                            "Balanced loading: grid consumption %sW (no surplus), "
+                            "standby",
+                            grid_display,
+                        )
+                        await self._update_grid_balance_mode()
+                    return
+
+                # Standard PV charging (no SM, no balanced loading)
                 await self._update_pv_charging_power()
             else:
                 _LOGGER.debug("No active power management mode")
@@ -384,9 +434,10 @@ class PowerManager:
         Formula:
             target_battery_power = current_battery_power - grid_power
 
-        Where:
-            - Negative grid_power = importing from grid (need to discharge battery)
-            - Positive grid_power = exporting to grid (need to charge battery)
+        Grid power sign convention:
+            - Negative grid_power = production/export to grid (surplus available,
+              typically from solar photovoltaic)
+            - Positive grid_power = consumption/import from grid (no surplus)
 
         Security:
             OWASP A05: Validates sensor availability and data freshness
@@ -430,6 +481,75 @@ class PowerManager:
         )
 
         # Apply constraints and update hardware via coordinator
+        await self.update_nominal_power(target_power)
+
+    async def _get_grid_power(self) -> float | None:
+        """Get current grid power from CONF_POWER_SENSOR.
+
+        Returns:
+            float | None: Current grid power in watts or None if unavailable.
+                Negative = production/export to grid (surplus available,
+                typically from solar photovoltaic).
+                Positive = consumption/import from grid (no surplus).
+
+        Security:
+            OWASP A05: Validates sensor availability before access
+        """
+        if not self.pv_power_sensor:
+            return None
+
+        state = self.hass.states.get(self.pv_power_sensor)
+        if not state or state.state in (None, "unknown", "unavailable"):
+            return None
+
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
+    async def _update_sm_balanced_power(self) -> None:
+        """Update nominal power using SAX smart meter data.
+
+        Uses SAX_SMARTMETER_TOTAL_POWER from coordinator data for balanced loading
+        when the SAX smart meter is connected via RS485.
+
+        Formula:
+            target_battery_power = current_battery_power - sm_total_power
+
+        Security:
+            OWASP A05: Validates coordinator data availability
+        """
+        sm_power = self.coordinator.data.get(SAX_SMARTMETER_TOTAL_POWER)
+        if sm_power is None:
+            _LOGGER.warning("Smart meter total power not available from coordinator")
+            return
+
+        try:
+            sm_power_value = float(sm_power)
+        except (ValueError, TypeError) as err:
+            _LOGGER.error("Invalid smart meter power value: %s", err)
+            return
+
+        current_battery_power = await self._get_battery_power()
+        if current_battery_power is None:
+            _LOGGER.warning("Battery power not available, skipping SM balanced update")
+            return
+
+        target_power = current_battery_power - sm_power_value
+
+        # Pre-clamp to per-battery hardware limits
+        target_power = max(
+            -LIMIT_MAX_CHARGE_PER_BATTERY,
+            min(LIMIT_MAX_DISCHARGE_PER_BATTERY, target_power),
+        )
+
+        _LOGGER.debug(
+            "SM balanced: sm_power=%.0fW, battery=%.0fW, target=%.0fW",
+            sm_power_value,
+            current_battery_power,
+            target_power,
+        )
+
         await self.update_nominal_power(target_power)
 
     async def _get_battery_power(self) -> float | None:
