@@ -42,3 +42,4 @@ POLLING_OPTIMIZATION.md
 quality_scale.yaml
 Connection-Fehler-Endladen.png
 .claude/
+.devcontainer/devcontainer-lock.json

@@ -240,7 +240,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors[port_key] = "invalid_port"
                         validation_passed = False
                         continue
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     errors[port_key] = "invalid_port"
                     validation_passed = False
                     continue

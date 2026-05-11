@@ -36,6 +36,7 @@
         "GitHub.vscode-pull-request-github",
         "GitHub.copilot",
         "GitHub.copilot-chat",
+        "ms-vscode.vscode-chat-customizations-evaluations",
         "charliermarsh.ruff",
         "bierner.markdown-preview-github-styles",
         "bierner.markdown-mermaid",

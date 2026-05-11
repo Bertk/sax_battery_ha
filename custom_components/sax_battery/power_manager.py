@@ -504,7 +504,7 @@ class PowerManager:
 
         try:
             return float(state.state)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     async def _update_sm_balanced_power(self) -> None:

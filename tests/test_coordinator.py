@@ -221,6 +221,7 @@ class TestSAXBatteryCoordinator:
         assert result is True
         real_switch_item_coord_unique.async_write_value.assert_called_once()
 
+    @pytest.mark.parametrize("expected_lingering_timers", [True])
     async def test_write_switch_value_failure(
         self,
         sax_battery_coordinator_instance,

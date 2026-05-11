@@ -367,6 +367,7 @@ class TestOptionsFlowHelperMethods:
         assert result["type"] == FlowResultType.CREATE_ENTRY
 
 
+@pytest.mark.usefixtures("_mock_setup_integration")
 class TestConfigFlowPowerLimitEdgeCases:
     """Test edge cases in power limit entity handling."""
 

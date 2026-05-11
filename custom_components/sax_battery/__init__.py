@@ -893,7 +893,7 @@ def _validate_host(host: str) -> bool:
             else:
                 # All parts validated successfully as IPv4
                 return True
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             # Not a valid IPv4, check if hostname
             pass
     elif len(ipv4_parts) != 1 and ipv4_parts[1].isdigit():

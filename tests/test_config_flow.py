@@ -1489,6 +1489,7 @@ class TestSAXBatteryConfigFlowDeadCodeRemoval:
         assert result.get("step_id") == "battery_config"
 
 
+@pytest.mark.usefixtures("_mock_setup_integration")
 class TestSAXBatteryConfigFlowFullCoverage:
     """Tests to achieve 100% coverage of config_flow.py."""
 

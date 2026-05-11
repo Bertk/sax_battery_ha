@@ -254,7 +254,7 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
                 try:
                     int_value = int(normalized_value)
                     return self._evaluate_switch_state(int_value)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     # If not numeric, handle common boolean string representations
                     if normalized_value in ("true", "on", "yes"):
                         return True
@@ -336,7 +336,7 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
                     "standby": self._modbus_item.get_switch_standby_value(),
                 },
             }
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return {"raw_state_value": raw_value, "detailed_state": "unknown"}
 
     @property
@@ -411,7 +411,7 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
                     }
 
                     return state_icons.get(state_name, base_icon)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
         return base_icon

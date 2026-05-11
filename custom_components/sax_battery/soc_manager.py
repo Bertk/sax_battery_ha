@@ -283,7 +283,7 @@ class SOCManager:
                         self.coordinator.battery_id,
                     )
                     return False  # No write needed, enforcement already active
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 _LOGGER.warning(
                     "Could not parse current SAX_MAX_DISCHARGE value: %s",
                     current_state.state,

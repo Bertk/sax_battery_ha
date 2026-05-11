@@ -350,7 +350,7 @@ class SAXBatteryCalculatedSensor(
                 try:
                     total_soc += float(soc_value)
                     battery_count += 1
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     _LOGGER.debug(
                         "Invalid SOC value for battery %s: %s",
                         coordinator.battery_id,
@@ -387,7 +387,7 @@ class SAXBatteryCalculatedSensor(
 
             try:
                 power_w = float(power_value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 _LOGGER.debug(
                     "Invalid power value for battery %s: %s",
                     battery_id,
