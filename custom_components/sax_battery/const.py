@@ -28,6 +28,7 @@ from homeassistant.const import (
 )
 
 from .entity_keys import (
+    BMS_UNAVAILABILITY_RATE,
     COORDINATOR_CIRCUIT_BREAKER,
     COORDINATOR_CYCLE_TIME,
     COORDINATOR_ERROR_RATE,
@@ -573,6 +574,15 @@ DESCRIPTION_COORDINATOR_CIRCUIT_BREAKER = SensorEntityDescription(
     icon="mdi:power-plug-off-outline",
 )
 
+DESCRIPTION_BMS_UNAVAILABILITY_RATE = SensorEntityDescription(
+    key=BMS_UNAVAILABILITY_RATE,
+    name="BMS Unavailability Rate",
+    native_unit_of_measurement="unavailability/hr",
+    state_class=SensorStateClass.MEASUREMENT,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    icon="mdi:battery-alert-variant-outline",
+)
+
 # fmt: off
 
 ##############################################################################################################################
@@ -678,5 +688,6 @@ DIAGNOSTIC_ITEMS: list[SAXItem] = [
     SAXItem(name=COORDINATOR_CYCLE_TIME, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_CYCLE_TIME, translation_key="coordinator_cycle_time"),
     SAXItem(name=COORDINATOR_ERROR_RATE, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_ERROR_RATE, translation_key="coordinator_error_rate"),
     SAXItem(name=COORDINATOR_CIRCUIT_BREAKER, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_CIRCUIT_BREAKER, translation_key="coordinator_circuit_breaker"),
+    SAXItem(name=BMS_UNAVAILABILITY_RATE, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_BMS_UNAVAILABILITY_RATE, translation_key="bms_unavailability_rate"),
 ]
 # fmt: on

@@ -31,6 +31,7 @@ from .const import (
     SAX_COMBINED_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
+    SAX_STATUS,
 )
 from .coordinator_statistics import CoordinatorStatistics
 from .enums import DeviceConstants, TypeConstants
@@ -290,6 +291,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._circuit_breaker.record_cycle_time(cycle_duration)
             self._last_cycle_duration = cycle_duration
             self._total_updates += 1
+
+            # Track BMS unavailability: SAX_STATUS absent despite successful poll
+            # indicates a transient battery reset / modbus gap on that register
+            if SAX_STATUS not in data:
+                self._statistics.collect_bms_unavailability()
 
             # Invalidate statistics cache (lazy aggregation - Issue #43)
             self._statistics.mark_dirty()

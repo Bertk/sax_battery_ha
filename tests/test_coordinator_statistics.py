@@ -566,3 +566,130 @@ class TestCoordinatorStatistics:
 
         assert stats1 is stats2
         assert stats1["average"] == 0.0
+
+    # --- collect_bms_unavailability tests ---
+
+    def test_collect_bms_unavailability_appends_to_history(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that calling collect_bms_unavailability records an event."""
+        assert len(coordinator_stats._bms_unavailability_history) == 0
+
+        coordinator_stats.collect_bms_unavailability()
+
+        assert len(coordinator_stats._bms_unavailability_history) == 1
+
+    def test_collect_bms_unavailability_marks_dirty(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that recording unavailability increments the data generation."""
+        initial_gen = coordinator_stats._data_generation
+
+        coordinator_stats.collect_bms_unavailability()
+
+        assert coordinator_stats._data_generation == initial_gen + 1
+
+    def test_collect_bms_unavailability_explicit_timestamp(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that an explicit timestamp is stored correctly."""
+        ts = datetime(2026, 5, 10, 12, 0, 0)
+
+        coordinator_stats.collect_bms_unavailability(timestamp=ts)
+
+        assert coordinator_stats._bms_unavailability_history[0] == ts
+
+    # --- calculate_bms_unavailability_per_hour tests ---
+
+    def test_calculate_bms_unavailability_per_hour_empty(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test unavailability rate with no events."""
+        assert coordinator_stats.calculate_bms_unavailability_per_hour() == 0.0
+
+    def test_calculate_bms_unavailability_per_hour_recent_events(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that recent events within the 1-hour window are counted."""
+        now = datetime.now()
+        coordinator_stats._bms_unavailability_history.extend(
+            [
+                now - timedelta(minutes=10),
+                now - timedelta(minutes=20),
+                now - timedelta(minutes=45),
+            ]
+        )
+
+        result = coordinator_stats.calculate_bms_unavailability_per_hour()
+
+        assert result == 3.0
+
+    def test_calculate_bms_unavailability_per_hour_excludes_old(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that events older than 1 hour are not counted in the rate."""
+        now = datetime.now()
+        coordinator_stats._bms_unavailability_history.extend(
+            [
+                now - timedelta(minutes=30),  # Recent — counted
+                now - timedelta(minutes=90),  # Older than 1 hr — not counted
+            ]
+        )
+
+        result = coordinator_stats.calculate_bms_unavailability_per_hour()
+
+        assert result == 1.0
+
+    def test_calculate_bms_unavailability_per_hour_cleans_old_entries(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test that entries older than 2 hours are pruned from the deque."""
+        now = datetime.now()
+        coordinator_stats._bms_unavailability_history.extend(
+            [
+                now - timedelta(hours=3),  # Beyond 2-hour cutoff → pruned
+                now - timedelta(hours=3),  # Beyond 2-hour cutoff → pruned
+                now - timedelta(minutes=30),  # Recent → kept
+            ]
+        )
+
+        coordinator_stats.calculate_bms_unavailability_per_hour()
+
+        assert len(coordinator_stats._bms_unavailability_history) == 1
+
+    # --- cycle_time_statistics includes bms_unavailability_per_hour ---
+
+    def test_cycle_time_statistics_includes_bms_unavailability_empty(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test bms_unavailability_per_hour key present with 0 events."""
+        stats = coordinator_stats.cycle_time_statistics
+
+        assert "bms_unavailability_per_hour" in stats
+        assert stats["bms_unavailability_per_hour"] == 0.0
+
+    def test_cycle_time_statistics_includes_bms_unavailability_with_events(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """Test bms_unavailability_per_hour reflects recorded events."""
+        now = datetime.now()
+        coordinator_stats._bms_unavailability_history.extend(
+            [
+                now - timedelta(minutes=5),
+                now - timedelta(minutes=15),
+            ]
+        )
+        coordinator_stats.mark_dirty()  # Ensure cache is rebuilt
+
+        stats = coordinator_stats.cycle_time_statistics
+
+        assert stats["bms_unavailability_per_hour"] == 2.0

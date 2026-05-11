@@ -18,6 +18,7 @@ from .const import (
     ATTR_ATTRIBUTION,
     ATTRIBUTION,
     BATTERY_IDS,
+    BMS_UNAVAILABILITY_RATE,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     COORDINATOR_CIRCUIT_BREAKER,
@@ -559,6 +560,14 @@ class SAXBatteryCoordinatorCycleSensor(
             circuit_breaker_open = stats.get("circuit_breaker_open", 0.0)
             return "OPEN" if circuit_breaker_open else "CLOSED"
 
+        if self.entity_description.key == BMS_UNAVAILABILITY_RATE:
+            unavailability_per_hour = stats.get("bms_unavailability_per_hour", 0.0)
+            return (
+                float(unavailability_per_hour)
+                if unavailability_per_hour is not None
+                else 0.0
+            )
+
         return None
 
     @property
@@ -594,6 +603,14 @@ class SAXBatteryCoordinatorCycleSensor(
                 "consecutive_failures": self.coordinator._circuit_breaker.consecutive_failures,  # noqa: SLF001
                 "failure_threshold": CIRCUIT_BREAKER_FAILURE_THRESHOLD,
                 "cooldown_seconds": CIRCUIT_BREAKER_COOLDOWN_SECONDS,
+            }
+
+        if self.entity_description.key == BMS_UNAVAILABILITY_RATE:
+            return {
+                "total_unavailability_last_hour": int(
+                    stats.get("bms_unavailability_per_hour", 0)
+                ),
+                "last_error_time": stats.get("last_error_time"),
             }
 
         return {}

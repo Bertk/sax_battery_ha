@@ -14,6 +14,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    DESCRIPTION_BMS_UNAVAILABILITY_RATE,
     DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED,
     DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED,
@@ -28,7 +29,11 @@ from custom_components.sax_battery.const import (
     SAXDeviceInfo,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
-from custom_components.sax_battery.entity_keys import SAX_POWER, SAX_SOC
+from custom_components.sax_battery.entity_keys import (
+    BMS_UNAVAILABILITY_RATE,
+    SAX_POWER,
+    SAX_SOC,
+)
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.models import SAXBatteryData
@@ -1047,16 +1052,17 @@ class TestSensorPlatformSetup:
             )
 
         # Verify entities were created
-        # Expected: 1 modbus + 3 diagnostic (cycle_time, error_rate, circuit_breaker) + 1 calculated = 5 total
-        assert len(entities) == 5
+        # Expected: 1 modbus + 4 diagnostic (cycle_time, error_rate, circuit_breaker, bms_unavailability) + 1 calculated = 6 total
+        assert len(entities) == 6
 
         # Check entity types in correct order
-        # Order: [modbus_sensor, diag_cycle, diag_error, diag_circuit, calculated_sensor]
+        # Order: [modbus_sensor, diag_cycle, diag_error, diag_circuit, diag_bms_unavail, calculated_sensor]
         assert isinstance(entities[0], SAXBatteryModbusSensor)
         assert isinstance(entities[1], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[2], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[3], SAXBatteryCoordinatorCycleSensor)
-        assert isinstance(entities[4], SAXBatteryCalculatedSensor)
+        assert isinstance(entities[4], SAXBatteryCoordinatorCycleSensor)
+        assert isinstance(entities[5], SAXBatteryCalculatedSensor)
 
     async def test_async_setup_entry_mixed_item_types(
         self,
@@ -1170,8 +1176,8 @@ class TestSensorPlatformSetup:
             )
 
         # Verify sensor entities were created
-        # Expected: 1 modbus + 3 diagnostic + 1 calculated = 5 total
-        assert len(entities) == 5
+        # Expected: 1 modbus + 4 diagnostic + 1 calculated = 6 total
+        assert len(entities) == 6
 
         # Verify all entities are sensor types (no switches)
         assert all(
@@ -1185,3 +1191,68 @@ class TestSensorPlatformSetup:
             )
             for e in entities
         )
+
+
+class TestSAXBatteryCoordinatorCycleSensorBMSUnavailability:
+    """Test SAXBatteryCoordinatorCycleSensor dispatch for BMS_UNAVAILABILITY_RATE."""
+
+    def _make_sensor(self, stats: dict) -> SAXBatteryCoordinatorCycleSensor:
+        """Build a SAXBatteryCoordinatorCycleSensor for the BMS_UNAVAILABILITY_RATE key."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.cycle_time_statistics = stats
+        mock_coordinator.sax_data = MagicMock()
+        mock_coordinator.sax_data.get_device_info.return_value = {"name": "Test BMS"}
+
+        sax_item = SAXItem(
+            name=BMS_UNAVAILABILITY_RATE,
+            mtype=TypeConstants.SENSOR,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_BMS_UNAVAILABILITY_RATE,
+        )
+
+        return SAXBatteryCoordinatorCycleSensor(
+            coordinator=mock_coordinator,
+            sax_item=sax_item,
+        )
+
+    def test_native_value_returns_float(self) -> None:
+        """Test native_value returns float for BMS_UNAVAILABILITY_RATE."""
+        sensor = self._make_sensor({"bms_unavailability_per_hour": 3.0})
+
+        assert sensor.native_value == 3.0
+        assert isinstance(sensor.native_value, float)
+
+    def test_native_value_defaults_to_zero(self) -> None:
+        """Test native_value returns 0.0 when key missing from stats."""
+        sensor = self._make_sensor({})
+
+        assert sensor.native_value == 0.0
+
+    def test_native_value_handles_none(self) -> None:
+        """Test native_value converts None to 0.0."""
+        sensor = self._make_sensor({"bms_unavailability_per_hour": None})
+
+        assert sensor.native_value == 0.0
+
+    def test_extra_state_attributes_total_last_hour(self) -> None:
+        """Test extra_state_attributes returns total_unavailability_last_hour."""
+        sensor = self._make_sensor(
+            {
+                "bms_unavailability_per_hour": 5.0,
+                "last_error_time": "2026-05-10T12:00:00",
+            }
+        )
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["total_unavailability_last_hour"] == 5
+        assert attrs["last_error_time"] == "2026-05-10T12:00:00"
+
+    def test_extra_state_attributes_defaults(self) -> None:
+        """Test extra_state_attributes works with empty stats dict."""
+        sensor = self._make_sensor({})
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["total_unavailability_last_hour"] == 0
+        assert attrs["last_error_time"] is None

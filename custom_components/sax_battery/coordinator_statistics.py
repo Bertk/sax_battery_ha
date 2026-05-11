@@ -15,6 +15,7 @@ Security:
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, timedelta
 import logging
 from statistics import mean, stdev
@@ -67,6 +68,9 @@ class CoordinatorStatistics:
         self._data_generation: int = 0
         self._cache_generation: int = -1  # Force initial computation
         self._cached_stats: dict[str, Any] = {}
+
+        # BMS unavailability tracking: sliding-window deque (500 covers ~2h at 15s interval)
+        self._bms_unavailability_history: deque[datetime] = deque(maxlen=500)
 
     def mark_dirty(self) -> None:
         """Mark statistics cache as dirty, forcing recomputation on next access.
@@ -130,6 +134,49 @@ class CoordinatorStatistics:
             self._circuit_breaker.error_history.popleft()
 
         return float(recent_error_count)
+
+    def collect_bms_unavailability(self, timestamp: datetime | None = None) -> None:
+        """Record one BMS unavailability event (SAX_STATUS absent after a successful poll).
+
+        Args:
+            timestamp: When the unavailability was detected; defaults to now
+
+        Security:
+            OWASP A05: Tracks entity-level unavailability for anomaly detection
+        """
+        self._bms_unavailability_history.append(timestamp or datetime.now())
+        self._data_generation += 1  # Invalidate cache
+
+    def calculate_bms_unavailability_per_hour(self) -> float:
+        """Count BMS unavailability events in the last 60-minute rolling window.
+
+        Returns:
+            Number of unavailability events that occurred in the last hour
+
+        Performance:
+            Prunes entries older than 2 hours to prevent unbounded growth
+        Security:
+            OWASP A05: Time-windowed tracking prevents unbounded memory usage
+        """
+        if not self._bms_unavailability_history:
+            return 0.0
+
+        now = datetime.now()
+        one_hour_ago = now - timedelta(hours=1)
+
+        recent_count = sum(
+            1 for ts in self._bms_unavailability_history if ts >= one_hour_ago
+        )
+
+        # Prune entries older than 2 hours to keep memory bounded
+        cutoff_time = now - timedelta(hours=2)
+        while (
+            self._bms_unavailability_history
+            and self._bms_unavailability_history[0] < cutoff_time
+        ):
+            self._bms_unavailability_history.popleft()
+
+        return float(recent_count)
 
     def log_cycle_statistics(self) -> None:
         """Log coordinator cycle time statistics.
@@ -294,6 +341,7 @@ class CoordinatorStatistics:
                 "stddev": 0.0,
                 "last": 0.0,
                 "errors_per_hour": self.calculate_errors_per_hour(),
+                "bms_unavailability_per_hour": self.calculate_bms_unavailability_per_hour(),
                 "circuit_breaker_open": 0.0,
                 "modbus_errors": error_counts.get("modbus", 0),
                 "network_errors": error_counts.get("network", 0),
@@ -317,6 +365,7 @@ class CoordinatorStatistics:
                 ),
                 "last": self._last_cycle_duration_fn() or 0.0,
                 "errors_per_hour": self.calculate_errors_per_hour(),
+                "bms_unavailability_per_hour": self.calculate_bms_unavailability_per_hour(),
                 "circuit_breaker_open": (1.0 if self._circuit_breaker.is_open else 0.0),
                 "modbus_errors": error_counts.get("modbus", 0),
                 "network_errors": error_counts.get("network", 0),
