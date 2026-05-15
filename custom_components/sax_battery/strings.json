@@ -237,6 +237,21 @@
             },
             "sm_voltage_l3": {
                 "name": "Voltage L3"
+            },
+            "coordinator_cycle_time": {
+                "name": "Coordinator Cycle Time"
+            },
+            "coordinator_error_rate": {
+                "name": "Coordinator Error Rate"
+            },
+            "coordinator_circuit_breaker": {
+                "name": "Circuit Breaker"
+            },
+            "bms_unavailability_rate": {
+                "name": "BMS Unavailability Rate"
+            },
+            "txid_error_rate": {
+                "name": "Transaction ID Error Rate"
             }
         },
         "switch": {
