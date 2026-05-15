@@ -14,6 +14,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import txid_error_tracker
 from .const import (
     ATTR_ATTRIBUTION,
     ATTRIBUTION,
@@ -30,6 +31,7 @@ from .const import (
     SAX_CUMULATIVE_ENERGY_CONSUMED,
     SAX_CUMULATIVE_ENERGY_PRODUCED,
     SAX_SOC,
+    TXID_ERROR_RATE,
 )
 from .coordinator import (
     CIRCUIT_BREAKER_COOLDOWN_SECONDS,
@@ -568,6 +570,10 @@ class SAXBatteryCoordinatorCycleSensor(
                 else 0.0
             )
 
+        if self.entity_description.key == TXID_ERROR_RATE:
+            txid_errors = stats.get("txid_errors_per_hour", 0.0)
+            return float(txid_errors) if txid_errors is not None else 0.0
+
         return None
 
     @property
@@ -611,6 +617,12 @@ class SAXBatteryCoordinatorCycleSensor(
                     stats.get("bms_unavailability_per_hour", 0)
                 ),
                 "last_error_time": stats.get("last_error_time"),
+            }
+
+        if self.entity_description.key == TXID_ERROR_RATE:
+            return {
+                "total_errors_last_hour": int(stats.get("txid_errors_per_hour", 0)),
+                "total_errors_since_startup": txid_error_tracker.get_total_errors(),
             }
 
         return {}

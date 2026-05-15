@@ -31,6 +31,7 @@ from .const import (
     SAX_COMBINED_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
+    SAX_SOC,
     SAX_STATUS,
 )
 from .coordinator_statistics import CoordinatorStatistics
@@ -624,10 +625,30 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ):
                         sax_item.set_coordinators(self.sax_data.coordinators)
 
-                    # Security: Safe dictionary access with None check
-                    value = self.data.get(sax_item.name)
-                    if value is not None:
-                        calculated_values[sax_item.name] = value
+                    if sax_item.name == SAX_COMBINED_SOC:
+                        # Compute average SOC across all battery coordinators.
+                        # Use fresh data for the current battery; last known
+                        # data for other batteries polled on their own interval.
+                        soc_values = []
+                        for battery_id, coord in self.sax_data.coordinators.items():
+                            coord_data = (
+                                data
+                                if battery_id == self.battery_id
+                                else (coord.data or {})
+                            )
+                            soc = coord_data.get(SAX_SOC)
+                            if soc is not None:
+                                soc_values.append(float(soc))
+                        if soc_values:
+                            calculated_values[SAX_COMBINED_SOC] = round(
+                                sum(soc_values) / len(soc_values), 1
+                            )
+                    else:
+                        # Passthrough: preserve other calculated values
+                        # (e.g. cumulative energy managed by sensor entity)
+                        value = self.data.get(sax_item.name)
+                        if value is not None:
+                            calculated_values[sax_item.name] = value
 
                 except (ValueError, TypeError, ZeroDivisionError) as err:
                     _LOGGER.warning("Failed to calculate %s: %s", sax_item.name, err)

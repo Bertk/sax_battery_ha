@@ -21,6 +21,7 @@ from custom_components.sax_battery.const import (
     DESCRIPTION_SAX_POWER,
     DESCRIPTION_SAX_SOC,
     DESCRIPTION_SAX_TEMPERATURE,
+    DESCRIPTION_TXID_ERROR_RATE,
     DOMAIN,
     SAX_COMBINED_SOC,
     SAX_CUMULATIVE_ENERGY_CONSUMED,
@@ -33,6 +34,7 @@ from custom_components.sax_battery.entity_keys import (
     BMS_UNAVAILABILITY_RATE,
     SAX_POWER,
     SAX_SOC,
+    TXID_ERROR_RATE,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
@@ -1052,17 +1054,18 @@ class TestSensorPlatformSetup:
             )
 
         # Verify entities were created
-        # Expected: 1 modbus + 4 diagnostic (cycle_time, error_rate, circuit_breaker, bms_unavailability) + 1 calculated = 6 total
-        assert len(entities) == 6
+        # Expected: 1 modbus + 5 diagnostic (cycle_time, error_rate, circuit_breaker, bms_unavailability, txid_error_rate) + 1 calculated = 7 total
+        assert len(entities) == 7
 
         # Check entity types in correct order
-        # Order: [modbus_sensor, diag_cycle, diag_error, diag_circuit, diag_bms_unavail, calculated_sensor]
+        # Order: [modbus_sensor, diag_cycle, diag_error, diag_circuit, diag_bms_unavail, diag_txid, calculated_sensor]
         assert isinstance(entities[0], SAXBatteryModbusSensor)
         assert isinstance(entities[1], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[2], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[3], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[4], SAXBatteryCoordinatorCycleSensor)
-        assert isinstance(entities[5], SAXBatteryCalculatedSensor)
+        assert isinstance(entities[5], SAXBatteryCoordinatorCycleSensor)
+        assert isinstance(entities[6], SAXBatteryCalculatedSensor)
 
     async def test_async_setup_entry_mixed_item_types(
         self,
@@ -1176,8 +1179,8 @@ class TestSensorPlatformSetup:
             )
 
         # Verify sensor entities were created
-        # Expected: 1 modbus + 4 diagnostic + 1 calculated = 6 total
-        assert len(entities) == 6
+        # Expected: 1 modbus + 5 diagnostic + 1 calculated = 7 total
+        assert len(entities) == 7
 
         # Verify all entities are sensor types (no switches)
         assert all(
@@ -1256,3 +1259,71 @@ class TestSAXBatteryCoordinatorCycleSensorBMSUnavailability:
 
         assert attrs["total_unavailability_last_hour"] == 0
         assert attrs["last_error_time"] is None
+
+
+class TestSAXBatteryCoordinatorCycleSensorTxidErrorRate:
+    """Test SAXBatteryCoordinatorCycleSensor dispatch for TXID_ERROR_RATE."""
+
+    def _make_sensor(self, stats: dict) -> SAXBatteryCoordinatorCycleSensor:
+        """Build a SAXBatteryCoordinatorCycleSensor for the TXID_ERROR_RATE key."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.cycle_time_statistics = stats
+        mock_coordinator.sax_data = MagicMock()
+        mock_coordinator.sax_data.get_device_info.return_value = {"name": "Test BMS"}
+
+        sax_item = SAXItem(
+            name=TXID_ERROR_RATE,
+            mtype=TypeConstants.SENSOR,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_TXID_ERROR_RATE,
+        )
+
+        return SAXBatteryCoordinatorCycleSensor(
+            coordinator=mock_coordinator,
+            sax_item=sax_item,
+        )
+
+    def test_native_value_returns_float(self) -> None:
+        """Test native_value returns float for TXID_ERROR_RATE."""
+        sensor = self._make_sensor({"txid_errors_per_hour": 7.0})
+
+        assert sensor.native_value == 7.0
+        assert isinstance(sensor.native_value, float)
+
+    def test_native_value_defaults_to_zero(self) -> None:
+        """Test native_value returns 0.0 when key missing from stats."""
+        sensor = self._make_sensor({})
+
+        assert sensor.native_value == 0.0
+
+    def test_native_value_handles_none(self) -> None:
+        """Test native_value converts None to 0.0."""
+        sensor = self._make_sensor({"txid_errors_per_hour": None})
+
+        assert sensor.native_value == 0.0
+
+    def test_extra_state_attributes_total_last_hour(self) -> None:
+        """Test extra_state_attributes returns total_errors_last_hour."""
+        sensor = self._make_sensor({"txid_errors_per_hour": 12.0})
+
+        with patch(
+            "custom_components.sax_battery.txid_error_tracker.get_total_errors",
+            return_value=500,
+        ):
+            attrs = sensor.extra_state_attributes
+
+        assert attrs["total_errors_last_hour"] == 12
+        assert attrs["total_errors_since_startup"] == 500
+
+    def test_extra_state_attributes_defaults(self) -> None:
+        """Test extra_state_attributes works with empty stats dict."""
+        sensor = self._make_sensor({})
+
+        with patch(
+            "custom_components.sax_battery.txid_error_tracker.get_total_errors",
+            return_value=0,
+        ):
+            attrs = sensor.extra_state_attributes
+
+        assert attrs["total_errors_last_hour"] == 0
+        assert attrs["total_errors_since_startup"] == 0

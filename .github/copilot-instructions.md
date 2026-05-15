@@ -148,9 +148,10 @@ HA Restart
 
 ### Language Requirements
 
-- **Python 3.13+** compatibility required
+- **Python 3.14+** compatibility required
 - Use modern language features: Pattern matching, type hints, f-strings, dataclasses, walrus operator
 - **Tools**: Ruff (formatting/linting), PyLint, MyPy (type checking), pytest (testing)
+- use existing venv for tools execution (source "$VIRTUAL_ENV/bin/activate")
 
 ### Linting Rules (pyproject.toml compliance)
 
@@ -595,6 +596,7 @@ def available(self) -> bool:
   - Mock all external dependencies
   - Use snapshots for complex data structures
   - Follow existing test patterns
+  - use existing venv for test execution (source "$VIRTUAL_ENV/bin/activate")
 
 ### Config Flow Testing
 - **100% Coverage Required**: All config flow paths must be tested (see [Full test coverage for the config flow](https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/config-flow-test-coverage/))

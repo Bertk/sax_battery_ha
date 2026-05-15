@@ -75,6 +75,7 @@ from .entity_keys import (
     SAX_VOLTAGE_L1,
     SAX_VOLTAGE_L2,
     SAX_VOLTAGE_L3,
+    TXID_ERROR_RATE,
 )
 from .enums import DeviceConstants, TypeConstants
 from .items import ModbusItem, SAXItem
@@ -583,6 +584,15 @@ DESCRIPTION_BMS_UNAVAILABILITY_RATE = SensorEntityDescription(
     icon="mdi:battery-alert-variant-outline",
 )
 
+DESCRIPTION_TXID_ERROR_RATE = SensorEntityDescription(
+    key=TXID_ERROR_RATE,
+    name="Transaction ID Error Rate",
+    native_unit_of_measurement="errors/hr",
+    state_class=SensorStateClass.MEASUREMENT,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    icon="mdi:swap-horizontal-bold",
+)
+
 # fmt: off
 
 ##############################################################################################################################
@@ -689,5 +699,6 @@ DIAGNOSTIC_ITEMS: list[SAXItem] = [
     SAXItem(name=COORDINATOR_ERROR_RATE, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_ERROR_RATE, translation_key="coordinator_error_rate"),
     SAXItem(name=COORDINATOR_CIRCUIT_BREAKER, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_COORDINATOR_CIRCUIT_BREAKER, translation_key="coordinator_circuit_breaker"),
     SAXItem(name=BMS_UNAVAILABILITY_RATE, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_BMS_UNAVAILABILITY_RATE, translation_key="bms_unavailability_rate"),
+    SAXItem(name=TXID_ERROR_RATE, mtype=TypeConstants.SENSOR, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_TXID_ERROR_RATE, translation_key="txid_error_rate"),
 ]
 # fmt: on

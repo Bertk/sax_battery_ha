@@ -37,6 +37,7 @@ from .coordinator import SAXBatteryCoordinator
 from .modbusobject import ModbusAPI
 from .models import SAXBatteryData
 from .power_manager import PowerManager
+from .txid_error_tracker import setup_handler as _setup_txid_handler
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +53,9 @@ type SAXBatteryConfigEntry = ConfigEntry[dict[str, SAXBatteryCoordinator]]
 async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -> bool:
     """Set up SAX Battery from a config entry with multi-battery support."""
     try:
+        # Attach pymodbus transaction-ID error handler (process-wide, idempotent)
+        _setup_txid_handler()
+
         # Initialize SAX Battery Data
         sax_data = SAXBatteryData(hass, entry)
 

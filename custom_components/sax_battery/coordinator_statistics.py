@@ -21,6 +21,8 @@ import logging
 from statistics import mean, stdev
 from typing import TYPE_CHECKING, Any
 
+from . import txid_error_tracker
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -146,6 +148,21 @@ class CoordinatorStatistics:
         """
         self._bms_unavailability_history.append(timestamp or datetime.now())
         self._data_generation += 1  # Invalidate cache
+
+    def calculate_txid_errors_per_hour(self) -> float:
+        """Return the transaction-ID error rate from the process-wide handler.
+
+        Delegates to txid_error_tracker.get_errors_per_hour() which reads from
+        the logging handler attached to the pymodbus logger.
+
+        Returns:
+            Number of transaction-ID mismatch errors in the last hour.
+            Returns 0.0 when the handler is not set up (e.g., in unit tests).
+
+        Security:
+            OWASP A05: Exposes firmware anomaly rate for monitoring
+        """
+        return txid_error_tracker.get_errors_per_hour()
 
     def calculate_bms_unavailability_per_hour(self) -> float:
         """Count BMS unavailability events in the last 60-minute rolling window.
@@ -342,6 +359,7 @@ class CoordinatorStatistics:
                 "last": 0.0,
                 "errors_per_hour": self.calculate_errors_per_hour(),
                 "bms_unavailability_per_hour": self.calculate_bms_unavailability_per_hour(),
+                "txid_errors_per_hour": self.calculate_txid_errors_per_hour(),
                 "circuit_breaker_open": 0.0,
                 "modbus_errors": error_counts.get("modbus", 0),
                 "network_errors": error_counts.get("network", 0),
@@ -366,6 +384,7 @@ class CoordinatorStatistics:
                 "last": self._last_cycle_duration_fn() or 0.0,
                 "errors_per_hour": self.calculate_errors_per_hour(),
                 "bms_unavailability_per_hour": self.calculate_bms_unavailability_per_hour(),
+                "txid_errors_per_hour": self.calculate_txid_errors_per_hour(),
                 "circuit_breaker_open": (1.0 if self._circuit_breaker.is_open else 0.0),
                 "modbus_errors": error_counts.get("modbus", 0),
                 "network_errors": error_counts.get("network", 0),

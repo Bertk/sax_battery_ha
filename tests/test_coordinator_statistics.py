@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timedelta
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -693,3 +693,47 @@ class TestCoordinatorStatistics:
         stats = coordinator_stats.cycle_time_statistics
 
         assert stats["bms_unavailability_per_hour"] == 2.0
+
+    # --- txid_errors_per_hour tests ---
+
+    def test_txid_errors_per_hour_key_present_empty(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """txid_errors_per_hour key present even when handler not set up."""
+        stats = coordinator_stats.cycle_time_statistics
+
+        assert "txid_errors_per_hour" in stats
+        assert stats["txid_errors_per_hour"] == 0.0
+
+    def test_calculate_txid_errors_per_hour_delegates_to_tracker(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+    ) -> None:
+        """calculate_txid_errors_per_hour() returns value from txid_error_tracker."""
+        with patch(
+            "custom_components.sax_battery.coordinator_statistics"
+            ".txid_error_tracker.get_errors_per_hour",
+            return_value=42.0,
+        ):
+            result = coordinator_stats.calculate_txid_errors_per_hour()
+
+        assert result == 42.0
+
+    def test_txid_errors_per_hour_in_statistics_dict(
+        self,
+        coordinator_stats: CoordinatorStatistics,
+        mock_circuit_breaker_stats: MagicMock,
+    ) -> None:
+        """txid_errors_per_hour is included in cycle_time_statistics dict."""
+        mock_circuit_breaker_stats.cycle_times.extend([1.0, 2.0])
+
+        with patch(
+            "custom_components.sax_battery.coordinator_statistics"
+            ".txid_error_tracker.get_errors_per_hour",
+            return_value=15.0,
+        ):
+            coordinator_stats.mark_dirty()
+            stats = coordinator_stats.cycle_time_statistics
+
+        assert stats["txid_errors_per_hour"] == 15.0
