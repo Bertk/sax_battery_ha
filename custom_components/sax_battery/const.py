@@ -38,8 +38,8 @@ from .entity_keys import (
     SAX_CHARGE_FROM_GRID_SWITCH,
     SAX_CHARGE_FROM_PV_SWITCH,
     SAX_COMBINED_SOC,
-    SAX_CUMULATIVE_ENERGY_CONSUMED,
-    SAX_CUMULATIVE_ENERGY_PRODUCED,
+    SAX_CUMULATIVE_ENERGY_CHARGED,
+    SAX_CUMULATIVE_ENERGY_DISCHARGED,
     SAX_CURRENT_L1,
     SAX_CURRENT_L2,
     SAX_CURRENT_L3,
@@ -530,17 +530,17 @@ DESCRIPTION_SAX_COMBINED_SOC = SensorEntityDescription(
     suggested_display_precision=0,
 )
 
-DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED = SensorEntityDescription(
-    key=SAX_CUMULATIVE_ENERGY_PRODUCED,
-    name="Sax Cumulative Energy Produced",
+DESCRIPTION_SAX_CUMULATIVE_ENERGY_DISCHARGED = SensorEntityDescription(
+    key=SAX_CUMULATIVE_ENERGY_DISCHARGED,
+    name="Sax Cumulative Energy Discharged",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL_INCREASING,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
-DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED = SensorEntityDescription(
-    key=SAX_CUMULATIVE_ENERGY_CONSUMED,
-    name="Sax Cumulative Energy Consumed",
+DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED = SensorEntityDescription(
+    key=SAX_CUMULATIVE_ENERGY_CHARGED,
+    name="Sax Cumulative Energy Charged",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL_INCREASING,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
@@ -681,8 +681,8 @@ MODBUS_BATTERY_SMARTMETER_ITEMS: list[ModbusItem] = [
 ]
 # Aggregated items - calculated values (e.g., combined power) from all available batteries
 AGGREGATED_ITEMS: list[SAXItem] = [
-    SAXItem(name=SAX_CUMULATIVE_ENERGY_PRODUCED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_PRODUCED, translation_key="bms_cumulative_energy_produced"),
-    SAXItem(name=SAX_CUMULATIVE_ENERGY_CONSUMED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CONSUMED, translation_key="bms_cumulative_energy_consumed"),
+    SAXItem(name=SAX_CUMULATIVE_ENERGY_DISCHARGED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_DISCHARGED, translation_key="bms_cumulative_energy_discharged"),
+    SAXItem(name=SAX_CUMULATIVE_ENERGY_CHARGED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED, translation_key="bms_cumulative_energy_charged"),
     SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, translation_key="bms_combined_soc"),
 ]
 # Pilot items - switches for grid charing control and PV charging

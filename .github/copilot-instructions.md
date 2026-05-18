@@ -150,6 +150,7 @@ HA Restart
 
 - **Python 3.14+** compatibility required
 - Use modern language features: Pattern matching, type hints, f-strings, dataclasses, walrus operator
+- **[PEP 758](https://peps.python.org/pep-0758/) bracketless except**: `except ValueError, TypeError:` is valid Python 3.14 syntax catching both exceptions. Ruff (`required-version = ">=0.15.12"`) enforces this — do **not** add brackets when there is no `as` clause. Brackets are still required when binding the exception: `except (ValueError, TypeError) as err:`.
 - **Tools**: Ruff (formatting/linting), PyLint, MyPy (type checking), pytest (testing)
 - use existing venv for tools execution (source "$VIRTUAL_ENV/bin/activate")
 

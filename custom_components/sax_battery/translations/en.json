@@ -163,11 +163,11 @@
             "bms_combined_soc": {
                 "name": "Combined SOC"
             },
-            "bms_cumulative_energy_consumed": {
-                "name": "Cumulative Energy Consumed"
+            "bms_cumulative_energy_charged": {
+                "name": "Cumulative Energy Charged"
             },
-            "bms_cumulative_energy_produced": {
-                "name": "Cumulative Energy Produced"
+            "bms_cumulative_energy_discharged": {
+                "name": "Cumulative Energy Discharged"
             },
             "bms_current_l1": {
                 "name": "Current L1"

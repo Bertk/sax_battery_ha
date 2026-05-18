@@ -46,8 +46,8 @@ SAX_SMARTMETER_VOLTAGE_L3 = "voltage_l3_sm"
 SAX_SMARTMETER_TOTAL_POWER = "total_power_sm"
 
 # Cumulative energy statistics (multiple batteries)
-SAX_CUMULATIVE_ENERGY_PRODUCED = "sax_cumulative_energy_produced"
-SAX_CUMULATIVE_ENERGY_CONSUMED = "sax_cumulative_energy_consumed"
+SAX_CUMULATIVE_ENERGY_DISCHARGED = "sax_cumulative_energy_discharged"
+SAX_CUMULATIVE_ENERGY_CHARGED = "sax_cumulative_energy_charged"
 SAX_COMBINED_SOC = "sax_combined_soc"
 
 # Power control entities

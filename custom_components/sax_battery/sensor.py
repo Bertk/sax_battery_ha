@@ -28,8 +28,8 @@ from .const import (
     DIAGNOSTIC_ITEMS,
     DOMAIN,
     SAX_COMBINED_SOC,
-    SAX_CUMULATIVE_ENERGY_CONSUMED,
-    SAX_CUMULATIVE_ENERGY_PRODUCED,
+    SAX_CUMULATIVE_ENERGY_CHARGED,
+    SAX_CUMULATIVE_ENERGY_DISCHARGED,
     SAX_SOC,
     TXID_ERROR_RATE,
 )
@@ -301,12 +301,12 @@ class SAXBatteryCalculatedSensor(
             self._attr_name = self.entity_description.name.removeprefix("Sax ")
 
         # Per-battery energy integrators for trapezoidal integration
-        # Positive power (discharging) -> energy produced
-        # Negative power (charging) -> energy consumed (absolute value)
-        self._produced_integrators: dict[str, EnergyIntegrator] = {
+        # Positive SAX_POWER = charging -> energy charged into battery
+        # Negative SAX_POWER = discharging -> energy discharged from battery (absolute value)
+        self._discharged_integrators: dict[str, EnergyIntegrator] = {
             battery_id: EnergyIntegrator() for battery_id in coordinators
         }
-        self._consumed_integrators: dict[str, EnergyIntegrator] = {
+        self._charged_integrators: dict[str, EnergyIntegrator] = {
             battery_id: EnergyIntegrator() for battery_id in coordinators
         }
 
@@ -328,13 +328,13 @@ class SAXBatteryCalculatedSensor(
         if self._sax_item.name == SAX_COMBINED_SOC:
             return self._calculate_combined_soc()
         if self._sax_item.name in (
-            SAX_CUMULATIVE_ENERGY_PRODUCED,
-            SAX_CUMULATIVE_ENERGY_CONSUMED,
+            SAX_CUMULATIVE_ENERGY_DISCHARGED,
+            SAX_CUMULATIVE_ENERGY_CHARGED,
         ):
             self._integrate_all_batteries()
-            if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
-                return self._get_total_produced()
-            return self._get_total_consumed()
+            if self._sax_item.name == SAX_CUMULATIVE_ENERGY_DISCHARGED:
+                return self._get_total_discharged()
+            return self._get_total_charged()
 
         _LOGGER.warning("Unknown calculation type for sensor: %s", self._sax_item.name)
         return None
@@ -369,8 +369,8 @@ class SAXBatteryCalculatedSensor(
         """Feed current power readings from all batteries into integrators.
 
         For each battery, reads SAX_POWER (signed watts):
-        - Positive power = discharging → energy produced
-        - Negative power = charging → energy consumed (absolute value)
+        - Positive SAX_POWER = charging -> energy charged into battery
+        - Negative SAX_POWER = discharging -> energy discharged from battery (absolute value)
 
         Uses trapezoidal integration for high-resolution energy tracking,
         matching the accuracy of HA's built-in Riemann sum integration.
@@ -398,30 +398,30 @@ class SAXBatteryCalculatedSensor(
                 )
                 continue
 
-            # Positive power = discharging = energy produced
-            produced_power = max(power_w, 0.0)
-            self._produced_integrators[battery_id].add_sample(produced_power, now)
+            # Positive SAX_POWER = charging = energy charged into battery
+            charged_power = max(power_w, 0.0)
+            self._charged_integrators[battery_id].add_sample(charged_power, now)
 
-            # Negative power = charging = energy consumed (take abs)
-            consumed_power = abs(min(power_w, 0.0))
-            self._consumed_integrators[battery_id].add_sample(consumed_power, now)
+            # Negative SAX_POWER = discharging = energy discharged from battery (take abs)
+            discharged_power = abs(min(power_w, 0.0))
+            self._discharged_integrators[battery_id].add_sample(discharged_power, now)
 
-    def _get_total_produced(self) -> float:
-        """Return total energy produced across all batteries in Wh."""
+    def _get_total_discharged(self) -> float:
+        """Return total energy discharged from all batteries in Wh."""
         return round(
             sum(
                 integrator.accumulated_wh
-                for integrator in self._produced_integrators.values()
+                for integrator in self._discharged_integrators.values()
             ),
             2,
         )
 
-    def _get_total_consumed(self) -> float:
-        """Return total energy consumed across all batteries in Wh."""
+    def _get_total_charged(self) -> float:
+        """Return total energy charged into all batteries in Wh."""
         return round(
             sum(
                 integrator.accumulated_wh
-                for integrator in self._consumed_integrators.values()
+                for integrator in self._charged_integrators.values()
             ),
             2,
         )
@@ -436,8 +436,8 @@ class SAXBatteryCalculatedSensor(
 
         # Restore previous state for TOTAL_INCREASING sensors
         if self._sax_item.name in (
-            SAX_CUMULATIVE_ENERGY_PRODUCED,
-            SAX_CUMULATIVE_ENERGY_CONSUMED,
+            SAX_CUMULATIVE_ENERGY_DISCHARGED,
+            SAX_CUMULATIVE_ENERGY_CHARGED,
         ):
             await self._restore_cumulative_state()
 
@@ -462,10 +462,10 @@ class SAXBatteryCalculatedSensor(
         try:
             restored_value = float(last_state.state)
 
-            if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
-                integrators = self._produced_integrators
-            elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
-                integrators = self._consumed_integrators
+            if self._sax_item.name == SAX_CUMULATIVE_ENERGY_DISCHARGED:
+                integrators = self._discharged_integrators
+            elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CHARGED:
+                integrators = self._charged_integrators
             else:
                 return
 
@@ -499,15 +499,15 @@ class SAXBatteryCalculatedSensor(
         attrs: dict[str, Any] = {ATTR_ATTRIBUTION: ATTRIBUTION}
 
         # Add per-battery breakdown for energy sensors
-        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_PRODUCED:
+        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_DISCHARGED:
             attrs["per_battery"] = {
                 bid: integrator.accumulated_wh
-                for bid, integrator in self._produced_integrators.items()
+                for bid, integrator in self._discharged_integrators.items()
             }
-        elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CONSUMED:
+        elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CHARGED:
             attrs["per_battery"] = {
                 bid: integrator.accumulated_wh
-                for bid, integrator in self._consumed_integrators.items()
+                for bid, integrator in self._charged_integrators.items()
             }
 
         return attrs
