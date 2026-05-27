@@ -369,8 +369,8 @@ class SAXBatteryCalculatedSensor(
         """Feed current power readings from all batteries into integrators.
 
         For each battery, reads SAX_POWER (signed watts):
-        - Positive SAX_POWER = charging -> energy charged into battery
-        - Negative SAX_POWER = discharging -> energy discharged from battery (absolute value)
+        - Positive SAX_POWER = discharging -> energy discharged from battery
+        - Negative SAX_POWER = charging -> energy charged into battery (absolute value)
 
         Uses trapezoidal integration for high-resolution energy tracking,
         matching the accuracy of HA's built-in Riemann sum integration.
@@ -398,13 +398,13 @@ class SAXBatteryCalculatedSensor(
                 )
                 continue
 
-            # Positive SAX_POWER = charging = energy charged into battery
-            charged_power = max(power_w, 0.0)
-            self._charged_integrators[battery_id].add_sample(charged_power, now)
-
-            # Negative SAX_POWER = discharging = energy discharged from battery (take abs)
-            discharged_power = abs(min(power_w, 0.0))
+            # Positive SAX_POWER = discharging = energy discharged from battery
+            discharged_power = max(power_w, 0.0)
             self._discharged_integrators[battery_id].add_sample(discharged_power, now)
+
+            # Negative SAX_POWER = charging = energy charged into battery (take abs)
+            charged_power = abs(min(power_w, 0.0))
+            self._charged_integrators[battery_id].add_sample(charged_power, now)
 
     def _get_total_discharged(self) -> float:
         """Return total energy discharged from all batteries in Wh."""

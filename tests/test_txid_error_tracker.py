@@ -9,6 +9,7 @@ Security:
 
 from __future__ import annotations
 
+import collections.abc
 from datetime import datetime, timedelta
 import logging
 
@@ -24,7 +25,7 @@ from custom_components.sax_battery.txid_error_tracker import (
 
 
 @pytest.fixture(autouse=True)
-def reset_singleton() -> None:
+def reset_singleton() -> collections.abc.Generator:
     """Reset module-level singleton before each test to avoid cross-test pollution."""
     tracker_module._handler = None
     pymodbus_logger = logging.getLogger("pymodbus")
