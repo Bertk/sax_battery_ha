@@ -1876,3 +1876,180 @@ class TestSAXBatteryPeriodEnergySensor:
         result = sensor._resolve_source_entity_id()
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Tests for async_reset_period and async_reset_energy
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncResetPeriod:
+    """Tests for SAXBatteryPeriodEnergySensor.async_reset_period."""
+
+    def _make_sensor(self) -> SAXBatteryPeriodEnergySensor:
+        """Build a period sensor for reset tests."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.battery_id = "battery_a"
+        mock_coordinator.hass = MagicMock()
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item.return_value = (
+            "sax_energy_discharged_daily"
+        )
+        mock_sax_data.get_device_info.return_value = MagicMock()
+        mock_coordinator.sax_data = mock_sax_data
+
+        sax_item = SAXItem(
+            name="sax_energy_discharged_daily",
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_ENERGY_DISCHARGED_DAILY,
+        )
+        source_item = SAXItem(
+            name=SAX_CUMULATIVE_ENERGY_DISCHARGED,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+        )
+        return SAXBatteryPeriodEnergySensor(
+            coordinator=mock_coordinator,
+            sax_item=sax_item,
+            source_item=source_item,
+            period="daily",
+        )
+
+    async def test_reset_period_clears_state(self) -> None:
+        """Test async_reset_period resets all tracking state to zero."""
+        sensor = self._make_sensor()
+        sensor._initialized = True
+        sensor._period_start_wh = 1234.5
+        sensor._current_period_wh = 567.8
+        sensor._pending_reset = True
+
+        fixed_now = datetime(2024, 6, 16, 10, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state") as mock_write:  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor.async_reset_period()
+
+        assert sensor._initialized is False
+        assert sensor._period_start_wh == 0.0
+        assert sensor._current_period_wh == 0.0
+        assert sensor._pending_reset is False
+        assert sensor._last_reset == fixed_now
+        mock_write.assert_called_once()
+
+    async def test_reset_period_triggers_rebaseline_on_next_update(self) -> None:
+        """Test that after reset, first source update re-baselines instead of accumulating."""
+        sensor = self._make_sensor()
+        sensor._initialized = True
+        sensor._period_start_wh = 500.0
+        sensor._current_period_wh = 200.0
+
+        fixed_now = datetime(2024, 6, 16, 10, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state"):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor.async_reset_period()
+
+        # After reset, _initialized is False — next source update should capture baseline
+        assert sensor._initialized is False
+
+        # Simulate source update with a large cumulative value
+        state_mock = MagicMock()
+        state_mock.state = "9999.0"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state"):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                sensor._handle_source_update(event)
+
+        # Baseline captured; period value should be 0 not 9999
+        assert sensor._initialized is True
+        assert sensor._period_start_wh == 9999.0
+        assert sensor._current_period_wh == 0.0
+
+
+class TestAsyncResetEnergy:
+    """Tests for SAXBatteryCalculatedSensor.async_reset_energy."""
+
+    def _create_cumulative_sensor(self, sensor_name: str) -> SAXBatteryCalculatedSensor:
+        """Build a cumulative energy sensor for reset tests."""
+        descriptions = {
+            SAX_CUMULATIVE_ENERGY_DISCHARGED: DESCRIPTION_SAX_CUMULATIVE_ENERGY_DISCHARGED,
+            SAX_CUMULATIVE_ENERGY_CHARGED: DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED,
+        }
+        mock_coord_a = create_mock_coordinator({})
+        mock_coord_b = create_mock_coordinator({})
+        coordinators: dict[str, Any] = {
+            "battery_a": mock_coord_a,
+            "battery_b": mock_coord_b,
+        }
+        sax_item = SAXItem(
+            name=sensor_name,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=descriptions[sensor_name],
+        )
+        coordinator = next(iter(coordinators.values()))
+        return SAXBatteryCalculatedSensor(
+            coordinator=coordinator,
+            sax_item=sax_item,
+            coordinators=coordinators,
+        )
+
+    async def test_reset_energy_discharged_clears_integrators(self) -> None:
+        """Test async_reset_energy zeroes all discharged integrators."""
+        sensor = self._create_cumulative_sensor(SAX_CUMULATIVE_ENERGY_DISCHARGED)
+
+        # Give the integrators some accumulated state
+        for integrator in sensor._discharged_integrators.values():
+            integrator._accumulated_wh = 500.0
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            await sensor.async_reset_energy()
+
+        for integrator in sensor._discharged_integrators.values():
+            assert integrator.accumulated_wh == 0.0
+        mock_write.assert_called_once()
+
+    async def test_reset_energy_charged_clears_integrators(self) -> None:
+        """Test async_reset_energy zeroes all charged integrators."""
+        sensor = self._create_cumulative_sensor(SAX_CUMULATIVE_ENERGY_CHARGED)
+
+        for integrator in sensor._charged_integrators.values():
+            integrator._accumulated_wh = 750.0
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            await sensor.async_reset_energy()
+
+        for integrator in sensor._charged_integrators.values():
+            assert integrator.accumulated_wh == 0.0
+        mock_write.assert_called_once()
+
+    async def test_reset_energy_noop_for_non_energy_sensor(self) -> None:
+        """Test async_reset_energy is a no-op for sensors other than energy types."""
+        mock_coord = create_mock_coordinator({})
+        sax_item = SAXItem(
+            name=SAX_COMBINED_SOC,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_COMBINED_SOC,
+        )
+        sensor = SAXBatteryCalculatedSensor(
+            coordinator=mock_coord,
+            sax_item=sax_item,
+            coordinators={"battery_a": mock_coord},
+        )
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            await sensor.async_reset_energy()
+
+        # async_write_ha_state is still called to refresh HA state (no-op for integrators)
+        mock_write.assert_called_once()

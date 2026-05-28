@@ -67,6 +67,9 @@ _LOGGER = logging.getLogger(__name__)
 # Coordinator-based sensors don't need update serialization
 PARALLEL_UPDATES = 0
 
+# Service name for resetting all energy sensors
+SERVICE_RESET_ENERGY_SENSORS = "reset_energy_sensors"
+
 # Period energy items handled by SAXBatteryPeriodEnergySensor, not SAXBatteryCalculatedSensor
 _PERIOD_ENERGY_ITEM_NAMES: frozenset[str] = frozenset(
     {
@@ -238,6 +241,43 @@ async def async_setup_entry(
             len(entities),
             len(coordinators),
         )
+
+    # Collect energy sensor references for the reset service
+    period_sensors: list[SAXBatteryPeriodEnergySensor] = [
+        e for e in entities if isinstance(e, SAXBatteryPeriodEnergySensor)
+    ]
+    cumulative_sensors: list[SAXBatteryCalculatedSensor] = [
+        e
+        for e in entities
+        if isinstance(e, SAXBatteryCalculatedSensor)
+        and e._sax_item.name  # noqa: SLF001
+        in (SAX_CUMULATIVE_ENERGY_DISCHARGED, SAX_CUMULATIVE_ENERGY_CHARGED)
+    ]
+
+    async def _handle_reset_energy_sensors(
+        _call: object,
+    ) -> None:
+        """Handle sax_battery.reset_energy_sensors service call."""
+        _LOGGER.info(
+            "Resetting %d cumulative and %d period energy sensors",
+            len(cumulative_sensors),
+            len(period_sensors),
+        )
+        for cum_sensor in cumulative_sensors:
+            await cum_sensor.async_reset_energy()
+        for period_sensor in period_sensors:
+            await period_sensor.async_reset_period()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_ENERGY_SENSORS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RESET_ENERGY_SENSORS,
+            _handle_reset_energy_sensors,
+        )
+        config_entry.async_on_unload(
+            lambda: hass.services.async_remove(DOMAIN, SERVICE_RESET_ENERGY_SENSORS)
+        )
+        _LOGGER.debug("Registered service %s.%s", DOMAIN, SERVICE_RESET_ENERGY_SENSORS)
 
 
 class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEntity):
@@ -568,6 +608,18 @@ class SAXBatteryCalculatedSensor(
             }
 
         return attrs
+
+    async def async_reset_energy(self) -> None:
+        """Reset the energy integrators to zero and update state."""
+        if self._sax_item.name == SAX_CUMULATIVE_ENERGY_DISCHARGED:
+            for integrator in self._discharged_integrators.values():
+                integrator.reset()
+            _LOGGER.info("Reset cumulative discharged energy integrators")
+        elif self._sax_item.name == SAX_CUMULATIVE_ENERGY_CHARGED:
+            for integrator in self._charged_integrators.values():
+                integrator.reset()
+            _LOGGER.info("Reset cumulative charged energy integrators")
+        self.async_write_ha_state()
 
 
 class SAXBatteryCoordinatorCycleSensor(
@@ -1005,3 +1057,16 @@ class SAXBatteryPeriodEnergySensor(
             return now.date() > last_reset.date()
         # monthly
         return (now.year, now.month) > (last_reset.year, last_reset.month)
+
+    async def async_reset_period(self) -> None:
+        """Force a period reset: clear baseline so next source update sets it."""
+        self._initialized = False
+        self._period_start_wh = 0.0
+        self._current_period_wh = 0.0
+        self._pending_reset = False
+        self._last_reset = dt_util.now()
+        _LOGGER.info(
+            "Reset period sensor %s; will re-baseline on next source update",
+            self._sax_item.name,
+        )
+        self.async_write_ha_state()
