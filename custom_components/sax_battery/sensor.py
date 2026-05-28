@@ -67,6 +67,14 @@ _LOGGER = logging.getLogger(__name__)
 # Coordinator-based sensors don't need update serialization
 PARALLEL_UPDATES = 0
 
+# Period energy items handled by SAXBatteryPeriodEnergySensor, not SAXBatteryCalculatedSensor
+_PERIOD_ENERGY_ITEM_NAMES: frozenset[str] = frozenset({
+    SAX_ENERGY_DISCHARGED_DAILY,
+    SAX_ENERGY_CHARGED_DAILY,
+    SAX_ENERGY_DISCHARGED_MONTHLY,
+    SAX_ENERGY_CHARGED_MONTHLY,
+})
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -167,8 +175,10 @@ async def async_setup_entry(
             TypeConstants.SENSOR,
         )
 
-        # Create calculated sensors
+        # Create calculated sensors (exclude period energy items handled separately)
         for sax_item in sax_items:
+            if sax_item.name in _PERIOD_ENERGY_ITEM_NAMES:
+                continue
             sax_item.set_coordinators(coordinators)
             entities.append(
                 SAXBatteryCalculatedSensor(
