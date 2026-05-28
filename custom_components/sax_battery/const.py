@@ -44,6 +44,10 @@ from .entity_keys import (
     SAX_CURRENT_L2,
     SAX_CURRENT_L3,
     SAX_CYCLES,
+    SAX_ENERGY_CHARGED_DAILY,
+    SAX_ENERGY_CHARGED_MONTHLY,
+    SAX_ENERGY_DISCHARGED_DAILY,
+    SAX_ENERGY_DISCHARGED_MONTHLY,
     SAX_GRID_FREQUENCY,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
@@ -546,6 +550,42 @@ DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED = SensorEntityDescription(
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
 )
 
+DESCRIPTION_SAX_ENERGY_DISCHARGED_DAILY = SensorEntityDescription(
+    key=SAX_ENERGY_DISCHARGED_DAILY,
+    name="Sax Energy Discharged Daily",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    suggested_display_precision=0,
+)
+
+DESCRIPTION_SAX_ENERGY_CHARGED_DAILY = SensorEntityDescription(
+    key=SAX_ENERGY_CHARGED_DAILY,
+    name="Sax Energy Charged Daily",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    suggested_display_precision=0,
+)
+
+DESCRIPTION_SAX_ENERGY_DISCHARGED_MONTHLY = SensorEntityDescription(
+    key=SAX_ENERGY_DISCHARGED_MONTHLY,
+    name="Sax Energy Discharged Monthly",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    suggested_display_precision=0,
+)
+
+DESCRIPTION_SAX_ENERGY_CHARGED_MONTHLY = SensorEntityDescription(
+    key=SAX_ENERGY_CHARGED_MONTHLY,
+    name="Sax Energy Charged Monthly",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+    suggested_display_precision=0,
+)
+
 DESCRIPTION_COORDINATOR_CYCLE_TIME = SensorEntityDescription(
     key=COORDINATOR_CYCLE_TIME,
     name="Coordinator Cycle Time",
@@ -684,6 +724,10 @@ AGGREGATED_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CUMULATIVE_ENERGY_DISCHARGED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_DISCHARGED, translation_key="bms_cumulative_energy_discharged"),
     SAXItem(name=SAX_CUMULATIVE_ENERGY_CHARGED, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED, translation_key="bms_cumulative_energy_charged"),
     SAXItem(name=SAX_COMBINED_SOC, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_COMBINED_SOC, translation_key="bms_combined_soc"),
+    SAXItem(name=SAX_ENERGY_DISCHARGED_DAILY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_DISCHARGED_DAILY, translation_key="bms_energy_discharged_daily"),
+    SAXItem(name=SAX_ENERGY_CHARGED_DAILY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_CHARGED_DAILY, translation_key="bms_energy_charged_daily"),
+    SAXItem(name=SAX_ENERGY_DISCHARGED_MONTHLY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_DISCHARGED_MONTHLY, translation_key="bms_energy_discharged_monthly"),
+    SAXItem(name=SAX_ENERGY_CHARGED_MONTHLY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_CHARGED_MONTHLY, translation_key="bms_energy_charged_monthly"),
 ]
 # Pilot items - switches for grid charing control and PV charging
 PILOT_ITEMS: list[SAXItem] = [

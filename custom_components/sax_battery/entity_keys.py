@@ -50,6 +50,12 @@ SAX_CUMULATIVE_ENERGY_DISCHARGED = "sax_cumulative_energy_discharged"
 SAX_CUMULATIVE_ENERGY_CHARGED = "sax_cumulative_energy_charged"
 SAX_COMBINED_SOC = "sax_combined_soc"
 
+# Period-derived energy sensors (daily / monthly)
+SAX_ENERGY_DISCHARGED_DAILY = "sax_energy_discharged_daily"
+SAX_ENERGY_CHARGED_DAILY = "sax_energy_charged_daily"
+SAX_ENERGY_DISCHARGED_MONTHLY = "sax_energy_discharged_monthly"
+SAX_ENERGY_CHARGED_MONTHLY = "sax_energy_charged_monthly"
+
 # Power control entities
 SAX_CHARGE_FROM_PV_SWITCH = "sax_charge_from_pv_switch"
 SAX_CHARGE_FROM_GRID_SWITCH = "sax_charge_from_grid_switch"

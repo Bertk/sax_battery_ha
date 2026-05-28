@@ -169,6 +169,18 @@
             "bms_cumulative_energy_discharged": {
                 "name": "Cumulative Energy Discharged"
             },
+            "bms_energy_charged_daily": {
+                "name": "Energy Charged Daily"
+            },
+            "bms_energy_discharged_daily": {
+                "name": "Energy Discharged Daily"
+            },
+            "bms_energy_charged_monthly": {
+                "name": "Energy Charged Monthly"
+            },
+            "bms_energy_discharged_monthly": {
+                "name": "Energy Discharged Monthly"
+            },
             "bms_current_l1": {
                 "name": "Current L1"
             },

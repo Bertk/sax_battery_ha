@@ -2,20 +2,32 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
-from homeassistant.components.sensor import RestoreSensor, SensorEntity
+from homeassistant.components.sensor import (
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfEnergy
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+)
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from . import txid_error_tracker
 from .const import (
+    AGGREGATED_ITEMS,
     ATTR_ATTRIBUTION,
     ATTRIBUTION,
     BATTERY_IDS,
@@ -39,7 +51,13 @@ from .coordinator import (
     SAXBatteryCoordinator,
 )
 from .energy_integration import EnergyIntegrator
-from .entity_keys import SAX_POWER
+from .entity_keys import (
+    SAX_ENERGY_CHARGED_DAILY,
+    SAX_ENERGY_CHARGED_MONTHLY,
+    SAX_ENERGY_DISCHARGED_DAILY,
+    SAX_ENERGY_DISCHARGED_MONTHLY,
+    SAX_POWER,
+)
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import DeviceConstants, TypeConstants
 from .items import ModbusItem, SAXItem
@@ -163,6 +181,33 @@ async def async_setup_entry(
         _LOGGER.debug(
             "Created %d calculated sensors using master coordinator", len(sax_items)
         )
+
+        # Create period-derived energy sensors (daily and monthly)
+        # Source items for subscriptions (look up by name in AGGREGATED_ITEMS)
+        source_discharged = next(
+            i for i in AGGREGATED_ITEMS if i.name == SAX_CUMULATIVE_ENERGY_DISCHARGED
+        )
+        source_charged = next(
+            i for i in AGGREGATED_ITEMS if i.name == SAX_CUMULATIVE_ENERGY_CHARGED
+        )
+        _period_specs: list[tuple[str, SAXItem, Literal["daily", "monthly"]]] = [
+            (SAX_ENERGY_DISCHARGED_DAILY, source_discharged, "daily"),
+            (SAX_ENERGY_CHARGED_DAILY, source_charged, "daily"),
+            (SAX_ENERGY_DISCHARGED_MONTHLY, source_discharged, "monthly"),
+            (SAX_ENERGY_CHARGED_MONTHLY, source_charged, "monthly"),
+        ]
+        for item_name, source_item, period in _period_specs:
+            period_sax_item = next(i for i in AGGREGATED_ITEMS if i.name == item_name)
+            entities.append(
+                SAXBatteryPeriodEnergySensor(
+                    master_coordinator,
+                    period_sax_item,
+                    source_item,
+                    period,
+                )
+            )
+
+        _LOGGER.debug("Created 4 period energy sensors (daily/monthly)")
     else:
         _LOGGER.warning(
             "No master battery found for cumulative energy calculation. "
@@ -626,3 +671,311 @@ class SAXBatteryCoordinatorCycleSensor(
             }
 
         return {}
+
+
+class SAXBatteryPeriodEnergySensor(
+    CoordinatorEntity[SAXBatteryCoordinator], RestoreSensor
+):
+    """Energy sensor tracking discharge or charge energy for a day or month.
+
+    Derives its value from the corresponding cumulative (TOTAL_INCREASING) sensor
+    by maintaining a period-start baseline:
+
+        native_value = current_total - period_start_baseline
+
+    Resets at midnight for "daily" and on the 1st of each month at midnight for
+    "monthly".  The ``last_reset`` property enables HA long-term statistics and
+    bar-chart cards.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+    _unrecorded_attributes = frozenset({ATTR_ATTRIBUTION})
+
+    def __init__(
+        self,
+        coordinator: SAXBatteryCoordinator,
+        sax_item: SAXItem,
+        source_item: SAXItem,
+        period: Literal["daily", "monthly"],
+    ) -> None:
+        """Initialize the period energy sensor.
+
+        Args:
+            coordinator: Master battery coordinator (used for device info).
+            sax_item: SAXItem describing this entity (key, description, etc.).
+            source_item: SAXItem of the cumulative sensor to subscribe to.
+            period: "daily" resets at midnight; "monthly" resets on the 1st.
+
+        Security:
+            OWASP A05: Validates source item before subscription.
+        """
+        super().__init__(coordinator)
+        self._sax_item = sax_item
+        self._source_item = source_item
+        self._period: Literal["daily", "monthly"] = period
+
+        # Period tracking state
+        self._period_start_wh: float = 0.0
+        self._current_period_wh: float = 0.0
+        self._last_reset: datetime | None = None
+        self._source_entity_id: str | None = None
+        self._pending_reset: bool = False
+
+        # Generate unique ID (cluster-wide, no battery_id)
+        self._attr_unique_id = coordinator.sax_data.get_unique_id_for_item(
+            item=sax_item,
+            battery_id=None,
+        )
+
+        if sax_item.entitydescription is not None:
+            self.entity_description = sax_item.entitydescription  # type: ignore[assignment]
+
+        # System-level device (cluster device)
+        self._attr_device_info: DeviceInfo = coordinator.sax_data.get_device_info(
+            "cluster", DeviceConstants.SYS
+        )
+
+    # ------------------------------------------------------------------
+    # HA entity properties
+    # ------------------------------------------------------------------
+
+    @property
+    def native_value(self) -> float | None:
+        """Return accumulated energy for the current period in Wh."""
+        return round(self._current_period_wh, 1)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the current period for HA statistics."""
+        return self._last_reset
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return diagnostic extra state attributes."""
+        return {
+            ATTR_ATTRIBUTION: ATTRIBUTION,
+            "period": self._period,
+            "period_start_wh": round(self._period_start_wh, 2),
+            "last_reset": self._last_reset.isoformat() if self._last_reset else None,
+        }
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    async def async_added_to_hass(self) -> None:
+        """Restore state, subscribe to source sensor, register time callbacks.
+
+        Security:
+            OWASP A05: Validates restored state before use.
+        """
+        await super().async_added_to_hass()
+
+        await self._restore_period_state()
+        self._source_entity_id = self._resolve_source_entity_id()
+
+        if self._source_entity_id:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    [self._source_entity_id],
+                    self._handle_source_update,
+                )
+            )
+        else:
+            _LOGGER.warning(
+                "Period sensor %s could not find source entity %s; "
+                "values will remain 0 until source becomes available",
+                self._sax_item.name,
+                self._source_item.name,
+            )
+
+        # Daily reset: fire at every midnight
+        # Monthly reset: fire at every midnight, check day==1 in callback
+        self.async_on_remove(
+            async_track_time_change(
+                self.hass,
+                self._async_reset_period,
+                hour=0,
+                minute=0,
+                second=0,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # State restore
+    # ------------------------------------------------------------------
+
+    async def _restore_period_state(self) -> None:
+        """Restore period baseline and value from the last known HA state."""
+        last_state = await self.async_get_last_state()
+
+        if not last_state or last_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            _LOGGER.debug(
+                "No previous state for %s; starting fresh", self._sax_item.name
+            )
+            self._last_reset = dt_util.now()
+            return
+
+        try:
+            self._current_period_wh = float(last_state.state)
+        except ValueError, TypeError:
+            self._current_period_wh = 0.0
+
+        attrs = last_state.attributes
+        try:
+            self._period_start_wh = float(attrs.get("period_start_wh", 0.0))
+        except ValueError, TypeError:
+            self._period_start_wh = 0.0
+
+        last_reset_str = attrs.get("last_reset")
+        if last_reset_str:
+            try:
+                self._last_reset = dt_util.parse_datetime(last_reset_str)
+            except ValueError, TypeError:
+                self._last_reset = dt_util.now()
+        else:
+            self._last_reset = dt_util.now()
+
+        # If we crossed a period boundary while HA was offline, defer reset
+        now = dt_util.now()
+        if self._last_reset and self._is_new_period(now, self._last_reset):
+            _LOGGER.debug(
+                "Period boundary crossed while offline for %s; "
+                "will reset on next source update",
+                self._sax_item.name,
+            )
+            self._pending_reset = True
+
+        _LOGGER.info(
+            "Restored %s: %.1f Wh (baseline %.2f Wh, last reset %s)",
+            self._sax_item.name,
+            self._current_period_wh,
+            self._period_start_wh,
+            self._last_reset,
+        )
+
+    # ------------------------------------------------------------------
+    # Source entity resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_source_entity_id(self) -> str | None:
+        """Look up the source cumulative sensor's entity_id via the entity registry.
+
+        Security:
+            OWASP A05: Validates unique_id before registry lookup.
+        """
+        source_unique_id = self.coordinator.sax_data.get_unique_id_for_item(
+            item=self._source_item,
+            battery_id=None,
+        )
+        if not source_unique_id:
+            _LOGGER.warning(
+                "Cannot resolve unique_id for source item %s", self._source_item.name
+            )
+            return None
+
+        ent_reg = er.async_get(self.hass)
+        entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, source_unique_id)
+        if entity_id:
+            _LOGGER.debug(
+                "%s resolved source entity: %s", self._sax_item.name, entity_id
+            )
+        else:
+            _LOGGER.warning(
+                "Source entity for %s (unique_id=%s) not found in registry",
+                self._source_item.name,
+                source_unique_id,
+            )
+        return entity_id
+
+    # ------------------------------------------------------------------
+    # Event / time callbacks
+    # ------------------------------------------------------------------
+
+    @callback
+    def _handle_source_update(self, event: Event[EventStateChangedData]) -> None:
+        """React to state changes of the source cumulative sensor.
+
+        Security:
+            OWASP A03: Validates state value before float conversion.
+        """
+        new_state = event.data.get("new_state")
+        if not new_state or new_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+
+        try:
+            current_total = float(new_state.state)
+        except ValueError, TypeError:
+            return
+
+        if self._pending_reset:
+            self._period_start_wh = current_total
+            self._last_reset = dt_util.now()
+            self._current_period_wh = 0.0
+            self._pending_reset = False
+            _LOGGER.info(
+                "Deferred period reset applied for %s: new baseline %.2f Wh",
+                self._sax_item.name,
+                self._period_start_wh,
+            )
+        else:
+            self._current_period_wh = max(0.0, current_total - self._period_start_wh)
+
+        self.async_write_ha_state()
+
+    @callback
+    def _async_reset_period(self, now: datetime) -> None:
+        """Reset the period baseline at the start of a new day or month.
+
+        For "daily" sensors this fires at every midnight.
+        For "monthly" sensors this fires at every midnight but only resets
+        when ``now.day == 1`` (first of the month).
+        """
+        if self._period == "monthly" and now.day != 1:
+            return
+
+        source_state = (
+            self.hass.states.get(self._source_entity_id)
+            if self._source_entity_id
+            else None
+        )
+
+        if source_state and source_state.state not in (
+            STATE_UNKNOWN,
+            STATE_UNAVAILABLE,
+        ):
+            try:
+                self._period_start_wh = float(source_state.state)
+                self._last_reset = now
+                self._current_period_wh = 0.0
+                _LOGGER.info(
+                    "Period reset for %s: new baseline %.2f Wh at %s",
+                    self._sax_item.name,
+                    self._period_start_wh,
+                    now,
+                )
+            except ValueError, TypeError:
+                self._pending_reset = True
+        else:
+            # Defer reset to next valid source update
+            self._pending_reset = True
+            _LOGGER.debug(
+                "Source unavailable at period reset for %s; deferring",
+                self._sax_item.name,
+            )
+
+        self.async_write_ha_state()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _is_new_period(self, now: datetime, last_reset: datetime) -> bool:
+        """Return True if ``now`` is in a later period than ``last_reset``."""
+        if self._period == "daily":
+            return now.date() > last_reset.date()
+        # monthly
+        return (now.year, now.month) > (last_reset.year, last_reset.month)

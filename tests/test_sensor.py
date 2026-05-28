@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import logging
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from custom_components.sax_battery.const import (
     DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_CUMULATIVE_ENERGY_CHARGED,
     DESCRIPTION_SAX_CUMULATIVE_ENERGY_DISCHARGED,
+    DESCRIPTION_SAX_ENERGY_DISCHARGED_DAILY,
     DESCRIPTION_SAX_POWER,
     DESCRIPTION_SAX_SOC,
     DESCRIPTION_SAX_TEMPERATURE,
@@ -43,6 +45,7 @@ from custom_components.sax_battery.sensor import (
     SAXBatteryCalculatedSensor,
     SAXBatteryCoordinatorCycleSensor,
     SAXBatteryModbusSensor,
+    SAXBatteryPeriodEnergySensor,
     async_setup_entry,
 )
 from homeassistant.components.sensor import (
@@ -225,6 +228,7 @@ class TestSAXBatteryModbusSensor:
         mock_coordinator = MagicMock(spec=SAXBatteryCoordinator)
         mock_coordinator.hass = hass
         mock_coordinator.battery_config = mock_battery_config_sensor
+        mock_coordinator.sax_data = mock_sax_data_sensor
 
         # Create test entities with entity_id generation
         entities_created = []
@@ -232,7 +236,9 @@ class TestSAXBatteryModbusSensor:
         def mock_add_entities(new_entities, update_before_add=False):
             # Apply entity_id generation as Home Assistant would
             for entity in new_entities:
-                if hasattr(entity, "_attr_unique_id"):
+                if hasattr(entity, "_attr_unique_id") and getattr(
+                    entity, "domain", None
+                ):
                     entity.entity_id = async_generate_entity_id(
                         f"{entity.domain}.{{}}", entity._attr_unique_id, hass=hass
                     )
@@ -1046,11 +1052,11 @@ class TestSensorPlatformSetup:
             )
 
         # Verify entities were created
-        # Expected: 1 modbus + 5 diagnostic (cycle_time, error_rate, circuit_breaker, bms_unavailability, txid_error_rate) + 1 calculated = 7 total
-        assert len(entities) == 7
+        # Expected: 1 modbus + 5 diagnostic + 1 calculated + 4 period energy = 11 total
+        assert len(entities) == 11
 
         # Check entity types in correct order
-        # Order: [modbus_sensor, diag_cycle, diag_error, diag_circuit, diag_bms_unavail, diag_txid, calculated_sensor]
+        # Order: [modbus_sensor, diag_cycle×5, calculated_sensor, period_energy×4]
         assert isinstance(entities[0], SAXBatteryModbusSensor)
         assert isinstance(entities[1], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[2], SAXBatteryCoordinatorCycleSensor)
@@ -1058,6 +1064,10 @@ class TestSensorPlatformSetup:
         assert isinstance(entities[4], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[5], SAXBatteryCoordinatorCycleSensor)
         assert isinstance(entities[6], SAXBatteryCalculatedSensor)
+        assert isinstance(entities[7], SAXBatteryPeriodEnergySensor)
+        assert isinstance(entities[8], SAXBatteryPeriodEnergySensor)
+        assert isinstance(entities[9], SAXBatteryPeriodEnergySensor)
+        assert isinstance(entities[10], SAXBatteryPeriodEnergySensor)
 
     async def test_async_setup_entry_mixed_item_types(
         self,
@@ -1171,8 +1181,8 @@ class TestSensorPlatformSetup:
             )
 
         # Verify sensor entities were created
-        # Expected: 1 modbus + 5 diagnostic + 1 calculated = 7 total
-        assert len(entities) == 7
+        # Expected: 1 modbus + 5 diagnostic + 1 calculated + 4 period energy = 11 total
+        assert len(entities) == 11
 
         # Verify all entities are sensor types (no switches)
         assert all(
@@ -1182,6 +1192,7 @@ class TestSensorPlatformSetup:
                     SAXBatteryModbusSensor,
                     SAXBatteryCalculatedSensor,
                     SAXBatteryCoordinatorCycleSensor,
+                    SAXBatteryPeriodEnergySensor,
                 ),
             )
             for e in entities
@@ -1319,3 +1330,546 @@ class TestSAXBatteryCoordinatorCycleSensorTxidErrorRate:
 
         assert attrs["total_errors_last_hour"] == 0
         assert attrs["total_errors_since_startup"] == 0
+
+
+class TestSAXBatteryPeriodEnergySensor:
+    """Tests for SAXBatteryPeriodEnergySensor."""
+
+    # ------------------------------------------------------------------
+    # Helper factory
+    # ------------------------------------------------------------------
+
+    def _make_sensor(
+        self,
+        period: str = "daily",
+        sax_item_name: str = "sax_energy_discharged_daily",
+    ) -> SAXBatteryPeriodEnergySensor:
+        """Build a SAXBatteryPeriodEnergySensor with mocked dependencies."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.battery_id = "battery_a"
+        mock_coordinator.hass = MagicMock()
+        mock_sax_data = MagicMock()
+        mock_sax_data.get_unique_id_for_item.return_value = sax_item_name
+        mock_sax_data.get_device_info.return_value = MagicMock()
+        mock_coordinator.sax_data = mock_sax_data
+
+        sax_item = SAXItem(
+            name=sax_item_name,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_ENERGY_DISCHARGED_DAILY,
+        )
+        source_item = SAXItem(
+            name=SAX_CUMULATIVE_ENERGY_DISCHARGED,
+            mtype=TypeConstants.SENSOR_CALC,
+            device=DeviceConstants.SYS,
+        )
+        return SAXBatteryPeriodEnergySensor(
+            coordinator=mock_coordinator,
+            sax_item=sax_item,
+            source_item=source_item,
+            period=period,  # type: ignore[arg-type]
+        )
+
+    # ------------------------------------------------------------------
+    # Initialisation
+    # ------------------------------------------------------------------
+
+    def test_init_sets_period(self) -> None:
+        """Test that __init__ stores the period type."""
+        sensor = self._make_sensor(period="daily")
+        assert sensor._period == "daily"
+
+        sensor_m = self._make_sensor(period="monthly")
+        assert sensor_m._period == "monthly"
+
+    def test_init_default_state(self) -> None:
+        """Test that initial state values are zero / None."""
+        sensor = self._make_sensor()
+        assert sensor._period_start_wh == 0.0
+        assert sensor._current_period_wh == 0.0
+        assert sensor._last_reset is None
+        assert sensor._pending_reset is False
+
+    def test_native_value_rounds_to_one_decimal(self) -> None:
+        """Test native_value rounds to 1 decimal place."""
+        sensor = self._make_sensor()
+        sensor._current_period_wh = 123.456
+        assert sensor.native_value == 123.5
+
+    def test_native_value_zero(self) -> None:
+        """Test native_value returns 0.0 when not yet accumulated."""
+        sensor = self._make_sensor()
+        assert sensor.native_value == 0.0
+
+    def test_last_reset_property(self) -> None:
+        """Test last_reset property mirrors _last_reset."""
+
+        sensor = self._make_sensor()
+        ts = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+        sensor._last_reset = ts
+        assert sensor.last_reset is ts
+
+    def test_extra_state_attributes_structure(self) -> None:
+        """Test extra_state_attributes contains expected keys."""
+
+        sensor = self._make_sensor(period="daily")
+        sensor._period_start_wh = 1000.0
+        sensor._current_period_wh = 250.0
+        sensor._last_reset = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
+
+        attrs = sensor.extra_state_attributes
+        assert "period" in attrs
+        assert attrs["period"] == "daily"
+        assert "period_start_wh" in attrs
+        assert attrs["period_start_wh"] == 1000.0
+        assert "last_reset" in attrs
+        assert "2024-06-15" in attrs["last_reset"]
+
+    def test_extra_state_attributes_no_last_reset(self) -> None:
+        """Test extra_state_attributes handles None last_reset gracefully."""
+        sensor = self._make_sensor()
+        sensor._last_reset = None
+        attrs = sensor.extra_state_attributes
+        assert attrs["last_reset"] is None
+
+    # ------------------------------------------------------------------
+    # _is_new_period helper
+    # ------------------------------------------------------------------
+
+    def test_is_new_period_daily_same_day(self) -> None:
+        """Test _is_new_period returns False when dates are the same."""
+
+        sensor = self._make_sensor(period="daily")
+        now = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)
+        last_reset = datetime(2024, 6, 15, 0, 0, tzinfo=UTC)
+        assert sensor._is_new_period(now, last_reset) is False
+
+    def test_is_new_period_daily_next_day(self) -> None:
+        """Test _is_new_period returns True when now is the next day."""
+
+        sensor = self._make_sensor(period="daily")
+        now = datetime(2024, 6, 16, 0, 0, tzinfo=UTC)
+        last_reset = datetime(2024, 6, 15, 0, 0, tzinfo=UTC)
+        assert sensor._is_new_period(now, last_reset) is True
+
+    def test_is_new_period_monthly_same_month(self) -> None:
+        """Test _is_new_period monthly returns False within same month."""
+
+        sensor = self._make_sensor(period="monthly")
+        now = datetime(2024, 6, 20, 0, 0, tzinfo=UTC)
+        last_reset = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+        assert sensor._is_new_period(now, last_reset) is False
+
+    def test_is_new_period_monthly_next_month(self) -> None:
+        """Test _is_new_period monthly returns True in next month."""
+
+        sensor = self._make_sensor(period="monthly")
+        now = datetime(2024, 7, 1, 0, 0, tzinfo=UTC)
+        last_reset = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+        assert sensor._is_new_period(now, last_reset) is True
+
+    def test_is_new_period_monthly_next_year(self) -> None:
+        """Test _is_new_period monthly returns True in next year."""
+
+        sensor = self._make_sensor(period="monthly")
+        now = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)
+        last_reset = datetime(2024, 12, 1, 0, 0, tzinfo=UTC)
+        assert sensor._is_new_period(now, last_reset) is True
+
+    # ------------------------------------------------------------------
+    # _handle_source_update callback
+    # ------------------------------------------------------------------
+
+    def test_handle_source_update_normal_accumulation(self) -> None:
+        """Test source update accumulates energy relative to baseline."""
+        sensor = self._make_sensor()
+        sensor._period_start_wh = 1000.0
+
+        state_mock = MagicMock()
+        state_mock.state = "1250.0"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 250.0
+        mock_write.assert_called_once()
+
+    def test_handle_source_update_clamps_to_zero(self) -> None:
+        """Test source update never produces negative energy."""
+        sensor = self._make_sensor()
+        sensor._period_start_wh = 1000.0
+
+        state_mock = MagicMock()
+        state_mock.state = "900.0"  # lower than baseline (shouldn't happen, but safe)
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state"):
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 0.0
+
+    def test_handle_source_update_ignores_unavailable(self) -> None:
+        """Test source update ignores unavailable state."""
+        sensor = self._make_sensor()
+        sensor._current_period_wh = 42.0
+
+        state_mock = MagicMock()
+        state_mock.state = "unavailable"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 42.0
+        mock_write.assert_not_called()
+
+    def test_handle_source_update_ignores_unknown(self) -> None:
+        """Test source update ignores unknown state."""
+        sensor = self._make_sensor()
+        sensor._current_period_wh = 42.0
+
+        state_mock = MagicMock()
+        state_mock.state = "unknown"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 42.0
+        mock_write.assert_not_called()
+
+    def test_handle_source_update_ignores_none_new_state(self) -> None:
+        """Test source update ignores event with no new_state."""
+        sensor = self._make_sensor()
+        sensor._current_period_wh = 42.0
+
+        event = MagicMock()
+        event.data = {"new_state": None}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 42.0
+        mock_write.assert_not_called()
+
+    def test_handle_source_update_ignores_non_numeric_state(self) -> None:
+        """Test source update ignores non-numeric state value."""
+        sensor = self._make_sensor()
+        sensor._current_period_wh = 42.0
+
+        state_mock = MagicMock()
+        state_mock.state = "not_a_number"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._handle_source_update(event)
+
+        assert sensor._current_period_wh == 42.0
+        mock_write.assert_not_called()
+
+    def test_handle_source_update_applies_pending_reset(self) -> None:
+        """Test source update applies deferred period reset when pending."""
+
+        sensor = self._make_sensor()
+        sensor._pending_reset = True
+        sensor._period_start_wh = 500.0
+        sensor._current_period_wh = 300.0
+
+        fixed_now = datetime(2024, 6, 16, 0, 5, tzinfo=UTC)
+
+        state_mock = MagicMock()
+        state_mock.state = "1500.0"
+        event = MagicMock()
+        event.data = {"new_state": state_mock}
+
+        with patch.object(sensor, "async_write_ha_state") as mock_write:  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                sensor._handle_source_update(event)
+
+        assert sensor._pending_reset is False
+        assert sensor._period_start_wh == 1500.0
+        assert sensor._current_period_wh == 0.0
+        assert sensor._last_reset == fixed_now
+        mock_write.assert_called_once()
+
+    # ------------------------------------------------------------------
+    # _async_reset_period callback
+    # ------------------------------------------------------------------
+
+    def test_reset_period_daily_updates_baseline(self) -> None:
+        """Test daily reset at midnight updates baseline and clears accumulator."""
+
+        sensor = self._make_sensor(period="daily")
+        sensor._period_start_wh = 500.0
+        sensor._current_period_wh = 200.0
+        sensor._source_entity_id = "sensor.sax_cumulative_discharged"
+
+        source_state = MagicMock()
+        source_state.state = "1800.0"
+        sensor.hass = MagicMock()
+        sensor.hass.states.get.return_value = source_state
+
+        midnight = datetime(2024, 6, 16, 0, 0, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._async_reset_period(midnight)
+
+        assert sensor._period_start_wh == 1800.0
+        assert sensor._current_period_wh == 0.0
+        assert sensor._last_reset == midnight
+        mock_write.assert_called_once()
+
+    def test_reset_period_monthly_skips_non_first_day(self) -> None:
+        """Test monthly sensor skips reset on days other than the 1st."""
+
+        sensor = self._make_sensor(period="monthly")
+        sensor._period_start_wh = 500.0
+        sensor._current_period_wh = 200.0
+
+        midnight_not_first = datetime(2024, 6, 15, 0, 0, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._async_reset_period(midnight_not_first)
+
+        # Should not have changed anything
+        assert sensor._period_start_wh == 500.0
+        assert sensor._current_period_wh == 200.0
+        mock_write.assert_not_called()
+
+    def test_reset_period_monthly_fires_on_first(self) -> None:
+        """Test monthly sensor resets on the 1st of the month."""
+
+        sensor = self._make_sensor(period="monthly")
+        sensor._period_start_wh = 500.0
+        sensor._current_period_wh = 200.0
+        sensor._source_entity_id = "sensor.sax_cumulative_discharged"
+
+        source_state = MagicMock()
+        source_state.state = "2000.0"
+        sensor.hass = MagicMock()
+        sensor.hass.states.get.return_value = source_state
+
+        midnight_first = datetime(2024, 7, 1, 0, 0, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._async_reset_period(midnight_first)
+
+        assert sensor._period_start_wh == 2000.0
+        assert sensor._current_period_wh == 0.0
+        assert sensor._last_reset == midnight_first
+        mock_write.assert_called_once()
+
+    def test_reset_period_source_unavailable_defers(self) -> None:
+        """Test that unavailable source at reset time sets pending_reset."""
+
+        sensor = self._make_sensor(period="daily")
+        sensor._source_entity_id = "sensor.sax_cumulative_discharged"
+
+        source_state = MagicMock()
+        source_state.state = "unavailable"
+        sensor.hass = MagicMock()
+        sensor.hass.states.get.return_value = source_state
+
+        midnight = datetime(2024, 6, 16, 0, 0, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state") as mock_write:
+            sensor._async_reset_period(midnight)
+
+        assert sensor._pending_reset is True
+        mock_write.assert_called_once()
+
+    def test_reset_period_no_source_entity_defers(self) -> None:
+        """Test that missing source entity at reset sets pending_reset."""
+
+        sensor = self._make_sensor(period="daily")
+        sensor._source_entity_id = None
+
+        midnight = datetime(2024, 6, 16, 0, 0, 0, tzinfo=UTC)
+        with patch.object(sensor, "async_write_ha_state"):
+            sensor._async_reset_period(midnight)
+
+        assert sensor._pending_reset is True
+
+    # ------------------------------------------------------------------
+    # _restore_period_state
+    # ------------------------------------------------------------------
+
+    async def test_restore_period_state_no_previous(self) -> None:
+        """Test restore with no previous HA state starts fresh."""
+
+        sensor = self._make_sensor()
+
+        fixed_now = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+        with patch.object(
+            sensor, "async_get_last_state", new=AsyncMock(return_value=None)
+        ):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor._restore_period_state()
+
+        assert sensor._current_period_wh == 0.0
+        assert sensor._period_start_wh == 0.0
+        assert sensor._last_reset == fixed_now
+        assert sensor._pending_reset is False
+
+    async def test_restore_period_state_same_period(self) -> None:
+        """Test restore within the same period resumes tracking."""
+
+        sensor = self._make_sensor(period="daily")
+
+        last_reset_ts = datetime(2024, 6, 15, 0, 0, tzinfo=UTC)
+        last_state = MagicMock()
+        last_state.state = "150.0"
+        last_state.attributes = {
+            "period_start_wh": "1000.0",
+            "last_reset": last_reset_ts.isoformat(),
+        }
+        # now is still the same day
+        fixed_now = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)
+        with patch.object(
+            sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
+        ):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor._restore_period_state()
+
+        assert sensor._current_period_wh == 150.0
+        assert sensor._period_start_wh == 1000.0
+        assert sensor._pending_reset is False
+
+    async def test_restore_period_state_crossed_daily_boundary(self) -> None:
+        """Test restore sets pending_reset when a daily boundary was crossed offline."""
+
+        sensor = self._make_sensor(period="daily")
+
+        last_reset_ts = datetime(2024, 6, 14, 0, 0, tzinfo=UTC)
+        last_state = MagicMock()
+        last_state.state = "100.0"
+        last_state.attributes = {
+            "period_start_wh": "900.0",
+            "last_reset": last_reset_ts.isoformat(),
+        }
+        # now is the next day
+        fixed_now = datetime(2024, 6, 15, 8, 0, tzinfo=UTC)
+        with patch.object(
+            sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
+        ):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor._restore_period_state()
+
+        assert sensor._pending_reset is True
+
+    async def test_restore_period_state_crossed_monthly_boundary(self) -> None:
+        """Test restore sets pending_reset when a monthly boundary was crossed offline."""
+
+        sensor = self._make_sensor(period="monthly")
+
+        last_reset_ts = datetime(2024, 5, 1, 0, 0, tzinfo=UTC)
+        last_state = MagicMock()
+        last_state.state = "500.0"
+        last_state.attributes = {
+            "period_start_wh": "5000.0",
+            "last_reset": last_reset_ts.isoformat(),
+        }
+        # now is in June
+        fixed_now = datetime(2024, 6, 5, 10, 0, tzinfo=UTC)
+        with patch.object(
+            sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
+        ):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor._restore_period_state()
+
+        assert sensor._pending_reset is True
+
+    async def test_restore_period_state_unavailable_starts_fresh(self) -> None:
+        """Test restore with 'unavailable' previous state starts fresh."""
+
+        sensor = self._make_sensor()
+
+        last_state = MagicMock()
+        last_state.state = "unavailable"
+
+        fixed_now = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+        with patch.object(
+            sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
+        ):  # noqa: SIM117
+            with patch(
+                "custom_components.sax_battery.sensor.dt_util.now",
+                return_value=fixed_now,
+            ):
+                await sensor._restore_period_state()
+
+        assert sensor._current_period_wh == 0.0
+        assert sensor._last_reset == fixed_now
+        assert sensor._pending_reset is False
+
+    # ------------------------------------------------------------------
+    # _resolve_source_entity_id
+    # ------------------------------------------------------------------
+
+    def test_resolve_source_entity_id_found(self) -> None:
+        """Test source entity resolved correctly from entity registry."""
+
+        sensor = self._make_sensor()
+        cast(
+            MagicMock, sensor.coordinator.sax_data.get_unique_id_for_item
+        ).return_value = "sax_cumulative_energy_discharged"
+
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id.return_value = (
+            "sensor.sax_cumulative_energy_discharged"
+        )
+
+        with patch(
+            "custom_components.sax_battery.sensor.er.async_get",
+            return_value=mock_ent_reg,
+        ):
+            result = sensor._resolve_source_entity_id()
+
+        assert result == "sensor.sax_cumulative_energy_discharged"
+
+    def test_resolve_source_entity_id_not_found_returns_none(self) -> None:
+        """Test that a missing source entity returns None and logs a warning."""
+
+        sensor = self._make_sensor()
+        cast(
+            MagicMock, sensor.coordinator.sax_data.get_unique_id_for_item
+        ).return_value = "sax_cumulative_energy_discharged"
+
+        mock_ent_reg = MagicMock()
+        mock_ent_reg.async_get_entity_id.return_value = None
+
+        with patch(
+            "custom_components.sax_battery.sensor.er.async_get",
+            return_value=mock_ent_reg,
+        ):
+            result = sensor._resolve_source_entity_id()
+
+        assert result is None
+
+    def test_resolve_source_entity_id_no_unique_id_returns_none(self) -> None:
+        """Test that None unique_id from sax_data returns None early."""
+        sensor = self._make_sensor()
+        cast(
+            MagicMock, sensor.coordinator.sax_data.get_unique_id_for_item
+        ).return_value = None
+
+        result = sensor._resolve_source_entity_id()
+
+        assert result is None
