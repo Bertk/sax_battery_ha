@@ -1484,6 +1484,7 @@ class TestSAXBatteryPeriodEnergySensor:
     def test_handle_source_update_normal_accumulation(self) -> None:
         """Test source update accumulates energy relative to baseline."""
         sensor = self._make_sensor()
+        sensor._initialized = True
         sensor._period_start_wh = 1000.0
 
         state_mock = MagicMock()
@@ -1500,6 +1501,7 @@ class TestSAXBatteryPeriodEnergySensor:
     def test_handle_source_update_clamps_to_zero(self) -> None:
         """Test source update never produces negative energy."""
         sensor = self._make_sensor()
+        sensor._initialized = True
         sensor._period_start_wh = 1000.0
 
         state_mock = MagicMock()
@@ -1578,6 +1580,7 @@ class TestSAXBatteryPeriodEnergySensor:
         """Test source update applies deferred period reset when pending."""
 
         sensor = self._make_sensor()
+        sensor._initialized = True
         sensor._pending_reset = True
         sensor._period_start_wh = 500.0
         sensor._current_period_wh = 300.0
@@ -1706,9 +1709,9 @@ class TestSAXBatteryPeriodEnergySensor:
         sensor = self._make_sensor()
 
         fixed_now = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
-        with patch.object(
+        with patch.object(  # noqa: SIM117
             sensor, "async_get_last_state", new=AsyncMock(return_value=None)
-        ):  # noqa: SIM117
+        ):
             with patch(
                 "custom_components.sax_battery.sensor.dt_util.now",
                 return_value=fixed_now,
@@ -1734,9 +1737,9 @@ class TestSAXBatteryPeriodEnergySensor:
         }
         # now is still the same day
         fixed_now = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)
-        with patch.object(
+        with patch.object(  # noqa: SIM117
             sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
-        ):  # noqa: SIM117
+        ):
             with patch(
                 "custom_components.sax_battery.sensor.dt_util.now",
                 return_value=fixed_now,
@@ -1761,9 +1764,9 @@ class TestSAXBatteryPeriodEnergySensor:
         }
         # now is the next day
         fixed_now = datetime(2024, 6, 15, 8, 0, tzinfo=UTC)
-        with patch.object(
+        with patch.object(  # noqa: SIM117
             sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
-        ):  # noqa: SIM117
+        ):
             with patch(
                 "custom_components.sax_battery.sensor.dt_util.now",
                 return_value=fixed_now,
@@ -1786,9 +1789,9 @@ class TestSAXBatteryPeriodEnergySensor:
         }
         # now is in June
         fixed_now = datetime(2024, 6, 5, 10, 0, tzinfo=UTC)
-        with patch.object(
+        with patch.object(  # noqa: SIM117
             sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
-        ):  # noqa: SIM117
+        ):
             with patch(
                 "custom_components.sax_battery.sensor.dt_util.now",
                 return_value=fixed_now,
@@ -1806,9 +1809,9 @@ class TestSAXBatteryPeriodEnergySensor:
         last_state.state = "unavailable"
 
         fixed_now = datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
-        with patch.object(
+        with patch.object(  # noqa: SIM117
             sensor, "async_get_last_state", new=AsyncMock(return_value=last_state)
-        ):  # noqa: SIM117
+        ):
             with patch(
                 "custom_components.sax_battery.sensor.dt_util.now",
                 return_value=fixed_now,

@@ -68,12 +68,14 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 # Period energy items handled by SAXBatteryPeriodEnergySensor, not SAXBatteryCalculatedSensor
-_PERIOD_ENERGY_ITEM_NAMES: frozenset[str] = frozenset({
-    SAX_ENERGY_DISCHARGED_DAILY,
-    SAX_ENERGY_CHARGED_DAILY,
-    SAX_ENERGY_DISCHARGED_MONTHLY,
-    SAX_ENERGY_CHARGED_MONTHLY,
-})
+_PERIOD_ENERGY_ITEM_NAMES: frozenset[str] = frozenset(
+    {
+        SAX_ENERGY_DISCHARGED_DAILY,
+        SAX_ENERGY_CHARGED_DAILY,
+        SAX_ENERGY_DISCHARGED_MONTHLY,
+        SAX_ENERGY_CHARGED_MONTHLY,
+    }
+)
 
 
 async def async_setup_entry(
@@ -732,6 +734,7 @@ class SAXBatteryPeriodEnergySensor(
         self._last_reset: datetime | None = None
         self._source_entity_id: str | None = None
         self._pending_reset: bool = False
+        self._initialized: bool = False  # True once baseline has been set
 
         # Generate unique ID (cluster-wide, no battery_id)
         self._attr_unique_id = coordinator.sax_data.get_unique_id_for_item(
@@ -859,6 +862,7 @@ class SAXBatteryPeriodEnergySensor(
             )
             self._pending_reset = True
 
+        self._initialized = True
         _LOGGER.info(
             "Restored %s: %.1f Wh (baseline %.2f Wh, last reset %s)",
             self._sax_item.name,
@@ -921,7 +925,19 @@ class SAXBatteryPeriodEnergySensor(
         except ValueError, TypeError:
             return
 
-        if self._pending_reset:
+        if not self._initialized:
+            # First valid source update — capture current cumulative as baseline
+            self._period_start_wh = current_total
+            self._last_reset = dt_util.now()
+            self._current_period_wh = 0.0
+            self._initialized = True
+            self._pending_reset = False
+            _LOGGER.info(
+                "%s: initialized with baseline %.2f Wh",
+                self._sax_item.name,
+                self._period_start_wh,
+            )
+        elif self._pending_reset:
             self._period_start_wh = current_total
             self._last_reset = dt_util.now()
             self._current_period_wh = 0.0
