@@ -642,16 +642,7 @@ DESCRIPTION_TXID_ERROR_RATE = SensorEntityDescription(
 # address: The Modbus address as it is mentioned in the sax battery documentation
 # name:    The entity name. Please note: This entry today only is used to automatically generate translation files.
 #          It will be removed in future versions
-# mformat: One of the formats defined in FORMATS as they are TEMPERATURE, PERCENTAGE, NUMBER, STATUS or UNKNOWN (should be removed in future versions).
-#          The format is used to control the conversion of the modbus register entry to the entity variable and back
-# mtype:   The type of entity. Currently supported are:
-#              SENSOR: A standard sensor entity
-#              SENSOR_CALC: A "calculated" sensor. That means, the content of this entity is derived from other entities
-#                           of this integration.
-#              SELECT: A select entity
-#              NUMBER: A number entity. The value of this entity can be changed by the user interface
-#              NUMBER_RO: In principle, this is also a number entity that ir writable. But to avoid damages
-#                         we decided to make this entity read only.
+
 # device: The device this entity is assigned to. Devices are used here to group the entities in a meaningful way
 # entitydescription: The entity description that is used to create the Home Assistant entity.
 # translation_key: The identifier that points to the right translation key. Therefore, the files strings.json and the
