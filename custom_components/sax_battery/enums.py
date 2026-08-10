@@ -26,7 +26,8 @@ class DeviceConstants(StrEnum):
 # Holding register       | R/W    | R/W    | 16 bit words (0-65535) | Read/Write configuration values
 #------------------------|--------|------------------------|-----------------------------------------
 #
-# Note: SAX Battery write only registers 41, 42, 43, 44. These registers are not readable.
+# Note: SAX Battery has write-only holding registers for power control and
+# limits. The exact addresses are defined by ModbusItem entries in const.py.
 #
 # SAX Battery Modbus commands:
 # 03 (0x03) Read Multiple Holding Registers
@@ -42,5 +43,5 @@ class TypeConstants(StrEnum):  # item types -> not home assistant types
     SENSOR_CALC = "sensor_calc"  # none
     NUMBER = "number"  # holding read/write
     NUMBER_RO = "number_ro"  # holding read only
-    NUMBER_WO = "number_wo"  # holding write only -> holding registers 41, 42, 43, 44
+    NUMBER_WO = "number_wo"  # holding write only (power control / limits)
     SWITCH = "switch"  # holding  on (02),off (01) values for write, read battery status values off (01), on (02), connected (03), standby (04)

@@ -16,12 +16,15 @@ from custom_components.sax_battery.const import (
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
+    MODBUS_BATTERY_POWER_CONTROL_ITEMS,
+    MODBUS_BATTERY_POWER_LIMIT_ITEMS,
     PILOT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
     SAX_NOMINAL_FACTOR,
     SAX_NOMINAL_POWER,
+    WRITE_ONLY_REGISTERS,
 )
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
@@ -35,6 +38,20 @@ from homeassistant.components.number import NumberEntityDescription
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+
+WRITE_ONLY_ADDRESS_BY_NAME = {
+    item.name: item.address
+    for item in (
+        *MODBUS_BATTERY_POWER_CONTROL_ITEMS,
+        *MODBUS_BATTERY_POWER_LIMIT_ITEMS,
+    )
+}
+GENERIC_WRITE_ONLY_ADDRESS = min(WRITE_ONLY_REGISTERS)
+
+
+def _write_only_address(item_name: str) -> int:
+    """Get the write-only register address from the integration item definitions."""
+    return WRITE_ONLY_ADDRESS_BY_NAME[item_name]
 
 
 class TestSAXBatteryModbusNumber:
@@ -78,7 +95,7 @@ class TestSAXBatteryModbusNumber:
     def test_initialization_write_only(self, mock_coordinator_modbus_base) -> None:
         """Test write-only register initialization."""
         write_only_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -98,10 +115,9 @@ class TestSAXBatteryModbusNumber:
         self, mock_coordinator_modbus_base
     ) -> None:
         """Test write-only register initialization for max charge."""
-        # Test with SAX_MAX_CHARGE which should use config values
-        #  Use address from WRITE_ONLY_REGISTERS to make it actually write-only
+        # Test with SAX_MAX_DISCHARGE using the real write-only address mapping.
         write_only_item = ModbusItem(
-            address=43,  # Use address that's actually in WRITE_ONLY_REGISTERS
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -139,9 +155,9 @@ class TestSAXBatteryModbusNumber:
         self, mock_coordinator_modbus_base, modbus_item_max_charge_base
     ) -> None:
         """Test entity availability."""
-        #  Create actual write-only item to test write-only availability logic
+        # Create actual write-only item to test write-only availability logic.
         write_only_item = ModbusItem(
-            address=41,  # This is in WRITE_ONLY_REGISTERS
+            address=_write_only_address(SAX_MAX_CHARGE),
             name=SAX_MAX_CHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -248,7 +264,7 @@ class TestSAXBatteryModbusNumber:
 
         # Write-only register
         write_only_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -308,7 +324,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         - Updates _local_value cache
         """
         mock_item = ModbusItem(
-            address=41,  # SAX_NOMINAL_POWER address
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -366,7 +382,7 @@ class TestSAXBatteryModbusNumberNominalPower:
     ) -> None:
         """Test nominal power write uses 100% factor when entity not found."""
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -413,7 +429,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         ) -> None:
             """Test SAX_NOMINAL_FACTOR updates cache without hardware write."""
             mock_item = ModbusItem(
-                address=42,
+                address=_write_only_address(SAX_NOMINAL_FACTOR),
                 name=SAX_NOMINAL_FACTOR,
                 mtype=TypeConstants.NUMBER_WO,
                 device=DeviceConstants.BESS,
@@ -460,7 +476,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         - Value persists in cache across state updates
         """
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -508,7 +524,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         When SOC < min_soc, discharge power should be constrained to 0W.
         """
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -553,11 +569,11 @@ class TestSAXBatteryModbusNumberAdvanced:
         self, mock_coordinator_modbus_base
     ) -> None:
         """Test comprehensive write-only defaults initialization."""
-        # Test SAX_MAX_CHARGE with config value -  use correct address
+        # Test SAX_MAX_CHARGE with config value using derived write-only address.
         mock_coordinator_modbus_base.config_entry.data = {"max_charge": 5000.0}
 
         max_charge_item = ModbusItem(
-            address=41,  # Use address that's in WRITE_ONLY_REGISTERS
+            address=_write_only_address(SAX_MAX_CHARGE),
             name=SAX_MAX_CHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -571,11 +587,11 @@ class TestSAXBatteryModbusNumberAdvanced:
 
         assert max_charge_number._local_value == 5000.0
 
-        # Test SAX_MAX_DISCHARGE with config value -  use correct address
+        # Test SAX_MAX_DISCHARGE with config value using derived write-only address.
         mock_coordinator_modbus_base.config_entry.data = {"max_discharge": 3500.0}
 
         max_discharge_item = ModbusItem(
-            address=42,  # Use address that's in WRITE_ONLY_REGISTERS
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -597,7 +613,7 @@ class TestSAXBatteryModbusNumberAdvanced:
         mock_coordinator_modbus_base.config_entry = None
 
         write_only_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_NOMINAL_POWER),
             name=SAX_NOMINAL_POWER,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -617,7 +633,7 @@ class TestSAXBatteryModbusNumberAdvanced:
     ) -> None:
         """Test native value for write-only register."""
         write_only_item = ModbusItem(
-            address=41,  # Use address that's in WRITE_ONLY_REGISTERS
+            address=_write_only_address(SAX_MAX_CHARGE),
             name=SAX_MAX_CHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -707,7 +723,7 @@ class TestSAXBatteryModbusNumberAdvanced:
         # Test with entity description
 
         item_with_description = ModbusItem(
-            address=41,  # Use valid address
+            address=GENERIC_WRITE_ONLY_ADDRESS,
             name="sax_test_setting",
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -729,7 +745,7 @@ class TestSAXBatteryModbusNumberAdvanced:
     def test_device_info_assignment(self, mock_coordinator_modbus_base) -> None:
         """Test device info assignment during initialization."""
         test_item = ModbusItem(
-            address=41,  # Use valid address
+            address=GENERIC_WRITE_ONLY_ADDRESS,
             name="sax_test_setting",
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1068,7 +1084,7 @@ class TestAsyncSetupEntry:
             # With entities case
             mock_filter_modbus.return_value = [
                 ModbusItem(
-                    address=41,  # Use valid address
+                    address=_write_only_address(SAX_MAX_CHARGE),
                     name=SAX_MAX_CHARGE,
                     mtype=TypeConstants.NUMBER_WO,
                     device=DeviceConstants.BESS,
@@ -1188,7 +1204,7 @@ class TestAsyncSetupEntry:
             # Return entities for both batteries
             mock_filter_modbus.return_value = [
                 ModbusItem(
-                    address=41,  # Use valid address
+                    address=_write_only_address(SAX_MAX_CHARGE),
                     name=SAX_MAX_CHARGE,
                     mtype=TypeConstants.NUMBER_WO,
                     device=DeviceConstants.BESS,
@@ -1279,7 +1295,7 @@ class TestAsyncSetupEntry:
         ):
             mock_filter_modbus.return_value = [
                 ModbusItem(
-                    address=41,  # Use valid address
+                    address=_write_only_address(SAX_MAX_CHARGE),
                     name=SAX_MAX_CHARGE,
                     mtype=TypeConstants.NUMBER_WO,
                     device=DeviceConstants.BESS,
@@ -1311,7 +1327,7 @@ class TestSAXBatteryModbusNumberStateRestoration:
     def mock_write_only_item(self) -> ModbusItem:
         """Create write-only modbus item."""
         return ModbusItem(
-            address=43,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1443,7 +1459,7 @@ class TestSAXBatteryModbusNumberPeriodicWrite:
     ) -> None:
         """Test periodic write updates hardware with cached value."""
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1474,7 +1490,7 @@ class TestSAXBatteryModbusNumberPeriodicWrite:
     ) -> None:
         """Test periodic write with write queue architecture."""
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1517,7 +1533,7 @@ class TestSAXBatteryModbusNumberSOCConstraints:
             OWASP A05: Validates constraint enforcement moved to coordinator
         """
         mock_item = ModbusItem(
-            address=43,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1574,7 +1590,7 @@ class TestSAXBatteryModbusNumberSOCConstraints:
             OWASP A05: Validates centralized constraint enforcement
         """
         mock_item = ModbusItem(
-            address=43,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
@@ -1639,7 +1655,7 @@ class TestSAXBatteryNumberEntityProperties:
     ) -> None:
         """Test write-only registers availability logic."""
         mock_item = ModbusItem(
-            address=41,
+            address=_write_only_address(SAX_MAX_DISCHARGE),
             name=SAX_MAX_DISCHARGE,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,

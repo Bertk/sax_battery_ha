@@ -139,11 +139,9 @@ LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts - ABSOLUTE hardware limit per ba
 LIMIT_REFRESH_INTERVAL = (
     3  # minutes for periodic refresh of write-only limits registers
 )
-# Registers 41-42 (nominal_power, nominal_factor) are managed by power manager
-REFRESH_REGISTERS = {
-    43,
-    44,
-}  # max_discharge, max_charge - registers to refresh periodically
+# Refresh/register sets are derived from ModbusItem definitions below.
+# SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR are managed by power manager,
+# so periodic refresh covers only SAX_MAX_DISCHARGE and SAX_MAX_CHARGE.
 
 
 @dataclass(frozen=True)
@@ -172,9 +170,6 @@ CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
 DEFAULT_PORT = 502  # Default Modbus port
 DEFAULT_MIN_SOC = 15  # 15% default minimum
 DEFAULT_MAX_SOC_CHARGING = 90  # 90% default maximum for charging
-
-# Write-only register addresses that require configuration checks
-WRITE_ONLY_REGISTERS = {41, 42, 43, 44}
 
 
 # Number Entity descriptions - keeping existing ones...
@@ -662,6 +657,21 @@ MODBUS_BATTERY_POWER_LIMIT_ITEMS: list[ModbusItem] = [
     ModbusItem(battery_device_id=64, address=43, name=SAX_MAX_DISCHARGE, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_DISCHARGE, translation_key="bms_max_discharge"),
     ModbusItem(battery_device_id=64, address=44, name=SAX_MAX_CHARGE, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MAX_CHARGE, translation_key="bms_max_charge"),
 ]
+
+# Single source of truth for write-only and periodic-refresh register addresses.
+WRITE_ONLY_REGISTERS: set[int] = {
+    item.address
+    for item in (
+        *MODBUS_BATTERY_POWER_CONTROL_ITEMS,
+        *MODBUS_BATTERY_POWER_LIMIT_ITEMS,
+    )
+}
+
+# Power manager handles control items; periodic refresh applies to limit items.
+REFRESH_REGISTERS: set[int] = {
+    item.address for item in MODBUS_BATTERY_POWER_LIMIT_ITEMS
+}
+
 # Battery items - switch
 MODBUS_BATTERY_SWITCH_ITEMS: list[ModbusItem] = [
     ModbusItem(battery_device_id=64, address=45, name=SAX_STATUS, mtype=TypeConstants.SWITCH, data_type=ModbusClientMixin.DATATYPE.UINT16, device=DeviceConstants.BESS, entitydescription=DESCRIPTION_SAX_STATUS_SWITCH, translation_key="bess_status"),
