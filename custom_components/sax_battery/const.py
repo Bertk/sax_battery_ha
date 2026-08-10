@@ -114,7 +114,7 @@ CONF_BALANCED_LOADING = "balanced_loading"
 PV_CHARGING_MODE = "enable_pv_charging"
 GRID_CHARGING_MODE = "enable_grid_charging"
 
-# ╔══════════════════════════════════════════════════════════════════════════╗
+# ╔════════════════════════════════════════════════════════════════════════╗
 # ║ CRITICAL HARDWARE SAFETY LIMITS - DO NOT EXCEED                        ║
 # ║                                                                        ║
 # ║ These are absolute per-battery hardware limits for the SAX 7.5kW model.║
@@ -123,8 +123,8 @@ GRID_CHARGING_MODE = "enable_grid_charging"
 # ║ Each battery receives the EXACT same value written to the master.      ║
 # ║                                                                        ║
 # ║ Example (3-battery system):                                            ║
-# ║   Write 3500W to master register → each battery gets 3500W            ║
-# ║   Write 5000W to master register → each battery gets 5000W ⚠ DANGER  ║
+# ║   Write 3500W to master register → each battery gets 3500W             ║
+# ║   Write 5000W to master register → each battery gets 5000W ⚠ DANGER   ║
 # ║                                                                        ║
 # ║ Values exceeding these limits WILL damage battery hardware.            ║
 # ║ All control values written to registers MUST be clamped to these       ║
@@ -133,7 +133,7 @@ GRID_CHARGING_MODE = "enable_grid_charging"
 # ║ The cluster-wide values (battery_count * limit) are for UI display     ║
 # ║ only (entity native_max_value) and must NEVER be used for register     ║
 # ║ writes.                                                                ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
+# ╚════════════════════════════════════════════════════════════════════════╝
 LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts - ABSOLUTE hardware limit per battery
 LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts - ABSOLUTE hardware limit per battery
 LIMIT_REFRESH_INTERVAL = (
