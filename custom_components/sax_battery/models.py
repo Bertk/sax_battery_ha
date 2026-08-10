@@ -26,7 +26,6 @@ from .const import (
     MODBUS_BATTERY_BMS_ITEMS,
     MODBUS_BATTERY_SMARTMETER_ITEMS,
     MODBUS_BATTERY_SWITCH_ITEMS,
-    MODBUS_BATTERY_UNDOCUMENTED_ITEMS,
     PILOT_ITEMS,
 )
 from .enums import DeviceConstants, TypeConstants
@@ -111,7 +110,6 @@ class BatteryModel(BaseModel):
             sm_connected = self.config_data.get(CONF_SM_CONNECTED, True)
             if sm_connected:
                 items.extend(MODBUS_BATTERY_SMARTMETER_ITEMS)
-            items.extend(MODBUS_BATTERY_UNDOCUMENTED_ITEMS)
             switch_item: ModbusItem = MODBUS_BATTERY_SWITCH_ITEMS[0]
             switch_item.device = DeviceConstants.SYS
             items.append(switch_item)  # Add system-level switch for master battery
