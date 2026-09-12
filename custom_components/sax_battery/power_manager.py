@@ -1,7 +1,7 @@
 """Power manager for SAX Battery integration.
 
-Coordinator-centric power management using SAX_NOMINAL_POWER (register 41)
-and SAX_NOMINAL_FACTOR (register 42) via coordinator.async_write_power_control_value()
+Coordinator-centric power management using SAX_POWER_SETPOINT (register 41)
+and SAX_POWER_SETPOINT_FACTOR (register 42) via coordinator.async_write_power_control_value()
 for atomic Modbus writes.
 
 Security:
@@ -43,7 +43,7 @@ from .const import (
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC_CHARGING,
-    SAX_NOMINAL_POWER,
+    SAX_POWER_SETPOINT,
     SAX_SMARTMETER_TOTAL_POWER,
 )
 from .coordinator import SAXBatteryCoordinator
@@ -74,7 +74,7 @@ class PowerManager:
     """Coordinator-centric power manager for SAX Battery systems.
 
     Uses coordinator.async_write_power_control_value() for atomic Modbus writes
-    to SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42).
+    to SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42).
 
     Write flow:
         PowerManager.update_nominal_power()
@@ -839,11 +839,11 @@ class PowerManager:
         """Update nominal power via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
-        SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42)
+        SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42)
         atomically via the coordinator's write queue.
 
         Write sequence:
-            1. Get SAX_NOMINAL_POWER ModbusItem via coordinator.sax_data
+            1. Get SAX_POWER_SETPOINT ModbusItem via coordinator.sax_data
             2. Apply SOC and hardware constraints
             3. Call coordinator.async_write_power_control_value(item, power, factor)
             4. Coordinator queues atomic write for next update cycle
@@ -898,10 +898,10 @@ class PowerManager:
         self._state.target_power = constrained_power
         self._state.last_update = datetime.now()
 
-        # Get SAX_NOMINAL_POWER ModbusItem from coordinator's sax_data
-        power_item = self.coordinator.sax_data.get_item_by_name(SAX_NOMINAL_POWER)
+        # Get SAX_POWER_SETPOINT ModbusItem from coordinator's sax_data
+        power_item = self.coordinator.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
         if not isinstance(power_item, ModbusItem):
-            _LOGGER.error("SAX_NOMINAL_POWER not found or not a ModbusItem")
+            _LOGGER.error("SAX_POWER_SETPOINT not found or not a ModbusItem")
             return
 
         # Power factor: 1000 = 1.0 (full power capacity)

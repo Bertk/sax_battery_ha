@@ -281,7 +281,7 @@ class SAXItem(BaseItem):
         """Write system configuration value.
 
         SAX_POWER_CONTROL_SETPOINT removed - power control now uses direct
-        SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR writes via power_manager.
+        SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR writes via power_manager.
         """
         if self.mtype not in (TypeConstants.NUMBER, TypeConstants.NUMBER_WO):
             _LOGGER.warning("Attempted to write to read-only SAX item %s", self.name)

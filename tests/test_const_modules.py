@@ -21,6 +21,14 @@ from custom_components.sax_battery.const_sunspec import (
 def test_split_constant_modules_expose_expected_items() -> None:
     """Legacy and SunSpec constants should remain importable from the refactored modules."""
     assert MODBUS_BATTERY_POWER_CONTROL_ITEMS
+    assert any(
+        item.name == entity_keys.SAX_POWER_SETPOINT
+        for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+    )
+    assert any(
+        item.name == entity_keys.SAX_POWER_SETPOINT_FACTOR
+        for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+    )
     assert MODBUS_BATTERY_BMS_ITEMS
     assert MODBUS_SUNSPEC_ITEMS
     assert SUNSPEC_MODEL_COMMON == 1

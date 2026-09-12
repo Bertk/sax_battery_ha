@@ -36,8 +36,8 @@ from .const import (
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC_CHARGING,
     SAX_MIN_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
 )
 from .const_legacy import (
     MODBUS_BATTERY_POWER_CONTROL_ITEMS,
@@ -89,7 +89,7 @@ async def async_setup_entry(
     # STEP 1: Create per-battery hardware numbers (ModbusItem → SAXBatteryModbusNumber)
     # ============================================================================
     # These entities are battery-specific and depend on Modbus hardware
-    # Examples: sax_max_discharge, sax_max_charge, sax_nominal_power
+    # Examples: sax_max_discharge, sax_max_charge, sax_power_setpoint
 
     for battery_id, coordinator in coordinators.items():
         # Validate battery_id
@@ -272,13 +272,13 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
     Power Control Registers (41, 42):
         These registers are written atomically by power_manager or coordinator:
-        - SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR are DIAGNOSTIC entities
+        - SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR are DIAGNOSTIC entities
         - Users cannot write directly via UI (entity_category=DIAGNOSTIC)
         - Coordinator handles atomic writes via async_write_power_control_value()
         - No transaction coordination needed at entity level
 
     SOC Constraint Enforcement:
-        For power-related registers (SAX_NOMINAL_POWER, SAX_MAX_DISCHARGE):
+        For power-related registers (SAX_POWER_SETPOINT, SAX_MAX_DISCHARGE):
         - Coordinator's SOC manager validates requested power values
         - When SOC < min_soc, discharge power is constrained to 0W
         - Constraint is applied silently (no user error displayed)
@@ -415,7 +415,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 self._local_value = int(config_data.get("max_discharge", default_value))
 
         # Initialize power control items ONLY from cached/config - no dangerous defaults
-        elif self._modbus_item.name in (SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR):
+        elif self._modbus_item.name in (SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR):
             # Use cached value if available, otherwise 0
             if cached_value is not None:
                 self._local_value = cached_value
@@ -463,7 +463,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 )
                 return limit_power_enabled
 
-            if self._modbus_item.name in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]:
+            if self._modbus_item.name in [
+                SAX_POWER_SETPOINT,
+                SAX_POWER_SETPOINT_FACTOR,
+            ]:
                 # power registers (41-42): check CONF_CONTROL_POWER
                 control_power_enabled = bool(
                     config_entry.data.get(CONF_CONTROL_POWER, False)
@@ -559,7 +562,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         of a number entity through the UI or via service calls. It handles:
 
         1. **Input Validation**: Validates value against min/max bounds
-        2. **SOC Constraint Enforcement**: For power-related registers (SAX_NOMINAL_POWER,
+        2. **SOC Constraint Enforcement**: For power-related registers (SAX_POWER_SETPOINT,
         SAX_MAX_DISCHARGE), applies battery protection constraints via SOC manager
         3. **Direct Modbus Write**: All registers use direct Modbus write via coordinator
         (power control registers 41, 42 are typically written via coordinator's atomic
@@ -582,7 +585,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             these registers cannot be read back from SAX battery hardware.
 
         Power Control Coordination:
-            SAX_NOMINAL_POWER (register 41) and SAX_NOMINAL_FACTOR (register 42) are
+            SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42) are
             typically written atomically via coordinator's `async_write_power_control_value()`
             method by power_manager or SAXBatteryConfigNumber. Direct writes to individual
             registers still work but may not maintain coordination.
@@ -590,7 +593,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             These entities have `entity_category=DIAGNOSTIC` which makes them read-only
             in the UI, preventing user-initiated writes. Updates come from:
             - Power manager's automatic control loop
-            - SAX_NOMINAL_POWER config number entity (derives and writes both atomically)
+            - SAX_POWER_SETPOINT config number entity (derives and writes both atomically)
 
         SOC Constraint Behavior:
             When SOC drops below min_soc threshold:
@@ -617,7 +620,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             # Write-only register (address 43 - SAX_MAX_DISCHARGE)
             await entity.async_set_native_value(4000.0)  # Writes to hardware + updates local cache
 
-            # Power control (address 41 - SAX_NOMINAL_POWER)
+            # Power control (address 41 - SAX_POWER_SETPOINT)
             # Note: Typically written via coordinator's atomic method, not user-initiated
             await entity.async_set_native_value(2500.0)  # Direct write (works but not coordinated)
 
@@ -628,7 +631,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         Side Effects:
             - Updates `_local_value` for write-only registers
             - Triggers `async_write_ha_state()` for UI update
-            - Notifies power manager of power changes (if SAX_NOMINAL_POWER)
+            - Notifies power manager of power changes (if SAX_POWER_SETPOINT)
             - Triggers coordinator refresh
             - Persists SOC constraints to hardware via coordinator
         """
@@ -684,7 +687,10 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         # Write to hardware via coordinator write queue
         try:
             # Pilot control registers require atomic write with proper parameters
-            if self._modbus_item.name in (SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR):
+            if self._modbus_item.name in (
+                SAX_POWER_SETPOINT,
+                SAX_POWER_SETPOINT_FACTOR,
+            ):
                 await self._write_power_control_register(
                     self._modbus_item.name, int_value
                 )
@@ -722,20 +728,20 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         item_name: str,
         value: int,
     ) -> bool:
-        """Write to power control registers (SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR).
+        """Write to power control registers (SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR).
 
         Pilot control registers (addresses 41, 42) require atomic writes to prevent
         race conditions. This method coordinates writes through the coordinator's
         write queue to ensure proper sequencing.
 
         Architecture:
-            - SAX_NOMINAL_FACTOR updates are cached locally only (no hardware write)
-            - SAX_NOMINAL_POWER triggers actual Modbus write with current factor value
-            - Assumes SAX_NOMINAL_FACTOR is always updated before SAX_NOMINAL_POWER
+            - SAX_POWER_SETPOINT_FACTOR updates are cached locally only (no hardware write)
+            - SAX_POWER_SETPOINT triggers actual Modbus write with current factor value
+            - Assumes SAX_POWER_SETPOINT_FACTOR is always updated before SAX_POWER_SETPOINT
             - Coordinator's async_write_power_control_value() handles atomic write
 
         Args:
-            item_name: Name of the power control register (SAX_NOMINAL_POWER or SAX_NOMINAL_FACTOR)
+            item_name: Name of the power control register (SAX_POWER_SETPOINT or SAX_POWER_SETPOINT_FACTOR)
             value: Value to write (W for power, 0-100% for factor)
 
         Returns:
@@ -749,17 +755,17 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             Avoids redundant writes by caching factor values
             Batches power+factor writes through coordinator queue
         """
-        if item_name not in [SAX_NOMINAL_POWER, SAX_NOMINAL_FACTOR]:
+        if item_name not in [SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR]:
             _LOGGER.error(
                 "Invalid power control register: %s (expected %s or %s)",
                 item_name,
-                SAX_NOMINAL_POWER,
-                SAX_NOMINAL_FACTOR,
+                SAX_POWER_SETPOINT,
+                SAX_POWER_SETPOINT_FACTOR,
             )
             return False
 
-        # SAX_NOMINAL_FACTOR: Cache locally, no hardware write
-        if item_name == SAX_NOMINAL_FACTOR:
+        # SAX_POWER_SETPOINT_FACTOR: Cache locally, no hardware write
+        if item_name == SAX_POWER_SETPOINT_FACTOR:
             self._local_value = value
             _LOGGER.debug(
                 "%s: Cached nominal factor %.1f%% (no hardware write)",
@@ -768,13 +774,13 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             )
             return True
 
-        # SAX_NOMINAL_POWER: Trigger hardware write with coordinator
-        if item_name == SAX_NOMINAL_POWER:
+        # SAX_POWER_SETPOINT: Trigger hardware write with coordinator
+        if item_name == SAX_POWER_SETPOINT:
             # Get current factor value (should be updated before this call)
             factor_entity = self._get_factor_entity()
             if not factor_entity:
                 _LOGGER.warning(
-                    "%s: Could not find SAX_NOMINAL_FACTOR entity, using default 100%%",
+                    "%s: Could not find SAX_POWER_SETPOINT_FACTOR entity, using default 100%%",
                     self.entity_id,
                 )
                 factor_value = 100
@@ -827,7 +833,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         return False
 
     def _get_factor_entity(self) -> SAXBatteryModbusNumber | None:
-        """Get the SAX_NOMINAL_FACTOR entity for reading current factor value.
+        """Get the SAX_POWER_SETPOINT_FACTOR entity for reading current factor value.
 
         Returns:
             SAXBatteryModbusNumber | None: Factor entity if found, None otherwise
@@ -842,22 +848,24 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             _LOGGER.error("Coordinator has no config entry")
             return None
 
-        # Find SAX_NOMINAL_FACTOR ModbusItem from MODBUS_BATTERY_POWER_LIMIT_ITEMS list
+        # Find SAX_POWER_SETPOINT_FACTOR ModbusItem from MODBUS_BATTERY_POWER_CONTROL_ITEMS list
         factor_item: ModbusItem = next(
             (
                 item
                 for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                if item.name == SAX_NOMINAL_FACTOR
+                if item.name == SAX_POWER_SETPOINT_FACTOR
             ),
         )
 
         factor_unique_id = self.coordinator.sax_data.get_unique_id_for_item(
             factor_item,
-            SAX_NOMINAL_FACTOR,
+            SAX_POWER_SETPOINT_FACTOR,
         )
 
         if not factor_unique_id:
-            _LOGGER.warning("Could not generate unique_id for SAX_NOMINAL_FACTOR")
+            _LOGGER.warning(
+                "Could not generate unique_id for SAX_POWER_SETPOINT_FACTOR"
+            )
             return None
 
         # Lookup entity_id from registry
@@ -869,7 +877,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
         if not factor_entity_id:
             _LOGGER.warning(
-                "Could not find entity_id for SAX_NOMINAL_FACTOR (unique_id: %s)",
+                "Could not find entity_id for SAX_POWER_SETPOINT_FACTOR (unique_id: %s)",
                 factor_unique_id,
             )
             return None
@@ -907,7 +915,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             return
 
         # Check if this is a nominal power entity (early return for performance)
-        if self._modbus_item.name != SAX_NOMINAL_POWER:
+        if self._modbus_item.name != SAX_POWER_SETPOINT:
             return
 
         # Apply SOC constraints to the power value
@@ -1298,7 +1306,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
     async def _handle_control_power_update(self, power_value: int) -> None:
         """Handle CONF_CONTROL_POWER update by writing to control registers atomically.
 
-        Derives SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR from control power value
+        Derives SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR from control power value
         and writes both to registers 41 and 42 in a single atomic transaction.
 
         Args:
@@ -1327,7 +1335,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             (
                 item
                 for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                if item.name == SAX_NOMINAL_FACTOR
+                if item.name == SAX_POWER_SETPOINT_FACTOR
             ),
             None,
         )
@@ -1335,7 +1343,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             (
                 item
                 for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                if item.name == SAX_NOMINAL_POWER
+                if item.name == SAX_POWER_SETPOINT
             ),
             None,
         )
@@ -1344,8 +1352,10 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             raise HomeAssistantError("Control register items not found")
 
         # Update corresponding entities if they exist
-        self._update_power_entity(SAX_NOMINAL_FACTOR, factor_item, nominal_factor)
-        self._update_power_entity(SAX_NOMINAL_POWER, power_item, nominal_power)
+        self._update_power_entity(
+            SAX_POWER_SETPOINT_FACTOR, factor_item, nominal_factor
+        )
+        self._update_power_entity(SAX_POWER_SETPOINT, power_item, nominal_power)
 
         # Write to control registers atomically via coordinator
         success = await self.coordinator.async_write_power_control_value(

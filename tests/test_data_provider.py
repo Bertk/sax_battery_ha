@@ -49,6 +49,11 @@ class _FakeModbusAPI:
     ) -> list[int] | None:
         self.block_calls.append((address, count, device_id))
         registers = [0] * count
+        if address == 45:
+            registers[0] = 1
+            registers[1] = 85
+            registers[2] = 16384 + 1500
+            registers[3] = 16384 + 1200
         if address == 40000:
             registers[0] = 75
             registers[11] = 61
@@ -60,12 +65,18 @@ class _FakeModbusAPI:
         if address == 40047:
             registers[2] = 777
             registers[5] = -2
+        if address == 40073:
+            registers[0] = 500
+            registers[12] = 2300
         if address == 40095:
             registers[2] = 123
             registers[3] = 456
             registers[4] = 321
             registers[5] = 95
             registers[7] = 78
+        if address == 40096:
+            registers[0] = 100
+            registers[14] = 3500
         return registers
 
     def decode_register_block_value(
@@ -81,6 +92,8 @@ class _FakeModbusAPI:
             value *= 10**scale_factor_value
         elif modbus_item.factor != 1.0:
             value *= modbus_item.factor
+        if modbus_item.offset != 0:
+            value -= modbus_item.offset
         return value
 
 
@@ -126,7 +139,7 @@ class _AlwaysFailBlockModbusAPI(_FakeModbusAPI):
 
 
 def test_legacy_provider_reads_values_without_overrides() -> None:
-    """Legacy provider should read items using the default Modbus device ID."""
+    """Legacy provider should read items using fallback when no blocks match."""
     api = _FakeModbusAPI({"sax_soc": 55, "sax_power": -1200})
     provider = LegacyDataProvider(modbus_api=api)
     item_soc = ModbusItem(
@@ -146,6 +159,80 @@ def test_legacy_provider_reads_values_without_overrides() -> None:
 
     assert result == {"sax_soc": 55, "sax_power": -1200}
     assert api.calls == [("sax_soc", None), ("sax_power", None)]
+
+
+def test_legacy_provider_reads_bess_block() -> None:
+    """Legacy provider should read BESS realtime items using block 45-48."""
+    api = _FakeModbusAPI()
+    provider = LegacyDataProvider(modbus_api=api)
+    item_status = ModbusItem(
+        battery_device_id=64,
+        address=45,
+        name="sax_status",
+        mtype=TypeConstants.SWITCH,
+        device=DeviceConstants.BESS,
+    )
+    item_soc = ModbusItem(
+        battery_device_id=64,
+        address=46,
+        name=SAX_SOC,
+        mtype=TypeConstants.SENSOR,
+        device=DeviceConstants.BESS,
+    )
+    item_power = ModbusItem(
+        battery_device_id=64,
+        address=47,
+        name="sax_power",
+        offset=16384,
+        mtype=TypeConstants.SENSOR,
+        device=DeviceConstants.BESS,
+    )
+
+    result = asyncio.run(
+        provider.get_realtime_values([item_status, item_soc, item_power])
+    )
+
+    assert result == {
+        "sax_status": 1,
+        SAX_SOC: 85,
+        "sax_power": 1500,
+    }
+    assert api.block_calls == [(45, 4, 64)]
+    assert api.calls == []
+
+
+def test_legacy_provider_reads_bms_and_smartmeter_blocks() -> None:
+    """Legacy provider should read BMS and Smartmeter blocks."""
+    api = _FakeModbusAPI()
+    provider = LegacyDataProvider(modbus_api=api)
+    item_phase_currents = ModbusItem(
+        battery_device_id=40,
+        address=40073,
+        name="phase_currents_sum",
+        mtype=TypeConstants.SENSOR,
+        factor=0.01,
+        device=DeviceConstants.SYS,
+    )
+    item_sm_total_power = ModbusItem(
+        battery_device_id=40,
+        address=40110,
+        name="smartmeter_total_power",
+        mtype=TypeConstants.SENSOR,
+        factor=1.0,
+        device=DeviceConstants.SM,
+    )
+
+    result = asyncio.run(
+        provider.get_realtime_values([item_phase_currents, item_sm_total_power])
+    )
+
+    assert result == {
+        "phase_currents_sum": pytest.approx(5.0),
+        "smartmeter_total_power": 3500,
+    }
+    assert (40073, 21, 40) in api.block_calls
+    assert (40096, 15, 40) in api.block_calls
+    assert api.calls == []
 
 
 def test_sunspec_provider_uses_detected_device_id() -> None:

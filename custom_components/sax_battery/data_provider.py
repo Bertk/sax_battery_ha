@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +17,36 @@ from custom_components.sax_battery.sunspec_map import (
 from .const_sunspec import get_canonical_sunspec_items_by_name
 from .items import ModbusItem
 from .sunspec_client import decode_sunspec_block_values, read_sunspec_register_block
+
+
+@dataclass(frozen=True)
+class LegacyRegisterBlock:
+    """Definition of a documented Legacy register block."""
+
+    name: str
+    start_address: int
+    end_address: int
+    device_id: int
+    required: bool = True
+
+    @property
+    def register_count(self) -> int:
+        """Return the number of registers in the block."""
+        return self.end_address - self.start_address + 1
+
+    def contains(self, item: ModbusItem) -> bool:
+        """Return whether the item belongs to this block."""
+        return (
+            getattr(item, "battery_device_id", None) == self.device_id
+            and self.start_address <= item.address <= self.end_address
+        )
+
+
+LEGACY_REGISTER_BLOCKS: tuple[LegacyRegisterBlock, ...] = (
+    LegacyRegisterBlock("bess_realtime", 45, 48, device_id=64),
+    LegacyRegisterBlock("bms_system", 40073, 40093, device_id=40),
+    LegacyRegisterBlock("smartmeter_data", 40096, 40110, device_id=40, required=False),
+)
 
 
 class DataProvider(ABC):
@@ -57,23 +88,73 @@ class DataProvider(ABC):
 
 
 class LegacyDataProvider(DataProvider):
-    """Read values through the existing Modbus item path."""
+    """Read values through Modbus register blocks with fallback to single items."""
 
     def __init__(self, modbus_api: Any) -> None:
         """Initialize the legacy provider with a Modbus API instance."""
         self._modbus_api = modbus_api
 
     async def get_realtime_values(self, items: list[ModbusItem]) -> dict[str, Any]:
-        """Read each item directly via its existing async read path."""
+        """Read items using legacy register blocks where possible, with item fallback."""
         values: dict[str, Any] = {}
-        for item in items:
-            if self._modbus_api is None:
-                continue
+        if self._modbus_api is None or not items:
+            return values
 
+        read_block_fn = getattr(self._modbus_api, "read_register_block", None)
+        decode_fn = getattr(self._modbus_api, "decode_register_block_value", None)
+
+        unhandled_items: list[ModbusItem] = []
+
+        if callable(read_block_fn) and callable(decode_fn):
+            handled_item_names: set[str] = set()
+
+            for block in LEGACY_REGISTER_BLOCKS:
+                block_items = [
+                    item
+                    for item in items
+                    if block.contains(item)
+                    and getattr(item.mtype, "value", None) != "number_wo"
+                ]
+                if not block_items:
+                    continue
+
+                for item in block_items:
+                    handled_item_names.add(item.name)
+
+                block_values = await read_block_fn(
+                    address=block.start_address,
+                    count=block.register_count,
+                    device_id=block.device_id,
+                )
+                if block_values is not None:
+                    for item in block_items:
+                        reg_idx = item.address - block.start_address
+                        if 0 <= reg_idx < len(block_values):
+                            val = decode_fn([block_values[reg_idx]], item)
+                            if val is not None:
+                                values[item.name] = val
+                else:
+                    unhandled_items.extend(block_items)
+
+            unhandled_items.extend(
+                [
+                    item
+                    for item in items
+                    if item.name not in handled_item_names and item.name not in values
+                ]
+            )
+        else:
+            unhandled_items = list(items)
+
+        # Fallback to single item read for unhandled or failed block items
+        for item in unhandled_items:
+            if item.name in values or getattr(item.mtype, "value", None) == "number_wo":
+                continue
             item.modbus_api = self._modbus_api
             value = await item.async_read_value()
             if value is not None:
                 values[item.name] = value
+
         return values
 
     async def refresh_control_values(self, items: list[ModbusItem]) -> dict[str, Any]:
@@ -104,16 +185,33 @@ class LegacyDataProvider(DataProvider):
 
     def get_diagnostics(self) -> dict[str, Any]:
         """Return diagnostics for the legacy provider."""
-        return {"provider_type": "legacy"}
+        return {
+            "provider_type": "legacy",
+            "blocks": {
+                block.name: {
+                    "start_address": block.start_address,
+                    "end_address": block.end_address,
+                    "device_id": block.device_id,
+                    "register_count": block.register_count,
+                }
+                for block in LEGACY_REGISTER_BLOCKS
+            },
+        }
 
 
 class SunSpecDataProvider(DataProvider):
     """Read values through a SunSpec-aware path using the detected device ID."""
 
-    def __init__(self, modbus_api: Any, detected_device_id: int) -> None:
+    def __init__(
+        self,
+        modbus_api: Any,
+        detected_device_id: int,
+        sm_type: str = "adw200",
+    ) -> None:
         """Initialize the SunSpec provider with a Modbus API and device ID."""
         self._modbus_api = modbus_api
         self._detected_device_id = detected_device_id
+        self._sm_type = sm_type
         self._block_cache: dict[str, list[int]] = {}
         self._block_status: dict[str, dict[str, Any]] = {
             block.name: {
@@ -129,6 +227,16 @@ class SunSpecDataProvider(DataProvider):
             for block in SUNSPEC_REGISTER_BLOCKS
         }
         self._sunspec_items_by_name = get_canonical_sunspec_items_by_name()
+
+    @property
+    def sm_type(self) -> str:
+        """Return the configured smart meter type."""
+        return self._sm_type
+
+    @sm_type.setter
+    def sm_type(self, value: str) -> None:
+        """Update the configured smart meter type."""
+        self._sm_type = value
 
     async def get_realtime_values(self, items: list[ModbusItem]) -> dict[str, Any]:
         """Read values using documented SunSpec register blocks only."""
@@ -179,7 +287,9 @@ class SunSpecDataProvider(DataProvider):
         return await self._get_values_for_block("battery_controls", items)
 
     async def get_smart_meter_values(self, items: list[ModbusItem]) -> dict[str, Any]:
-        """Return values from block 40054-40094."""
+        """Return values from block 40054-40094 when smart meter is configured."""
+        if self._sm_type == "none":
+            return {}
         return await self._get_values_for_block("smartmeter_data", items)
 
     async def get_battery_state_values(self, items: list[ModbusItem]) -> dict[str, Any]:

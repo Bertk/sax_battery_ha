@@ -23,7 +23,7 @@ from custom_components.sax_battery.const import (
     DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_MAX_CHARGE,
     DESCRIPTION_SAX_MIN_SOC,
-    DESCRIPTION_SAX_NOMINAL_POWER,
+    DESCRIPTION_SAX_POWER_SETPOINT,
     DESCRIPTION_SAX_STATUS_SWITCH,
     DOMAIN,
     PILOT_ITEMS,
@@ -31,8 +31,8 @@ from custom_components.sax_battery.const import (
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
     SAX_STATUS,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
@@ -281,12 +281,12 @@ def modbus_item_pilot_power_base():
     """Create pilot control power ModbusItem for testing."""
     return ModbusItem(
         address=41,
-        name=SAX_NOMINAL_POWER,
+        name=SAX_POWER_SETPOINT,
         mtype=TypeConstants.NUMBER_WO,
         device=DeviceConstants.BESS,
         entitydescription=NumberEntityDescription(
-            key="nominal_power",
-            name="Nominal Power",
+            key="power_setpoint",
+            name="Power Setpoint",
             native_min_value=0,
             native_max_value=5000,
             native_step=100,
@@ -640,12 +640,12 @@ def modbus_item_pilot_factor_base():
     """Create pilot control power factor ModbusItem for testing."""
     return ModbusItem(
         address=42,
-        name=SAX_NOMINAL_FACTOR,
+        name=SAX_POWER_SETPOINT_FACTOR,
         mtype=TypeConstants.NUMBER_WO,
         device=DeviceConstants.BESS,
         entitydescription=NumberEntityDescription(
-            key="nominal_factor",
-            name="Nominal Power Factor",
+            key="power_setpoint_factor",
+            name="Power Setpoint Factor",
             native_min_value=0,
             native_max_value=1000,
             native_step=1,
@@ -1024,10 +1024,10 @@ def pilot_items_mixed():
     """Create mixed pilot items for testing."""
     return [
         SAXItem(
-            name=SAX_NOMINAL_POWER,
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER,
             device=DeviceConstants.BESS,
-            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
+            entitydescription=DESCRIPTION_SAX_POWER_SETPOINT,
         ),
         SAXItem(
             name="grid_control_switch",

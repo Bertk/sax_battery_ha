@@ -14,11 +14,11 @@ from .const import (
     DESCRIPTION_SAX_GRID_FREQUENCY,
     DESCRIPTION_SAX_MAX_CHARGE,
     DESCRIPTION_SAX_MAX_DISCHARGE,
-    DESCRIPTION_SAX_NOMINAL_FACTOR,
-    DESCRIPTION_SAX_NOMINAL_POWER,
     DESCRIPTION_SAX_PHASE_CURRENTS_SUM,
     DESCRIPTION_SAX_POWER,
     DESCRIPTION_SAX_POWER_FACTOR,
+    DESCRIPTION_SAX_POWER_SETPOINT,
+    DESCRIPTION_SAX_POWER_SETPOINT_FACTOR,
     DESCRIPTION_SAX_POWER_SM,
     DESCRIPTION_SAX_REACTIVE_POWER,
     DESCRIPTION_SAX_SMARTMETER_CURRENT_L1,
@@ -50,11 +50,11 @@ from .entity_keys import (
     SAX_GRID_FREQUENCY,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
     SAX_PHASE_CURRENTS_SUM,
     SAX_POWER,
     SAX_POWER_FACTOR,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
     SAX_POWER_SM,
     SAX_REACTIVE_POWER,
     SAX_SMARTMETER_CURRENT_L1,
@@ -83,9 +83,9 @@ from .items import ModbusItem
 
 # Battery items write-only versions: Power limits
 MODBUS_BATTERY_POWER_CONTROL_ITEMS: list[ModbusItem] = [
-    ModbusItem(battery_device_id=64,  address=41, name=SAX_NOMINAL_POWER, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_POWER, translation_key="bms_nominal_power",
+    ModbusItem(battery_device_id=64,  address=41, name=SAX_POWER_SETPOINT, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER_SETPOINT, translation_key="bms_power_setpoint",
     ),
-    ModbusItem(battery_device_id=64, address=42, name=SAX_NOMINAL_FACTOR, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1000.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_NOMINAL_FACTOR, translation_key="bms_nominal_factor",
+    ModbusItem(battery_device_id=64, address=42, name=SAX_POWER_SETPOINT_FACTOR, enabled_by_default=False, mtype=TypeConstants.NUMBER_WO, data_type=ModbusClientMixin.DATATYPE.UINT16, factor=1000.0, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_POWER_SETPOINT_FACTOR, translation_key="bms_power_setpoint_factor",
     ),
 ]
 

@@ -26,12 +26,14 @@ from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_LIMIT_POWER,
     CONF_MIN_SOC,
+    CONF_SM_TYPE,
     DEFAULT_MIN_SOC,
+    DEFAULT_SM_TYPE,
     DOMAIN,
     LIMIT_REFRESH_INTERVAL,
     SAX_COMBINED_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
     SAX_SOC,
     SAX_STATUS,
 )
@@ -172,9 +174,15 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _create_data_provider(self, protocol_mode: ProtocolMode) -> DataProvider:
         """Create the appropriate data provider for the detected protocol."""
         if protocol_mode == ProtocolMode.SUNSPEC:
+            sm_type = (
+                self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+                if self.config_entry
+                else DEFAULT_SM_TYPE
+            )
             return SunSpecDataProvider(
                 modbus_api=self.modbus_api,
                 detected_device_id=self.detected_device_id,
+                sm_type=sm_type,
             )
         return LegacyDataProvider(modbus_api=self.modbus_api)
 
@@ -416,10 +424,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 factor,
                             )
                             # Update both cached values
-                            data[SAX_NOMINAL_POWER] = value
-                            data[SAX_NOMINAL_FACTOR] = factor
-                            self._pending_writes.pop(SAX_NOMINAL_POWER, None)
-                            self._pending_writes.pop(SAX_NOMINAL_FACTOR, None)
+                            data[SAX_POWER_SETPOINT] = value
+                            data[SAX_POWER_SETPOINT_FACTOR] = factor
+                            self._pending_writes.pop(SAX_POWER_SETPOINT, None)
+                            self._pending_writes.pop(SAX_POWER_SETPOINT_FACTOR, None)
                             await self._refresh_sunspec_control_values(data)
                         else:
                             _LOGGER.warning(
@@ -975,8 +983,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Set API reference if missing
         if modbus_item.modbus_api is None:
             modbus_item.modbus_api = self.modbus_api
-        # Handle nominal power/factor as atomic operation
-        if modbus_item.name == SAX_NOMINAL_POWER:
+        # Handle power setpoint/factor as atomic operation
+        if modbus_item.name == SAX_POWER_SETPOINT:
             # Store power value
             self._nominal_power_pending["power"] = value
             self._pending_writes[modbus_item.name] = value
@@ -989,7 +997,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self.async_request_refresh()
             return
 
-        if modbus_item.name == SAX_NOMINAL_FACTOR:
+        if modbus_item.name == SAX_POWER_SETPOINT_FACTOR:
             # Store factor value
             self._nominal_power_pending["factor"] = int(value)
             self._pending_writes[modbus_item.name] = value
@@ -1034,10 +1042,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         # Create placeholder item for atomic write
-        nominal_power_item = self.sax_data.get_item_by_name(SAX_NOMINAL_POWER)
+        nominal_power_item = self.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
 
         if not isinstance(nominal_power_item, ModbusItem):
-            _LOGGER.error("SAX_NOMINAL_POWER is not a ModbusItem")
+            _LOGGER.error("SAX_POWER_SETPOINT is not a ModbusItem")
             return
 
         # Queue with special metadata

@@ -496,7 +496,7 @@ class SAXBatteryData:
         """Get ModbusItem or SAXItem by name across all batteries.
 
         Args:
-            name: Item name to search for (e.g., "sax_nominal_power", "sax_soc")
+            name: Item name to search for (e.g., "sax_power_setpoint", "sax_soc")
 
         Returns:
             ModbusItem or SAXItem if found, None otherwise

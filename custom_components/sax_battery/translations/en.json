@@ -43,10 +43,12 @@
                 "description": "Configure power management options. Select whether a SAX smart meter is connected via RS485 and configure intelligent balanced loading.",
                 "data": {
                     "sm_connected": "SAX smart meter connected via RS485",
+                    "sm_type": "Smart Meter Model / Type",
                     "balanced_loading": "Enable intelligent balanced loading"
                 },
                 "data_description": {
                     "sm_connected": "Enable if the SAX smart meter is connected to the battery via RS485. When disabled, an external grid power sensor can be configured for balanced loading",
+                    "sm_type": "Select the connected Smart Meter model (e.g. ADW200 or ADL400) or choose None if no smart meter is installed",
                     "balanced_loading": "Enable balanced loading using an external grid power sensor. Negative grid power (production/export to grid) indicates surplus power available for charging — this typically means solar photovoltaic (PV) energy is available. Positive grid power (consumption/import from grid) means no surplus is available. Manual grid charging is always available independently"
                 }
             },
@@ -112,6 +114,14 @@
           "legacy": "Legacy Mode (FW master: 23.60 , gateway:  ≤0.54)",
           "sunspec": "SunSpec Mode (FW master: 23.61 , gateway: ≥0.54)"
         }
+      },
+      "sm_type_selection": {
+        "options": {
+          "adw200": "ADW200 Smart Meter",
+          "adl400": "ADL400 Smart Meter",
+          "other": "Other Modbus Smart Meter",
+          "none": "None (No Smart Meter)"
+        }
       }
     },
     "options": {
@@ -147,11 +157,11 @@
             "bms_min_soc": {
                 "name": "Minimum SOC"
             },
-            "bms_nominal_factor": {
-                "name": "Power Factor (cos φ)"
+            "bms_power_setpoint_factor": {
+                "name": "Power Setpoint Factor (cos φ)"
             },
-            "bms_nominal_power": {
-                "name": "Nominal Power"
+            "bms_power_setpoint": {
+                "name": "Power Setpoint"
             },
             "bms_power_control_setpoint": {
                 "name": "Power Control Setpoint"

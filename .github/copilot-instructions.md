@@ -24,6 +24,7 @@ This repository is a Home Assistant custom integration for SAX-power batteries. 
 - Do not add user-configurable polling intervals.
 - Keep log messages concise and avoid logging sensitive data.
 - Use specific exceptions such as `ModbusException`, `OSError`, `TimeoutError`, `ValueError`, and `ConfigEntryNotReady`.
+- When renaming or refactoring symbols, constants, or entities, do NOT assume backward compatibility is needed. Ask the user whether backward compatibility aliases/shims are required to avoid unnecessary work creating and removing them.
 
 ## Validation commands
 

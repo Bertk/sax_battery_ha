@@ -502,7 +502,7 @@ class TestSAXBatteryNumberUniqueIdAndName:
         # Mock coordinator data
         coordinator.data = {
             "sax_max_charge": 3500,
-            "sax_nominal_power": 2000,
+            "sax_power_setpoint": 2000,
         }
         coordinator.last_update_success = True
         coordinator.last_update_success_time = MagicMock()

@@ -35,14 +35,20 @@ from .const import (
     CONF_POWER_SENSOR,
     CONF_PROTOCOL_MODE,
     CONF_SM_CONNECTED,
+    CONF_SM_TYPE,
     CONF_VERIFY_SUNSPEC,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
+    DEFAULT_SM_TYPE,
     DOMAIN,
     PROTOCOL_MODE_LEGACY,
     PROTOCOL_MODE_SUNSPEC,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SM_TYPE_ADL400,
+    SM_TYPE_ADW200,
+    SM_TYPE_NONE,
+    SM_TYPE_OTHER,
 )
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 
@@ -155,13 +161,21 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            self._sm_connected = user_input.get(CONF_SM_CONNECTED, True)
+            self._sm_type = user_input.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+            self._sm_connected = (
+                user_input.get(CONF_SM_CONNECTED, True)
+                if self._sm_type != SM_TYPE_NONE
+                else False
+            )
             self._balanced_loading = user_input.get(CONF_BALANCED_LOADING, False)
             self._data.update(user_input)
+            self._data[CONF_SM_CONNECTED] = self._sm_connected
+            self._data[CONF_SM_TYPE] = self._sm_type
 
             _LOGGER.debug(
-                "Power options saved: sm_connected=%s, balanced_loading=%s",
+                "Power options saved: sm_connected=%s, sm_type=%s, balanced_loading=%s",
                 self._sm_connected,
+                self._sm_type,
                 self._balanced_loading,
             )
 
@@ -173,11 +187,37 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # sm_connected=True → smart meter handles power
             return await self.async_step_protocol_options()
 
+        current_sm_type = getattr(self, "_sm_type", DEFAULT_SM_TYPE)
+
         return self.async_show_form(
             step_id="power_options",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_SM_CONNECTED, default=self._sm_connected): bool,
+                    vol.Optional(
+                        CONF_SM_TYPE,
+                        default=current_sm_type,
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=SM_TYPE_ADW200, label="ADW200 Smart Meter"
+                                ),
+                                selector.SelectOptionDict(
+                                    value=SM_TYPE_ADL400, label="ADL400 Smart Meter"
+                                ),
+                                selector.SelectOptionDict(
+                                    value=SM_TYPE_OTHER,
+                                    label="Other Modbus Smart Meter",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=SM_TYPE_NONE, label="None (No Smart Meter)"
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                            translation_key="sm_type_selection",
+                        )
+                    ),
                     vol.Required(
                         CONF_BALANCED_LOADING, default=self._balanced_loading
                     ): bool,
@@ -599,6 +639,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema: dict[vol.Marker, Any] = {}
 
+        current_sm_type = self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+
         # Always show feature toggle options
         schema.update(
             {
@@ -620,6 +662,30 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SM_CONNECTED,
                     default=self.config_entry.data.get(CONF_SM_CONNECTED, True),
                 ): bool,
+                vol.Optional(
+                    CONF_SM_TYPE,
+                    default=current_sm_type,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=SM_TYPE_ADW200, label="ADW200 Smart Meter"
+                            ),
+                            selector.SelectOptionDict(
+                                value=SM_TYPE_ADL400, label="ADL400 Smart Meter"
+                            ),
+                            selector.SelectOptionDict(
+                                value=SM_TYPE_OTHER,
+                                label="Other Modbus Smart Meter",
+                            ),
+                            selector.SelectOptionDict(
+                                value=SM_TYPE_NONE, label="None (No Smart Meter)"
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key="sm_type_selection",
+                    )
+                ),
             }
         )
 

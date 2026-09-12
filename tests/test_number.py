@@ -12,7 +12,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_MASTER_BATTERY,
-    DESCRIPTION_SAX_NOMINAL_POWER,
+    DESCRIPTION_SAX_POWER_SETPOINT,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
@@ -20,8 +20,8 @@ from custom_components.sax_battery.const import (
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
 )
 from custom_components.sax_battery.const_legacy import (
     MODBUS_BATTERY_POWER_CONTROL_ITEMS,
@@ -97,8 +97,8 @@ class TestSAXBatteryModbusNumber:
     def test_initialization_write_only(self, mock_coordinator_modbus_base) -> None:
         """Test write-only register initialization."""
         write_only_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
         )
@@ -110,7 +110,7 @@ class TestSAXBatteryModbusNumber:
         )
 
         assert number._is_write_only is True
-        # SAX_NOMINAL_POWER is a pilot control item, so it gets safe default 0.0
+        # SAX_POWER_SETPOINT is a pilot control item, so it gets safe default 0.0
         assert number._local_value == 0.0  # Security: safe default for pilot control
 
     def test_initialization_write_only_max_charge(
@@ -266,8 +266,8 @@ class TestSAXBatteryModbusNumber:
 
         # Write-only register
         write_only_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
         )
@@ -288,8 +288,8 @@ class TestSAXBatteryModbusNumber:
         mock_coordinator_modbus_base.config_entry.data = {}
 
         pilot_control_items = [
-            (SAX_NOMINAL_POWER, 41),
-            (SAX_NOMINAL_FACTOR, 42),
+            (SAX_POWER_SETPOINT, 41),
+            (SAX_POWER_SETPOINT_FACTOR, 42),
         ]
 
         for item_name, address in pilot_control_items:
@@ -320,17 +320,17 @@ class TestSAXBatteryModbusNumberNominalPower:
     ) -> None:
         """Test nominal power write uses pilot control atomic write.
 
-        SAX_NOMINAL_POWER triggers _write_pilot_control_register() which:
-        - Looks up current SAX_NOMINAL_FACTOR value
+        SAX_POWER_SETPOINT triggers _write_pilot_control_register() which:
+        - Looks up current SAX_POWER_SETPOINT_FACTOR value
         - Calls coordinator.async_write_pilot_control_value(item, power, factor)
         - Updates _local_value cache
         """
         mock_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
-            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
+            entitydescription=DESCRIPTION_SAX_POWER_SETPOINT,
         )
 
         mock_coordinator_modbus_base.soc_manager = MagicMock()
@@ -384,11 +384,11 @@ class TestSAXBatteryModbusNumberNominalPower:
     ) -> None:
         """Test nominal power write uses 100% factor when entity not found."""
         mock_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
-            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
+            entitydescription=DESCRIPTION_SAX_POWER_SETPOINT,
         )
 
         mock_coordinator_modbus_base.soc_manager = MagicMock()
@@ -424,46 +424,46 @@ class TestSAXBatteryModbusNumberNominalPower:
         assert call_args[0][1] == 2000.0  # Second arg: power
         assert call_args[0][2] == 100  # Third arg: factor (100% fallback, int)
 
-        async def test_nominal_factor_write_cache_only(
-            self,
-            hass: HomeAssistant,
-            mock_coordinator_modbus_base,
-        ) -> None:
-            """Test SAX_NOMINAL_FACTOR updates cache without hardware write."""
-            mock_item = ModbusItem(
-                address=_write_only_address(SAX_NOMINAL_FACTOR),
-                name=SAX_NOMINAL_FACTOR,
-                mtype=TypeConstants.NUMBER_WO,
-                device=DeviceConstants.BESS,
-            )
+    async def test_nominal_factor_write_cache_only(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_modbus_base,
+    ) -> None:
+        """Test SAX_POWER_SETPOINT_FACTOR updates cache without hardware write."""
+        mock_item = ModbusItem(
+            address=_write_only_address(SAX_POWER_SETPOINT_FACTOR),
+            name=SAX_POWER_SETPOINT_FACTOR,
+            mtype=TypeConstants.NUMBER_WO,
+            device=DeviceConstants.BESS,
+        )
 
-            mock_coordinator_modbus_base.soc_manager = MagicMock()
-            mock_coordinator_modbus_base.config_entry = MagicMock()
-            mock_coordinator_modbus_base.config_entry.entry_id = "test_entry_id"
+        mock_coordinator_modbus_base.soc_manager = MagicMock()
+        mock_coordinator_modbus_base.config_entry = MagicMock()
+        mock_coordinator_modbus_base.config_entry.entry_id = "test_entry_id"
 
-            # Mock coordinator write methods (should NOT be called)
-            mock_coordinator_modbus_base.async_write_power_control_value = AsyncMock()
-            mock_coordinator_modbus_base.async_write_number_value = AsyncMock()
+        # Mock coordinator write methods (should NOT be called)
+        mock_coordinator_modbus_base.async_write_power_control_value = AsyncMock()
+        mock_coordinator_modbus_base.async_write_number_value = AsyncMock()
 
-            number = SAXBatteryModbusNumber(
-                coordinator=mock_coordinator_modbus_base,
-                battery_id="bess_a",
-                modbus_item=mock_item,
-            )
+        number = SAXBatteryModbusNumber(
+            coordinator=mock_coordinator_modbus_base,
+            battery_id="bess_a",
+            modbus_item=mock_item,
+        )
 
-            number.hass = hass
-            number.entity_id = "number.test_nominal_factor"
+        number.hass = hass
+        number.entity_id = "number.test_nominal_factor"
 
-            with patch.object(number, "async_write_ha_state"):
-                await number.async_set_native_value(80.0)
+        with patch.object(number, "async_write_ha_state"):
+            await number.async_set_native_value(80.0)
 
-            # Verify NO hardware write
-            mock_coordinator_modbus_base.async_write_power_control_value.assert_not_called()
-            mock_coordinator_modbus_base.async_write_number_value.assert_not_called()
+        # Verify NO hardware write
+        mock_coordinator_modbus_base.async_write_power_control_value.assert_not_called()
+        mock_coordinator_modbus_base.async_write_number_value.assert_not_called()
 
-            # Verify cache updated
-            assert number._local_value == 80.0
-            assert number.native_value == 80.0
+        # Verify cache updated
+        assert number._local_value == 80.0
+        assert number.native_value == 80.0
 
     async def test_nominal_power_write_only_behavior(
         self,
@@ -478,11 +478,11 @@ class TestSAXBatteryModbusNumberNominalPower:
         - Value persists in cache across state updates
         """
         mock_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
-            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
+            entitydescription=DESCRIPTION_SAX_POWER_SETPOINT,
         )
 
         mock_coordinator_modbus_base.soc_manager = MagicMock()
@@ -526,11 +526,11 @@ class TestSAXBatteryModbusNumberNominalPower:
         When SOC < min_soc, discharge power should be constrained to 0W.
         """
         mock_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
-            entitydescription=DESCRIPTION_SAX_NOMINAL_POWER,
+            entitydescription=DESCRIPTION_SAX_POWER_SETPOINT,
         )
 
         # Setup SOC manager with low SOC
@@ -615,8 +615,8 @@ class TestSAXBatteryModbusNumberAdvanced:
         mock_coordinator_modbus_base.config_entry = None
 
         write_only_item = ModbusItem(
-            address=_write_only_address(SAX_NOMINAL_POWER),
-            name=SAX_NOMINAL_POWER,
+            address=_write_only_address(SAX_POWER_SETPOINT),
+            name=SAX_POWER_SETPOINT,
             mtype=TypeConstants.NUMBER_WO,
             device=DeviceConstants.BESS,
         )
@@ -1515,7 +1515,7 @@ class TestSAXBatteryModbusNumberPeriodicWrite:
 
 
 # TestSAXBatteryConfigNumberControlPower class removed - SAX_POWER_CONTROL_SETPOINT entity deprecated
-# Power control now uses direct SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR writes via power_manager
+# Power control now uses direct SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR writes via power_manager
 
 
 class TestSAXBatteryModbusNumberSOCConstraints:

@@ -61,11 +61,11 @@ from .entity_keys import (
     SAX_MAX_SOC,
     SAX_MAX_SOC_CHARGING,
     SAX_MIN_SOC,
-    SAX_NOMINAL_FACTOR,
-    SAX_NOMINAL_POWER,
     SAX_PHASE_CURRENTS_SUM,
     SAX_POWER,
     SAX_POWER_FACTOR,
+    SAX_POWER_SETPOINT,
+    SAX_POWER_SETPOINT_FACTOR,
     SAX_POWER_SM,
     SAX_PV_POWER,
     SAX_REACTIVE_POWER,
@@ -145,6 +145,12 @@ CONF_LIMIT_POWER = "limit_power"
 
 # Smart meter and balanced loading configuration
 CONF_SM_CONNECTED = "sm_connected"
+CONF_SM_TYPE = "sm_type"
+SM_TYPE_ADW200 = "adw200"
+SM_TYPE_ADL400 = "adl400"
+SM_TYPE_OTHER = "other"
+SM_TYPE_NONE = "none"
+DEFAULT_SM_TYPE = SM_TYPE_ADW200
 CONF_BALANCED_LOADING = "balanced_loading"
 
 # Protocol selection configuration
@@ -184,7 +190,7 @@ LIMIT_REFRESH_INTERVAL = (
     3  # minutes for periodic refresh of write-only limits registers
 )
 # Refresh/register sets are derived from ModbusItem definitions below.
-# SAX_NOMINAL_POWER and SAX_NOMINAL_FACTOR are managed by power manager,
+# SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR are managed by power manager,
 # so periodic refresh covers only SAX_MAX_DISCHARGE and SAX_MAX_CHARGE.
 
 
@@ -241,9 +247,9 @@ DESCRIPTION_SAX_MAX_DISCHARGE = NumberEntityDescription(
     entity_category=EntityCategory.CONFIG,
 )
 
-DESCRIPTION_SAX_NOMINAL_POWER = NumberEntityDescription(
-    key=SAX_NOMINAL_POWER,
-    name="Sax Nominal Power",
+DESCRIPTION_SAX_POWER_SETPOINT = NumberEntityDescription(
+    key=SAX_POWER_SETPOINT,
+    name="Sax Power Setpoint",
     mode=NumberMode.SLIDER,
     native_unit_of_measurement=UnitOfPower.WATT,
     native_min_value=0,
@@ -253,9 +259,9 @@ DESCRIPTION_SAX_NOMINAL_POWER = NumberEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
-DESCRIPTION_SAX_NOMINAL_FACTOR = NumberEntityDescription(
-    key=SAX_NOMINAL_FACTOR,
-    name="Sax Power Factor (cos φ)",  # Dimensionless (0.0-1.0 range displayed)
+DESCRIPTION_SAX_POWER_SETPOINT_FACTOR = NumberEntityDescription(
+    key=SAX_POWER_SETPOINT_FACTOR,
+    name="Sax Power Setpoint Factor (cos φ)",  # Dimensionless (0.0-1.0 range displayed)
     mode=NumberMode.BOX,
     native_unit_of_measurement="",
     native_min_value=0,
@@ -376,7 +382,7 @@ DESCRIPTION_SAX_MAX_SOC_CHARGING = NumberEntityDescription(
     icon="mdi:battery-charging-high",
 )
 
-# SAX_POWER_CONTROL_SETPOINT entity description removed - replaced by direct SAX_NOMINAL_POWER control
+# SAX_POWER_CONTROL_SETPOINT entity description removed - replaced by direct SAX_POWER_SETPOINT control
 
 DESCRIPTION_SAX_POWER = SensorEntityDescription(
     key=SAX_POWER,
