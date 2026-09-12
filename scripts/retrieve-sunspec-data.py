@@ -2,11 +2,10 @@
 """Verify expected SunSpec models and selected values over Modbus TCP.
 
 sax-power supported models:
-
 model 1: common (All SunSpec compliant devices must include this as the first model)
 model 103: inverter_three_phase (Inverter Three Phase)
-model 123: controls (specific device controls)
-model 203: ac_meter_abcn (wye-connect three phase (abcn) meter)
+model 123: controls (Specific device controls)
+model 203: ac_meter_abcn (Wye-connect three phase meter)
 model 802: battery (Battery Base Model)
 
 documentation: https://github.com/sunspec/pysunspec2#full-example-of-a-device-interaction
@@ -14,14 +13,37 @@ documentation: https://github.com/sunspec/pysunspec2#full-example-of-a-device-in
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
+# Import client and device manager from sunspec2 core framework
+import sunspec2.core.device as sunspec_device
 from sunspec2.modbus import client
 
+# Modbus Connection Defaults from SAX Power Documentation
 DEFAULT_IPADDR = "192.168.178.90"
 DEFAULT_IPPORT = 502
-DEFAULT_SLAVE_ID = 40
+DEFAULT_SLAVE_ID = 100  # Fixed: SAX default is 100, not 40
+
+# Folder containing custom JSON configurations
+FOLDER_PATH = "./sax_models/"
+
+
+def load_custom_models(folder: str) -> None:
+    """Pre-load custom SAX JSON models into the sunspec2 runtime database."""
+    if not os.path.exists(folder):  # noqa: PTH110
+        print(f"Error: Model directory '{folder}' not found.", file=sys.stderr)  # noqa: T201
+        sys.exit(2)
+
+    for file_name in os.listdir(folder):  # noqa: PTH208
+        if file_name.endswith(".json"):
+            full_path = os.path.join(folder, file_name)  # noqa: PTH118
+            try:
+                sunspec_device.models_load_file(full_path)
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to load model file {file_name}: {e}", file=sys.stderr)  # noqa: T201
+                sys.exit(2)
 
 
 def prompt_with_default(prompt_text: str, default_value: str) -> str:
@@ -36,11 +58,10 @@ def trace_logger(message: str) -> None:
 
 
 def verify_model(
-    device: Any, attribute_name: str, model_id: int, fields: list[str]
+    device_obj: Any, attribute_name: str, model_id: int, fields: list[str]
 ) -> None:
     """Read the first instance of an expected model and print selected fields."""
-
-    models = getattr(device, attribute_name, None)
+    models = getattr(device_obj, attribute_name, None)
     if not models:
         raise RuntimeError(
             f"Required SunSpec model {model_id} ({attribute_name}) is missing."
@@ -51,7 +72,12 @@ def verify_model(
 
     print(f"Model {model_id} ({attribute_name}) verified:")  # noqa: T201
     for field in fields:
-        print(f"  {field}: {getattr(model, field, '<field unavailable>')}")  # noqa: T201
+        # Check computed values (.cvalue) so scale factors are handled automatically
+        point = getattr(model, field, None)
+        if point is not None:
+            print(f"  {field}: {point.cvalue} {getattr(point, 'units', '')}")  # noqa: T201
+        else:
+            print(f"  {field}: <field unavailable>")  # noqa: T201
 
 
 def main() -> int:
@@ -63,6 +89,9 @@ def main() -> int:
     Returns:
         int: Exit code (0 for success, 1 for verification failure, 2 for input errors).
     """
+    # Pre-inject our custom models before spinning up the client link
+    load_custom_models(FOLDER_PATH)
+
     ipaddr = prompt_with_default("Enter IP address", DEFAULT_IPADDR)
 
     try:
@@ -80,7 +109,7 @@ def main() -> int:
         print("Slave ID must be between 0 and 247.", file=sys.stderr)  # noqa: T201
         return 2
 
-    device = client.SunSpecModbusClientDeviceTCP(
+    device_obj = client.SunSpecModbusClientDeviceTCP(
         slave_id=slave_id,
         ipaddr=ipaddr,
         ipport=ipport,
@@ -89,27 +118,28 @@ def main() -> int:
     )
 
     try:
-        device.connect()
-        device.scan()
+        device_obj.connect()
+        device_obj.scan()
 
-        print("Discovered models:")  # noqa: T201
-        for model_id, model in device.models.items():
+        print("\nDiscovered models:")  # noqa: T201
+        for model_id, model in device_obj.models.items():
             print(f"  {model_id}: {model}")  # noqa: T201
 
-        # Required firmware-update verification reads.
-        verify_model(device, "common", 1, ["Mn", "Md", "Vr", "SN"])
-        verify_model(device, "inverter_three_phase", 103, ["Pac"])
-        verify_model(device, "controls", 123, ["Status"])
-        verify_model(device, "ac_meter_abcn", 203, ["Reading"])
-        verify_model(device, "battery", 802, ["SOC"])
+        print("\n--- Verifying Data Points ---")  # noqa: T201
+        # Fixed point fields to match the exact point IDs within your custom files!
+        verify_model(device_obj, "common", 1, ["Mn", "Md", "Vr_Master", "Vr_Gateway"])
+        verify_model(device_obj, "inverter", 103, ["W", "Hz", "St"])
+        verify_model(device_obj, "controls", 123, ["Mode", "Conn_Win_Pct"])
+        verify_model(device_obj, "meter", 203, ["W", "A", "Hz"])
+        verify_model(device_obj, "battery", 802, ["SoC", "W_Max_Rtg", "St"])
 
-        print("SunSpec firmware verification passed.")  # noqa: T201
+        print("\nSunSpec firmware verification passed.")  # noqa: T201
         return 0  # noqa: TRY300
     except Exception as error:  # noqa: BLE001
-        print(f"SunSpec firmware verification failed: {error}", file=sys.stderr)  # noqa: T201
+        print(f"\nSunSpec firmware verification failed: {error}", file=sys.stderr)  # noqa: T201
         return 1
     finally:
-        device.close()
+        device_obj.close()
 
 
 if __name__ == "__main__":
