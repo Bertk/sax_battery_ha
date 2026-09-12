@@ -1,0 +1,42 @@
+{
+  "id": 103,
+  "name": "inverter",
+  "len": 32,
+  "blocks": [
+    {
+      "name": "inverter",
+      "type": "fixed",
+      "len": 32,
+      "points": [
+        {"id": "A", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Summe"},
+        {"id": "AphA", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Speicher A"},
+        {"id": "AphB", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Speicher B"},
+        {"id": "AphC", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Speicher C"},
+        {"id": "A_SF", "type": "sunssf", "label": "Scalefaktor AC Strom"},
+        {"id": "PhV_AB", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher L1-L2"},
+        {"id": "PhV_BC", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher L2-L3"},
+        {"id": "PhV_CA", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher L3-L1"},
+        {"id": "PhV_AN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher A"},
+        {"id": "PhV_BN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher B"},
+        {"id": "PhV_CN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Spannung Speicher C"},
+        {"id": "V_SF", "type": "sunssf", "label": "Scalefaktor Spannung"},
+        {"id": "W", "type": "int16", "sf": "W_SF", "units": "W", "label": "Wirkleistung Speicher Summe"},
+        {"id": "W_SF", "type": "sunssf", "label": "Scalefaktor Leistung"},
+        {"id": "Hz", "type": "uint16", "sf": "Hz_SF", "units": "Hz", "label": "Netzfrequenz"},
+        {"id": "Hz_SF", "type": "sunssf", "label": "Scalefaktor Netzfrequenz"},
+        {"id": "VA", "type": "uint16", "sf": "VA_SF", "units": "VA", "label": "Scheinleistung Speicher Summe"},
+        {"id": "VA_SF", "type": "sunssf", "label": "Scalefaktor Scheinleistung"},
+        {"id": "VAr", "type": "int16", "sf": "VAr_SF", "units": "Var", "label": "Blindleistung Speicher Summe"},
+        {"id": "VAr_SF", "type": "sunssf", "label": "Scalefaktor Blindleistung"},
+        {"id": "PF", "type": "int16", "sf": "PF_SF", "label": "Leistungsfaktor Speicher Summe"},
+        {"id": "PF_SF", "type": "sunssf", "label": "Scalefaktor Leistungsfaktor"},
+        {"id": "Tmp_Cell_Max", "type": "int16", "sf": "Tmp_SF", "units": "C", "label": "Maximale Zelltemperatur"},
+        {"id": "Tmp_SF", "type": "sunssf", "label": "Scalefaktor Temperatur"},
+        {"id": "St", "type": "int16", "label": "Zustand"},
+        {"id": "Evt", "type": "uint16", "label": "Event"},
+        {"id": "PV_W", "type": "uint16", "sf": "PV_W_SF", "units": "W", "label": "PV-Leistung"},
+        {"id": "PV_W_SF", "type": "sunssf", "label": "Scalefaktor PV-Leistung"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": 1,
+  "name": "common",
+  "len": 15,
+  "blocks": [
+    {
+      "name": "common",
+      "type": "fixed",
+      "len": 15,
+      "points": [
+        {"id": "Mn", "type": "string", "len": 4, "label": "Hersteller"},
+        {"id": "Md", "type": "string", "len": 3, "label": "Geraetemodell"},
+        {"id": "Vr_Master", "type": "uint16", "label": "Version Master"},
+        {"id": "Vr_Gateway", "type": "uint16", "label": "Version Gateway"},
+        {"id": "SN_High", "type": "uint16", "label": "Seriennummer High"},
+        {"id": "SN_Low", "type": "uint16", "label": "Seriennummer Low"}
+      ]
+    }
+  ]
+}

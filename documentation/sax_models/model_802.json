@@ -1,0 +1,32 @@
+{
+  "id": 802,
+  "name": "battery",
+  "len": 20,
+  "blocks": [
+    {
+      "name": "battery",
+      "type": "fixed",
+      "len": 20,
+      "points": [
+        {"id": "W_Max_Rtg", "type": "uint16", "sf": "W_SF", "units": "Wh", "label": "Kapazitaet Speichersystem"},
+        {"id": "W_Chg_Max", "type": "uint16", "sf": "W_Rate_SF", "units": "W", "label": "Verfuegbare Ladeleistung"},
+        {"id": "W_DisChg_Max", "type": "uint16", "sf": "W_Rate_SF", "units": "W", "label": "Verfuegbare Entladeleistung"},
+        {"id": "SoC_Max", "type": "uint16", "sf": "SoC_SF", "units": "%", "label": "Maximaler SoC"},
+        {"id": "SoC_Min", "type": "uint16", "sf": "SoC_SF", "units": "%", "label": "Minimaler SoC"},
+        {"id": "SoC", "type": "uint16", "sf": "SoC_SF", "units": "%", "label": "Aktueller SoC"},
+        {"id": "DoD", "type": "uint16", "sf": "SoC_SF", "units": "%", "label": "Entladetiefe"},
+        {"id": "N_A_1", "type": "uint16", "label": "Reserve 1"},
+        {"id": "N_A_2", "type": "uint16", "label": "Reserve 2"},
+        {"id": "St", "type": "uint16", "label": "Ladestatus Akku"},
+        {"id": "N_A_3", "type": "uint16", "label": "Reserve 3"},
+        {"id": "Evt", "type": "uint16", "label": "Event"},
+        {"id": "V_Cell_Avg", "type": "uint16", "sf": "V_SF", "units": "mV", "label": "Durchschnittliche Zellspannung"},
+        {"id": "W_SF", "type": "sunssf", "label": "Scalefaktor Kapazitaet"},
+        {"id": "W_Rate_SF", "type": "sunssf", "label": "Scalefaktor Lade Entladeleistung"},
+        {"id": "SoC_SF", "type": "sunssf", "label": "Scalefaktor SoC"},
+        {"id": "N_A_4_SF", "type": "sunssf", "label": "Reserve 4 SF"},
+        {"id": "V_SF", "type": "sunssf", "label": "Scalefaktor Zellspannung"}
+      ]
+    }
+  ]
+}

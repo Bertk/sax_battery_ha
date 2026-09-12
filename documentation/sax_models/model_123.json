@@ -1,0 +1,19 @@
+{
+  "id": 123,
+  "name": "controls",
+  "len": 7,
+  "blocks": [
+    {
+      "name": "controls",
+      "type": "fixed",
+      "len": 7,
+      "points": [
+        {"id": "Conn_Win_Pct", "type": "int16", "sf": "Conn_Win_Pct_SF", "units": "%", "label": "Leistungsvorgabe prozentual"},
+        {"id": "Conn_Win_Tgt", "type": "uint16", "units": "s", "label": "Timeout der Leistungsvorgabe"},
+        {"id": "Mode", "type": "uint16", "label": "Steuermodus"},
+        {"id": "Conn_Win_Pct_SF", "type": "sunssf", "label": "Scalefaktor Leistungsvorgabe"},
+        {"id": "W_Max_Ref", "type": "uint16", "units": "W", "label": "Referenzwert Maximalleistung"}
+      ]
+    }
+  ]
+}

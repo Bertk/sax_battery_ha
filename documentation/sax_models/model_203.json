@@ -1,0 +1,50 @@
+{
+  "id": 203,
+  "name": "meter",
+  "len": 41,
+  "blocks": [
+    {
+      "name": "meter",
+      "type": "fixed",
+      "len": 41,
+      "points": [
+        {"id": "A", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Summe (Netz)"},
+        {"id": "AphA", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Netz L1"},
+        {"id": "AphB", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Netz L2"},
+        {"id": "AphC", "type": "uint16", "sf": "A_SF", "units": "A", "label": "AC Strom Netz L3"},
+        {"id": "A_SF", "type": "sunssf", "label": "Scalefaktor Strom"},
+        {"id": "PhV", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Durchschnitt Spannung Netz L-N"},
+        {"id": "PhV_AN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L1"},
+        {"id": "PhV_BN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L2"},
+        {"id": "PhV_CN", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L3"},
+        {"id": "PPV", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Durchschnitt Spannung L-L"},
+        {"id": "PhV_AB", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L1-L2"},
+        {"id": "PhV_BC", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L2-L3"},
+        {"id": "PhV_CA", "type": "uint16", "sf": "V_SF", "units": "V", "label": "Netzspannung L1-L3"},
+        {"id": "V_SF", "type": "sunssf", "label": "Scalefaktor Spannung"},
+        {"id": "Hz", "type": "uint16", "sf": "Hz_SF", "units": "Hz", "label": "Netzfrequenz"},
+        {"id": "Hz_SF", "type": "sunssf", "label": "Scalefaktor Frequenz"},
+        {"id": "W", "type": "int16", "sf": "W_SF", "units": "W", "label": "Summenwirkleistung Netz"},
+        {"id": "W_AphA", "type": "int16", "sf": "W_SF", "units": "W", "label": "Netzleistung L1"},
+        {"id": "W_AphB", "type": "int16", "sf": "W_SF", "units": "W", "label": "Netzleistung L2"},
+        {"id": "W_AphC", "type": "int16", "sf": "W_SF", "units": "W", "label": "Netzleistung L3"},
+        {"id": "W_SF", "type": "sunssf", "label": "Scalefaktor Netzleistung"},
+        {"id": "VA", "type": "uint16", "sf": "VA_SF", "units": "VA", "label": "Summenscheinleistung Netz"},
+        {"id": "VA_AphA", "type": "uint16", "sf": "VA_SF", "units": "VA", "label": "Scheinleistung Netz L1"},
+        {"id": "VA_AphB", "type": "uint16", "sf": "VA_SF", "units": "VA", "label": "Scheinleistung Netz L2"},
+        {"id": "VA_AphC", "type": "uint16", "sf": "VA_SF", "units": "VA", "label": "Scheinleistung Netz L3"},
+        {"id": "VA_SF", "type": "sunssf", "label": "Scalefaktor Scheinleistung Netz"},
+        {"id": "VAr", "type": "int16", "sf": "VAr_SF", "units": "Var", "label": "Summenblindleistung Netz"},
+        {"id": "VAr_AphA", "type": "int16", "sf": "VAr_SF", "units": "Var", "label": "Blindleistung Netz L1"},
+        {"id": "VAr_AphB", "type": "int16", "sf": "VAr_SF", "units": "Var", "label": "Blindleistung Netz L2"},
+        {"id": "VAr_AphC", "type": "int16", "sf": "VAr_SF", "units": "Var", "label": "Blindleistung Netz L3"},
+        {"id": "VAr_SF", "type": "sunssf", "label": "Scalefaktor Blindleistung Netz"},
+        {"id": "PF", "type": "int16", "sf": "PF_SF", "label": "Leistungsfaktor Netz Summe"},
+        {"id": "PF_AphA", "type": "int16", "sf": "PF_SF", "label": "Leistungsfaktor L1"},
+        {"id": "PF_AphB", "type": "int16", "sf": "PF_SF", "label": "Leistungsfaktor L2"},
+        {"id": "PF_AphC", "type": "int16", "sf": "PF_SF", "label": "Leistungsfaktor L3"},
+        {"id": "PF_SF", "type": "sunssf", "label": "Scalefaktor Leistungsfaktor"}
+      ]
+    }
+  ]
+}
