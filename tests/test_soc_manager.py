@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.sax_battery.const import SAX_COMBINED_SOC
+from custom_components.sax_battery.protocol_mode import ProtocolMode
 from custom_components.sax_battery.soc_manager import SOCManager
 from homeassistant.exceptions import HomeAssistantError
 
@@ -167,6 +168,26 @@ class TestCheckAndEnforceDischargeLimit:
         assert result is False
 
         # Verify service was NOT called
+        soc_manager.hass.services.async_call.assert_not_called()
+
+    @patch(
+        "custom_components.sax_battery.soc_manager.SunSpecPowerControlStrategy.async_set_power",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    async def test_sunspec_enforces_zero_watt_model_123_setpoint(
+        self,
+        mock_set_power: AsyncMock,
+        soc_manager,
+    ) -> None:
+        """SunSpec low-SOC enforcement must not use legacy limit register 43."""
+        soc_manager.coordinator.protocol_mode = ProtocolMode.SUNSPEC
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: 8}
+
+        result = await soc_manager.check_and_enforce_discharge_limit()
+
+        assert result is True
+        mock_set_power.assert_awaited_once_with(0)
         soc_manager.hass.services.async_call.assert_not_called()
 
     async def test_enforce_skips_when_disabled(

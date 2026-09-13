@@ -12,6 +12,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery import (
+    _async_register_sunspec_bess_device,
+    _decode_sunspec_metadata_text,
     _get_battery_configurations,
     _log_comprehensive_setup_summary,
     _log_registry_state_before_setup,
@@ -38,12 +40,63 @@ from custom_components.sax_battery.const import (
     DOMAIN,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
+from custom_components.sax_battery.entity_keys import (
+    SUNSPEC_DEVICE_MODEL_1,
+    SUNSPEC_DEVICE_MODEL_2,
+    SUNSPEC_DEVICE_MODEL_3,
+    SUNSPEC_MANUFACTURER_1,
+    SUNSPEC_MANUFACTURER_2,
+    SUNSPEC_MANUFACTURER_3,
+    SUNSPEC_MANUFACTURER_4,
+    SUNSPEC_SERIAL_NUMBER_HIGH,
+    SUNSPEC_SERIAL_NUMBER_LOW,
+    SUNSPEC_VERSION_GATEWAY,
+    SUNSPEC_VERSION_MASTER,
+)
 from custom_components.sax_battery.models import SAXBatteryData
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class TestSunSpecDeviceMetadata:
+    """Test SunSpec model-1 metadata device registration."""
+
+    def test_decode_sunspec_metadata_text(self) -> None:
+        """SunSpec uint16 words should decode as ASCII text."""
+        assert _decode_sunspec_metadata_text([0x5341, 0x5820, 0x2020]) == "SAX"
+
+    async def test_register_sunspec_bess_device(self, hass: HomeAssistant) -> None:
+        """SunSpec metadata should populate the BESS device registry entry."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        coordinator = MagicMock()
+        coordinator.battery_id = "bess_a"
+        coordinator.sunspec_metadata_values = {
+            SUNSPEC_MANUFACTURER_1: 0x5341,
+            SUNSPEC_MANUFACTURER_2: 0x5820,
+            SUNSPEC_MANUFACTURER_3: 0,
+            SUNSPEC_MANUFACTURER_4: 0,
+            SUNSPEC_DEVICE_MODEL_1: 0x484F,
+            SUNSPEC_DEVICE_MODEL_2: 0x4D45,
+            SUNSPEC_DEVICE_MODEL_3: 0,
+            SUNSPEC_SERIAL_NUMBER_HIGH: 0x3132,
+            SUNSPEC_SERIAL_NUMBER_LOW: 0x3334,
+            SUNSPEC_VERSION_MASTER: 61,
+            SUNSPEC_VERSION_GATEWAY: 54,
+        }
+
+        _async_register_sunspec_bess_device(hass, entry, coordinator)
+
+        device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "bess_a")})
+        assert device is not None
+        assert device.manufacturer == "SAX"
+        assert device.model == "HOME"
+        assert device.serial_number == "1234"
+        assert device.sw_version == "61 / 54"
 
 
 class TestAsyncSetupEntry:

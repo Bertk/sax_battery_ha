@@ -39,6 +39,19 @@ from .const import (
 )
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 from .coordinator import SAXBatteryCoordinator
+from .entity_keys import (
+    SUNSPEC_DEVICE_MODEL_1,
+    SUNSPEC_DEVICE_MODEL_2,
+    SUNSPEC_DEVICE_MODEL_3,
+    SUNSPEC_MANUFACTURER_1,
+    SUNSPEC_MANUFACTURER_2,
+    SUNSPEC_MANUFACTURER_3,
+    SUNSPEC_MANUFACTURER_4,
+    SUNSPEC_SERIAL_NUMBER_HIGH,
+    SUNSPEC_SERIAL_NUMBER_LOW,
+    SUNSPEC_VERSION_GATEWAY,
+    SUNSPEC_VERSION_MASTER,
+)
 from .modbusobject import ModbusAPI
 from .models import SAXBatteryData
 from .power_manager import PowerManager
@@ -110,7 +123,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
         sax_data.coordinators = coordinators
 
         # Initialize power manager for master battery if enabled
-        power_manager_enabled = entry.data.get(CONF_CONTROL_POWER, False)
+        power_manager_enabled = (
+            entry.data.get(CONF_CONTROL_POWER, False)
+            and master_coordinator is not None
+            and master_coordinator.protocol_mode == ProtocolMode.LEGACY
+        )
         if power_manager_enabled:
             master_battery_id = sax_data.master_battery_id
             if master_battery_id and master_battery_id in coordinators:
@@ -833,6 +850,7 @@ async def _setup_battery_coordinator(
     if coordinator.protocol_mode == ProtocolMode.SUNSPEC:
         try:
             await coordinator.async_initialize_sunspec_metadata()
+            _async_register_sunspec_bess_device(hass, entry, coordinator)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning(
                 "%s: Failed to initialize SunSpec metadata during setup: %s",
@@ -851,6 +869,72 @@ async def _setup_battery_coordinator(
         ) from err
 
     return coordinator
+
+
+def _decode_sunspec_metadata_text(values: list[object]) -> str | None:
+    """Decode ASCII characters packed in SunSpec uint16 metadata registers."""
+    characters: list[str] = []
+    for value in values:
+        if not isinstance(value, int) or not 0 <= value <= 0xFFFF:
+            continue
+        for byte in value.to_bytes(2, "big"):
+            if byte == 0:
+                continue
+            if 32 <= byte <= 126:
+                characters.append(chr(byte))
+
+    text = "".join(characters).strip()
+    return text or None
+
+
+def _async_register_sunspec_bess_device(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: SAXBatteryCoordinator,
+) -> None:
+    """Create or update a BESS device using startup-only SunSpec metadata."""
+    metadata = coordinator.sunspec_metadata_values
+    if not metadata:
+        return
+
+    manufacturer = _decode_sunspec_metadata_text(
+        [
+            metadata.get(SUNSPEC_MANUFACTURER_1),
+            metadata.get(SUNSPEC_MANUFACTURER_2),
+            metadata.get(SUNSPEC_MANUFACTURER_3),
+            metadata.get(SUNSPEC_MANUFACTURER_4),
+        ]
+    )
+    model = _decode_sunspec_metadata_text(
+        [
+            metadata.get(SUNSPEC_DEVICE_MODEL_1),
+            metadata.get(SUNSPEC_DEVICE_MODEL_2),
+            metadata.get(SUNSPEC_DEVICE_MODEL_3),
+        ]
+    )
+    serial_number = _decode_sunspec_metadata_text(
+        [
+            metadata.get(SUNSPEC_SERIAL_NUMBER_HIGH),
+            metadata.get(SUNSPEC_SERIAL_NUMBER_LOW),
+        ]
+    )
+    version_master = metadata.get(SUNSPEC_VERSION_MASTER)
+    version_gateway = metadata.get(SUNSPEC_VERSION_GATEWAY)
+    versions = [
+        str(version)
+        for version in (version_master, version_gateway)
+        if isinstance(version, (int, float))
+    ]
+
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, coordinator.battery_id)},
+        name=f"SAX BESS {coordinator.battery_id.removeprefix('bess_').upper()}",
+        manufacturer=manufacturer or "SAX",
+        model=model or "SAX Battery",
+        serial_number=serial_number,
+        sw_version=" / ".join(versions) or None,
+    )
 
 
 def _validate_battery_config(battery_id: str, battery_config: dict[str, Any]) -> bool:

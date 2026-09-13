@@ -9,6 +9,13 @@ This repository is a Home Assistant custom integration for SAX-power batteries. 
 - Prefer async, coordinator-based code and avoid blocking I/O.
 - Use specific Modbus and connection exceptions rather than broad catch blocks.
 
+## External Reference Repositories
+
+For codebase semantic context, patterns, and reference implementations:
+- For architectural patterns and conventions, match practices found in the `home-assistant/core` repository.
+- For SunSpec definitions and models, inherit conventions from `sunspec/pysunspec2`.
+- For SunSpec Home Assistant integration patterns, reference `hilman2/ha-sunspec2`.
+
 ## Architecture snapshot
 
 - Protocol handling: [custom_components/sax_battery/protocol_detector.py](../custom_components/sax_battery/protocol_detector.py) and [custom_components/sax_battery/protocol_mode.py](../custom_components/sax_battery/protocol_mode.py)

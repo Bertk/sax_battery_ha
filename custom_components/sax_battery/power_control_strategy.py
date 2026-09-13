@@ -1,4 +1,21 @@
-"""Power control abstraction layer for SAX Battery integration."""
+"""Protocol-specific power control for SAX Battery.
+
+Legacy firmware exposes write-only registers 41 and 42. Its power manager
+calculates a Watts setpoint and writes the setpoint and factor atomically.
+
+SunSpec firmware exposes Model 123 controls that are readable and writable:
+40049 (``Conn_Win_Pct``) is a signed relative power setpoint, 40050
+(``Conn_Win_Tgt``) sets the command timeout, and 40051 (``Mode``) selects
+manual setpoint mode (1) or the battery's Smart Meter zero-balancing mode (0).
+The setpoint is relative to Model 123 register 40053 (``W_Max_Ref``), so this
+module converts a Home Assistant Watts request to a value in [-100, 100].
+
+SunSpec control values are read from the battery's Model 123 block during every
+master coordinator update. They are therefore never restored from local entity
+state. ``PowerManager`` is a legacy-only software balancing loop and is not
+started for SunSpec mode; the battery applies zero balancing itself when Mode
+is 0. The strategy classes provide the shared interface for future callers.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +39,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class PowerControlStrategy(ABC):
-    """Abstract interface for power setpoint and control operations."""
+    """Shared interface for protocol-specific control operations.
+
+    Call ``async_set_power`` when an automation requests a fixed battery power
+    target in Watts. Call ``async_set_mode_zero_balance`` when control should be
+    returned to the device's Smart Meter balancing behavior, or
+    ``async_set_mode_manual`` before configuring an explicit setpoint.
+    """
 
     @abstractmethod
     async def async_set_power(self, target_watts: float, timeout_s: int = 60) -> bool:
@@ -42,7 +65,11 @@ class PowerControlStrategy(ABC):
 
 
 class LegacyPowerControlStrategy(PowerControlStrategy):
-    """Legacy power control strategy using register 41 and register 42."""
+    """Legacy strategy for the write-only setpoint registers 41 and 42.
+
+    The local factor is paired with each power request because the device cannot
+    read either register back. Legacy ``PowerManager`` owns periodic balancing.
+    """
 
     def __init__(self, coordinator: SAXBatteryCoordinator) -> None:
         """Initialize legacy strategy."""
@@ -83,7 +110,12 @@ class LegacyPowerControlStrategy(PowerControlStrategy):
 
 
 class SunSpecPowerControlStrategy(PowerControlStrategy):
-    """SunSpec power control strategy using Model 123 registers (40049-40051)."""
+    """SunSpec Model 123 strategy for direct device-side power control.
+
+    Fixed-power requests use Mode 1 and write the percentage setpoint plus a
+    bounded timeout. Zero-balancing uses Mode 0 only; no calculated legacy
+    setpoint is sent because the battery controls the connected Smart Meter.
+    """
 
     def __init__(self, coordinator: SAXBatteryCoordinator) -> None:
         """Initialize SunSpec strategy."""
@@ -99,7 +131,13 @@ class SunSpecPowerControlStrategy(PowerControlStrategy):
         return float(battery_count * 4600)
 
     async def async_set_power(self, target_watts: float, timeout_s: int = 60) -> bool:
-        """Convert target watts to percentage (-100 to +100) and write to SunSpec."""
+        """Apply a fixed power request using Model 123 manual mode.
+
+        This is used when a caller requests direct charge/discharge control.
+        ``target_watts`` is converted with ``W_Max_Ref`` (40053), clamped to the
+        device's allowed [-100, 100] percent range, and written with a timeout
+        limited to the documented 1-300 second range before setting Mode to 1.
+        """
         max_power = self.get_max_power_rating()
         if max_power <= 0:
             max_power = 4600.0
@@ -128,7 +166,11 @@ class SunSpecPowerControlStrategy(PowerControlStrategy):
         return True
 
     async def async_set_mode_zero_balance(self) -> bool:
-        """Set Mode register 40051 to 0 (SmartMeter 0-balancing mode)."""
+        """Return control to device-side Smart Meter zero balancing (Mode 0).
+
+        Use this instead of ``PowerManager`` for SunSpec installations with a
+        configured Smart Meter. The battery owns the balancing calculation.
+        """
         mode_item = self.coordinator.sax_data.get_item_by_name(SAX_SUNSPEC_CONTROL_MODE)
         if not mode_item or not isinstance(mode_item, ModbusItem):
             return False
@@ -136,7 +178,7 @@ class SunSpecPowerControlStrategy(PowerControlStrategy):
         return True
 
     async def async_set_mode_manual(self) -> bool:
-        """Set Mode register 40051 to 1 (Setpoint setting mode)."""
+        """Enable Model 123 manual setpoint control (Mode 1)."""
         mode_item = self.coordinator.sax_data.get_item_by_name(SAX_SUNSPEC_CONTROL_MODE)
         if not mode_item or not isinstance(mode_item, ModbusItem):
             return False

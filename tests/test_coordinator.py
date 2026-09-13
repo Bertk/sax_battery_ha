@@ -283,15 +283,18 @@ class TestSAXBatteryCoordinator:
         sax_battery_coordinator_instance.data_provider.get_battery_sensor_values.assert_awaited_once_with(
             [item]
         )
+        sax_battery_coordinator_instance.data_provider.get_control_values.assert_awaited_once_with(
+            [item]
+        )
         sax_battery_coordinator_instance.data_provider.get_startup_metadata.assert_not_awaited()
         sax_battery_coordinator_instance.data_provider.get_realtime_values.assert_not_called()
 
-    async def test_poll_device_batch_sunspec_uses_cached_values_when_block_not_due(
+    async def test_poll_device_batch_sunspec_refreshes_readable_control_values(
         self,
         sax_battery_coordinator_instance,
         mock_modbus_api_coord_unique,
     ) -> None:
-        """SunSpec polling should keep cached values when cadence skips a block."""
+        """SunSpec polling should refresh control values despite prior polling."""
         item = ModbusItem(
             name="sax_sunspec_power_setpoint",
             mtype=TypeConstants.SENSOR,
@@ -321,7 +324,7 @@ class TestSAXBatteryCoordinator:
             AsyncMock(return_value={})
         )
         sax_battery_coordinator_instance.data_provider.get_control_values = AsyncMock(
-            return_value={}
+            return_value={"sax_sunspec_power_setpoint": 45}
         )
 
         result = await sax_battery_coordinator_instance._poll_device_batch(
@@ -329,8 +332,10 @@ class TestSAXBatteryCoordinator:
             [item],
         )
 
-        assert result == {"sax_sunspec_power_setpoint": 42}
-        sax_battery_coordinator_instance.data_provider.get_control_values.assert_not_awaited()
+        assert result == {"sax_sunspec_power_setpoint": 45}
+        sax_battery_coordinator_instance.data_provider.get_control_values.assert_awaited_once_with(
+            [item]
+        )
 
     async def test_initialize_sunspec_metadata_caches_values(
         self,

@@ -197,6 +197,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._statistics
 
     @property
+    def sunspec_metadata_values(self) -> dict[str, Any]:
+        """Return SunSpec model-1 values read during integration startup."""
+        return self._sunspec_metadata_values
+
+    @property
     def cycle_time_statistics(self) -> dict[str, Any]:
         """Get cycle time and error statistics (delegates to statistics tracker)."""
         return self._statistics.cycle_time_statistics
@@ -237,9 +242,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # STEP 1: Process write queue first (before reads)
             await self._process_write_queue(data)
-
-            # STEP 1b: Periodic SunSpec control refresh even without writes
-            await self._refresh_sunspec_control_values_on_cadence(data)
 
             # Get entity registry to check enabled state
             entity_registry = er.async_get(self.hass)
@@ -628,7 +630,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _poll_sunspec_blocks_by_cadence(
         self, items: list[ModbusItem]
     ) -> dict[str, Any]:
-        """Poll SunSpec blocks through provider group methods with cadence gates."""
+        """Poll SunSpec blocks, reading controls on every master update."""
         provider_values: dict[str, Any] = {}
 
         sensor_values = await self.data_provider.get_battery_sensor_values(items)
@@ -640,6 +642,11 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if state_values:
             provider_values.update(state_values)
             self._mark_sunspec_block_polled("battery_states")
+
+        control_values = await self.data_provider.get_control_values(items)
+        if control_values:
+            provider_values.update(control_values)
+            self._mark_sunspec_block_polled("battery_controls")
 
         if self._is_sunspec_block_due("smartmeter_data", BATTERY_POLL_SLAVE_INTERVAL):
             smart_meter_values = await self.data_provider.get_smart_meter_values(items)

@@ -1,7 +1,14 @@
-"""SOC constraint management for SAX Battery integration - REFACTORED VERSION.
+"""SOC constraint management for SAX Battery integration.
 
-This is the proposed refactored implementation based on GitHub Issue #40.
-DO NOT USE DIRECTLY - This is a reference implementation for review.
+Legacy mode protects low state of charge by writing the legacy maximum-discharge
+limit register. SunSpec mode has no equivalent writable Model 802 SOC-limit
+register. Its Model 802 ``SoC_Min`` and ``SoC_Max`` values are read-only battery
+telemetry; this integration does not infer or configure device limits from them.
+
+When Home Assistant's configured minimum SOC is breached in SunSpec mode, this
+manager commands a zero-Watt Model 123 manual setpoint. This stops the current
+charge/discharge command without writing unsupported legacy registers. The
+setpoint timeout continues to be governed by Model 123 register 40050.
 
 Security:
     OWASP A05: Implements resource protection to prevent battery damage
@@ -23,6 +30,8 @@ from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN, SAX_COMBINED_SOC, SAX_MAX_DISCHARGE
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 from .items import ModbusItem
+from .power_control_strategy import SunSpecPowerControlStrategy
+from .protocol_mode import ProtocolMode
 
 if TYPE_CHECKING:
     from .coordinator import SAXBatteryCoordinator
@@ -162,6 +171,14 @@ class SOCManager:
 
         # All validations passed - enforcement needed
         return True, "Enforcement required", combined_soc
+
+    @property
+    def _is_sunspec(self) -> bool:
+        """Return whether the coordinator is using SunSpec Model 123 controls."""
+        return (
+            getattr(self.coordinator, "protocol_mode", ProtocolMode.LEGACY)
+            == ProtocolMode.SUNSPEC
+        )
 
     def _get_max_discharge_item(self) -> ModbusItem | None:
         """Get SAX_MAX_DISCHARGE ModbusItem from power limit items.
@@ -343,9 +360,8 @@ class SOCManager:
         """Execute discharge constraint enforcement.
 
         Orchestrates the enforcement process:
-        1. Get ModbusItem for SAX_MAX_DISCHARGE
-        2. Resolve entity_id from entity registry
-        3. Write 0W limit via Home Assistant service
+        1. In SunSpec mode, command a zero-Watt Model 123 manual setpoint.
+        2. In legacy mode, resolve SAX_MAX_DISCHARGE and write its 0W limit.
 
         Args:
             combined_soc: Current combined SOC percentage
@@ -356,6 +372,17 @@ class SOCManager:
         Performance:
             Short-circuits on any step failure to avoid unnecessary work
         """
+        if self._is_sunspec:
+            _LOGGER.warning(
+                "Combined SOC %.1f%% below minimum %.1f%% - commanding 0W SunSpec setpoint on master %s",
+                combined_soc,
+                self.min_soc,
+                self.coordinator.battery_id,
+            )
+            return await SunSpecPowerControlStrategy(self.coordinator).async_set_power(
+                0
+            )
+
         # Step 1: Get ModbusItem
         max_discharge_item = self._get_max_discharge_item()
         if not max_discharge_item:

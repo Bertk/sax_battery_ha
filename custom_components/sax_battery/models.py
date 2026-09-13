@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import logging
 from typing import Any
 
@@ -588,11 +588,19 @@ class SAXBatteryData:
         legacy_items: list[ModbusItem],
         is_master: bool,
     ) -> list[ModbusItem]:
-        """Merge SunSpec-backed item definitions into the active inventory."""
-        merged_items: dict[str, ModbusItem] = {item.name: item for item in legacy_items}
+        """Return the role-appropriate SunSpec entity inventory.
 
-        for item in get_canonical_sunspec_items_by_name().values():
-            if is_master or item.address <= 40014:
-                merged_items[item.name] = item
+        SunSpec mode must not expose legacy-only registers or model-1 metadata
+        as sensor entities. The master BMS supplies all operational values.
+        """
+        del legacy_items
+        if not is_master:
+            return []
 
-        return list(merged_items.values())
+        return [
+            replace(item, device=DeviceConstants.SYS)
+            if item.device == DeviceConstants.BESS
+            else item
+            for item in get_canonical_sunspec_items_by_name().values()
+            if item.address > 40014
+        ]

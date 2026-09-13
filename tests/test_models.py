@@ -19,6 +19,7 @@ from custom_components.sax_battery.const import (
     SAX_SOC,
 )
 from custom_components.sax_battery.const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
+from custom_components.sax_battery.entity_keys import SUNSPEC_DEVICE_MODEL_1
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
 from custom_components.sax_battery.models import BatteryModel, SAXBatteryData
@@ -186,6 +187,10 @@ class TestSAXBatteryData:
         assert SAX_SOC in item_names
         assert SAX_POWER in item_names
         assert SAX_CAPACITY in item_names
+        assert SUNSPEC_DEVICE_MODEL_1 not in item_names
+
+        item_by_name = {item.name: item for item in master_items}
+        assert item_by_name[SAX_SOC].device == DeviceConstants.SYS
 
         item_by_name = {item.name: item for item in master_items}
         assert item_by_name[SAX_SMARTMETER_CURRENT_L1].address == 40057
@@ -222,9 +227,7 @@ class TestSAXBatteryData:
         slave_items = sax_data.get_modbus_items_for_battery("bess_b")
         item_names = {item.name for item in slave_items}
 
-        assert SAX_SOC in item_names
-        assert SAX_POWER in item_names
-        assert SAX_CAPACITY not in item_names
+        assert item_names == set()
 
     def test_sax_battery_data_get_sax_items_for_battery(
         self, mock_hass, mock_config_entry_dual_battery

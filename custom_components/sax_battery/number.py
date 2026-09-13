@@ -48,6 +48,7 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
+from .protocol_mode import ProtocolMode
 from .utils import get_battery_count
 
 _LOGGER = logging.getLogger(__name__)
@@ -314,7 +315,9 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         # Local value cache for write-only registers
         self._local_value: int | None = None
         self._is_write_only = (
-            hasattr(modbus_item, "address")
+            getattr(coordinator, "protocol_mode", ProtocolMode.LEGACY)
+            != ProtocolMode.SUNSPEC
+            and hasattr(modbus_item, "address")
             and modbus_item.address in WRITE_ONLY_REGISTERS
         )
 

@@ -1,4 +1,4 @@
-"""Power manager for SAX Battery integration.
+"""Legacy power manager for SAX Battery integration.
 
 Coordinator-centric power management using SAX_POWER_SETPOINT (register 41)
 and SAX_POWER_SETPOINT_FACTOR (register 42) via coordinator.async_write_power_control_value()
@@ -11,6 +11,9 @@ Security:
 Performance:
     Uses coordinator update cycle for periodic power adjustments
     Direct coordinator writes instead of HA service calls
+
+SunSpec mode does not use this manager. Its Model 123 control registers provide
+device-side manual setpoint and Smart Meter zero-balancing modes directly.
 """
 
 from __future__ import annotations
@@ -71,7 +74,11 @@ class PowerManagerState:
 
 
 class PowerManager:
-    """Coordinator-centric power manager for SAX Battery systems.
+    """Legacy-only coordinator-centric power manager for SAX Battery systems.
+
+    This class is irrelevant to SunSpec mode and is not started for it. SunSpec
+    Model 123 uses readable control registers and performs Smart Meter balancing
+    in the battery rather than this software loop.
 
     Uses coordinator.async_write_power_control_value() for atomic Modbus writes
     to SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42).
