@@ -451,6 +451,25 @@ def test_sunspec_provider_get_smart_meter_values_uses_meter_block() -> None:
     assert api.block_calls == [(40054, 41, 100)]
 
 
+def test_sunspec_provider_get_smart_meter_values_skips_for_other_meter() -> None:
+    """'Other' meters have no SM device and must not be polled."""
+    api = _FakeModbusAPI()
+    provider = SunSpecDataProvider(
+        modbus_api=api, detected_device_id=100, sm_type="other"
+    )
+    item = ModbusItem(
+        name=SAX_SMARTMETER_AC_CURRENT_SUM,
+        mtype=TypeConstants.SENSOR,
+        device=DeviceConstants.SM,
+    )
+    item.modbus_api = api
+
+    result = asyncio.run(provider.get_smart_meter_values([item]))
+
+    assert result == {}
+    assert api.block_calls == []
+
+
 def test_sunspec_provider_realtime_does_not_fallback_to_single_register_reads() -> None:
     """SunSpec realtime reads should not use direct per-register fallback reads."""
     api = _FakeModbusAPI({"legacy_unmapped": 999})

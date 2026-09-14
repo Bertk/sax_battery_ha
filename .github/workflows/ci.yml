@@ -116,11 +116,8 @@ jobs:
           uv pip install --system -r requirements_dev.txt
 
       # - name: Cache pre-commit environment
-<<<<<<< HEAD
       #   uses: actions/cache@v6.1.0
-=======
-      #   uses: actions/cache@v5.0.5
->>>>>>> 4670f53 (use coordinator pattern for sax-power battery control)
+
       #   with:
       #     path: ${{ env.PRE_COMMIT_CACHE }}
       #     key: ${{ needs.info.outputs.pre-commit_cache_key }}
@@ -144,26 +141,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out code from GitHub
-<<<<<<< HEAD
         uses: actions/checkout@v7
 
       - name: Set up Python ${{ env.DEFAULT_PYTHON }}
         uses: actions/setup-python@v7.0.0
-=======
-        uses: actions/checkout@v6
-
-      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
-        uses: actions/setup-python@v6.2.0
->>>>>>> 4670f53 (use coordinator pattern for sax-power battery control)
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
 
       - name: Restore Python cache
-<<<<<<< HEAD
         uses: actions/cache@v6.1.0
-=======
-        uses: actions/cache@v5.0.5
->>>>>>> 4670f53 (use coordinator pattern for sax-power battery control)
         with:
           path: ${{ env.UV_CACHE_DIR }}
           key: ${{ needs.info.outputs.python_cache_key }}
@@ -176,11 +162,7 @@ jobs:
           uv pip install --system -r requirements_dev.txt
 
       - name: Cache mypy
-<<<<<<< HEAD
-        uses: actions/cache@v6.1.0
-=======
         uses: actions/cache@v5.0.5
->>>>>>> 4670f53 (use coordinator pattern for sax-power battery control)
         with:
           path: .mypy_cache
           key: mypy-${{ env.MYPY_CACHE_VERSION }}-${{ env.DEFAULT_PYTHON }}-${{ hashFiles('pyproject.toml') }}
@@ -189,30 +171,6 @@ jobs:
         run: |
           mypy custom_components/ --explicit-package-bases
 
-<<<<<<< HEAD
-  # tests:
-  #   name: Run tests
-  #   needs: info
-  #   if: needs.info.outputs.test_full_suite == 'true'
-  #   runs-on: ubuntu-24.04
-  #   strategy:
-  #     matrix:
-  #       python-version: ${{ fromJSON(needs.info.outputs.python_versions) }}
-  #   steps:
-  #     - name: Check out code from GitHub
-  #       uses: actions/checkout@v7
-
-  #     - name: Set up Python ${{ matrix.python-version }}
-  #       uses: actions/setup-python@v7.0.0
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
-
-  #     - name: Restore Python cache
-  #       uses: actions/cache@v6.1.0
-  #       with:
-  #         path: ${{ env.UV_CACHE_DIR }}
-  #         key: ${{ needs.info.outputs.python_cache_key }}
-=======
   tests:
     name: Run tests
     needs: info
@@ -223,10 +181,10 @@ jobs:
         python-version: ${{ fromJSON(needs.info.outputs.python_versions) }}
     steps:
       - name: Check out code from GitHub
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Restore Python cache
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ env.UV_CACHE_DIR }}
           key: ${{ needs.info.outputs.python_cache_key }}
@@ -235,7 +193,6 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
->>>>>>> 4670f53 (use coordinator pattern for sax-power battery control)
 
       - name: Create virtual environment and install dependencies
         run: |

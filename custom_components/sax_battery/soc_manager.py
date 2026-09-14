@@ -67,17 +67,27 @@ class SOCManager:
         self.coordinator = coordinator
         self.hass = coordinator.hass
         self.config_entry = coordinator.config_entry
-        # used for min_soc enforcement - max_soc not implemented yet
         self._min_soc: int = max(0, min(100, min_soc))
-        self._max_soc_charging: int = (
-            max_soc_charging  # Placeholder for future max SOC charging limit
-        )
+        self._max_soc_charging: int = max(0, min(100, max_soc_charging))
         self._enabled = enabled
 
     @property
     def max_soc_charging(self) -> int:
         """Get maximum SOC threshold for charging."""
         return self._max_soc_charging
+
+    @max_soc_charging.setter
+    def max_soc_charging(self, value: int) -> None:
+        """Set maximum SOC threshold for charging with validation.
+
+        Args:
+            value: New maximum SOC for charging (0-100)
+
+        Security:
+            OWASP A05: Validates and clamps input to safe range
+        """
+        self._max_soc_charging = max(0, min(100, value))
+        _LOGGER.debug("Max SOC for charging updated to %s%%", self._max_soc_charging)
 
     @property
     def min_soc(self) -> int:

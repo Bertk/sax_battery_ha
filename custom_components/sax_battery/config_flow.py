@@ -162,15 +162,20 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._sm_type = user_input.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
-            self._sm_connected = (
-                user_input.get(CONF_SM_CONNECTED, True)
-                if self._sm_type != SM_TYPE_NONE
+            # sm_type is the single source of truth: only a recognized SAX
+            # meter (ADW200/ADL400) creates the SM device and drives it directly.
+            self._sm_connected = self._sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400)
+            # Balanced loading via an external grid sensor only applies to
+            # "Other". "None" supports manual power control only.
+            self._balanced_loading = (
+                user_input.get(CONF_BALANCED_LOADING, False)
+                if self._sm_type == SM_TYPE_OTHER
                 else False
             )
-            self._balanced_loading = user_input.get(CONF_BALANCED_LOADING, False)
             self._data.update(user_input)
             self._data[CONF_SM_CONNECTED] = self._sm_connected
             self._data[CONF_SM_TYPE] = self._sm_type
+            self._data[CONF_BALANCED_LOADING] = self._balanced_loading
 
             _LOGGER.debug(
                 "Power options saved: sm_connected=%s, sm_type=%s, balanced_loading=%s",
@@ -182,9 +187,6 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Route based on selections
             if not self._sm_connected and self._balanced_loading:
                 return await self.async_step_sensors()
-            if not self._sm_connected:
-                return await self.async_step_protocol_options()
-            # sm_connected=True → smart meter handles power
             return await self.async_step_protocol_options()
 
         current_sm_type = getattr(self, "_sm_type", DEFAULT_SM_TYPE)
@@ -193,7 +195,6 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="power_options",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_SM_CONNECTED, default=self._sm_connected): bool,
                     vol.Optional(
                         CONF_SM_TYPE,
                         default=current_sm_type,
@@ -562,26 +563,30 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_MIN_SOC in user_input:
                 power_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
 
+            # sm_type is the single source of truth: only a recognized SAX
+            # meter (ADW200/ADL400) creates the SM device and drives it directly.
+            new_sm_type = user_input.get(
+                CONF_SM_TYPE, self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+            )
+            new_sm_connected = new_sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400)
+
             # Build result data - always include feature toggles
             result_data = {
                 CONF_CONTROL_POWER: user_input.get(
                     CONF_CONTROL_POWER, current_control_power
                 ),
                 CONF_LIMIT_POWER: user_input.get(CONF_LIMIT_POWER, current_limit_power),
-                CONF_SM_CONNECTED: user_input.get(
-                    CONF_SM_CONNECTED, current_sm_connected
-                ),
+                CONF_SM_TYPE: new_sm_type,
+                CONF_SM_CONNECTED: new_sm_connected,
             }
 
-            # Smart meter and balanced loading options
-            new_sm_connected = result_data[CONF_SM_CONNECTED]
-            if not new_sm_connected:
-                result_data[CONF_BALANCED_LOADING] = user_input.get(
-                    CONF_BALANCED_LOADING, False
-                )
-            else:
-                # Clear balanced loading config when SM is connected
-                result_data[CONF_BALANCED_LOADING] = False
+            # Balanced loading via an external grid sensor only applies to
+            # "Other". "None" and a recognized SAX meter support manual only.
+            result_data[CONF_BALANCED_LOADING] = (
+                user_input.get(CONF_BALANCED_LOADING, False)
+                if new_sm_type == SM_TYPE_OTHER
+                else False
+            )
 
             # Only include power-specific options when control power is enabled
             if user_input.get(CONF_CONTROL_POWER, current_control_power):
@@ -634,8 +639,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current configuration for form display
         control_power_enabled = self.config_entry.data.get(CONF_CONTROL_POWER, False)
         limit_power_enabled = self.config_entry.data.get(CONF_LIMIT_POWER, False)
-        sm_connected = self.config_entry.data.get(CONF_SM_CONNECTED, True)
-        balanced_loading = self.config_entry.data.get(CONF_BALANCED_LOADING, False)  # noqa: F841
 
         schema: dict[vol.Marker, Any] = {}
 
@@ -657,10 +660,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_LIMIT_POWER,
                         self.config_entry.data.get(CONF_LIMIT_POWER, False),
                     ),
-                ): bool,
-                vol.Optional(
-                    CONF_SM_CONNECTED,
-                    default=self.config_entry.data.get(CONF_SM_CONNECTED, True),
                 ): bool,
                 vol.Optional(
                     CONF_SM_TYPE,
@@ -689,8 +688,8 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-        # Show balanced loading options when SM is not connected
-        if not sm_connected:
+        # Balanced loading via an external grid sensor only applies to "Other"
+        if current_sm_type == SM_TYPE_OTHER:
             schema[
                 vol.Optional(
                     CONF_BALANCED_LOADING,

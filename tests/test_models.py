@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from custom_components.sax_battery.const import (
+    CONF_SM_TYPE,
     SAX_CAPACITY,
     SAX_CHARGE_POWER,
     SAX_COMBINED_SOC,
@@ -17,6 +18,8 @@ from custom_components.sax_battery.const import (
     SAX_SMARTMETER_CURRENT_L1,
     SAX_SMARTMETER_TOTAL_POWER,
     SAX_SOC,
+    SM_TYPE_NONE,
+    SM_TYPE_OTHER,
 )
 from custom_components.sax_battery.const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 from custom_components.sax_battery.entity_keys import SUNSPEC_DEVICE_MODEL_1
@@ -214,6 +217,38 @@ class TestSAXBatteryData:
         assert SAX_SOC in item_names
         assert SAX_POWER in item_names
         assert SAX_CAPACITY in item_names
+
+    def test_sax_battery_data_get_modbus_items_for_battery_sunspec_sm_other(
+        self, mock_hass, mock_config_entry_single_battery
+    ) -> None:
+        """'Other' smart meter must drop the SM device entities entirely."""
+        mock_config_entry_single_battery.data[CONF_SM_TYPE] = SM_TYPE_OTHER
+        sax_data = SAXBatteryData(mock_hass, mock_config_entry_single_battery)
+        sax_data.coordinators = {
+            "bess_a": MagicMock(protocol_mode=ProtocolMode.SUNSPEC)
+        }
+
+        master_items = sax_data.get_modbus_items_for_battery("bess_a")
+        item_names = {item.name for item in master_items}
+
+        assert SAX_SOC in item_names
+        assert SAX_SMARTMETER_CURRENT_L1 not in item_names
+        assert SAX_SMARTMETER_TOTAL_POWER not in item_names
+        assert all(item.device != DeviceConstants.SM for item in master_items)
+
+    def test_sax_battery_data_get_modbus_items_for_battery_sunspec_sm_none(
+        self, mock_hass, mock_config_entry_single_battery
+    ) -> None:
+        """'None' smart meter must drop the SM device entities entirely."""
+        mock_config_entry_single_battery.data[CONF_SM_TYPE] = SM_TYPE_NONE
+        sax_data = SAXBatteryData(mock_hass, mock_config_entry_single_battery)
+        sax_data.coordinators = {
+            "bess_a": MagicMock(protocol_mode=ProtocolMode.SUNSPEC)
+        }
+
+        master_items = sax_data.get_modbus_items_for_battery("bess_a")
+
+        assert all(item.device != DeviceConstants.SM for item in master_items)
 
     def test_sax_battery_data_get_modbus_items_for_battery_sunspec_slave(
         self, mock_hass, mock_config_entry_dual_battery

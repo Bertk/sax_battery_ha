@@ -21,9 +21,13 @@ from .const import (
     CONF_BATTERY_PORT,
     CONF_MASTER_BATTERY,
     CONF_SM_CONNECTED,
+    CONF_SM_TYPE,
     DEFAULT_DEVICE_INFO,
+    DEFAULT_SM_TYPE,
     DOMAIN,
     PILOT_ITEMS,
+    SM_TYPE_ADL400,
+    SM_TYPE_ADW200,
 )
 from .const_legacy import (
     MODBUS_BATTERY_BMS_ITEMS,
@@ -236,7 +240,8 @@ class SAXBatteryData:
         if self._get_protocol_mode_for_battery(battery_id) != ProtocolMode.SUNSPEC:
             return items
 
-        return self._merge_sunspec_items(items, battery.is_master)
+        sm_type = battery.config_data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+        return self._merge_sunspec_items(items, battery.is_master, sm_type)
 
     def get_sax_items_for_battery(self, battery_id: str) -> list[SAXItem]:
         """Get SAX items for a specific battery."""
@@ -587,15 +592,22 @@ class SAXBatteryData:
         self,
         legacy_items: list[ModbusItem],
         is_master: bool,
+        sm_type: str = DEFAULT_SM_TYPE,
     ) -> list[ModbusItem]:
         """Return the role-appropriate SunSpec entity inventory.
 
         SunSpec mode must not expose legacy-only registers or model-1 metadata
         as sensor entities. The master BMS supplies all operational values.
+
+        The Model 203 smart-meter entities (DeviceConstants.SM) are only
+        created for a recognized SAX-connected meter (ADW200/ADL400). "Other"
+        and "None" drop the SM device entirely, matching legacy behavior.
         """
         del legacy_items
         if not is_master:
             return []
+
+        has_sax_smart_meter = sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400)
 
         return [
             replace(item, device=DeviceConstants.SYS)
@@ -603,4 +615,5 @@ class SAXBatteryData:
             else item
             for item in get_canonical_sunspec_items_by_name().values()
             if item.address > 40014
+            and (has_sax_smart_meter or item.device != DeviceConstants.SM)
         ]

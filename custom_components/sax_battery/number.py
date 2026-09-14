@@ -26,6 +26,7 @@ from .const import (
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_LIMIT_POWER,
+    CONF_MAX_SOC_CHARGING,
     CONF_MIN_SOC,
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
@@ -1277,6 +1278,35 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                     },
                 )
                 _LOGGER.info("Minimum SOC updated to %s%%", value)
+
+            elif self._sax_item.name == SAX_MAX_SOC_CHARGING:
+                if not self.coordinator.soc_manager:
+                    raise HomeAssistantError("SOC manager not available")  # noqa: TRY301
+
+                if not self.coordinator.config_entry:
+                    raise HomeAssistantError("Config entry not available")  # noqa: TRY301
+
+                if not isinstance(value, (int, float)) or not (0 <= value <= 100):
+                    raise ValueError(  # noqa: TRY301
+                        f"Max SOC for charging must be between 0-100%, got {value}"
+                    )
+
+                _LOGGER.debug(
+                    "Setting max SOC for charging from %s%% to %s%%",
+                    self.coordinator.soc_manager.max_soc_charging,
+                    value,
+                )
+
+                self.coordinator.soc_manager.max_soc_charging = int(value)
+
+                self.hass.config_entries.async_update_entry(
+                    self.coordinator.config_entry,
+                    data={
+                        **self.coordinator.config_entry.data,
+                        CONF_MAX_SOC_CHARGING: int(value),
+                    },
+                )
+                _LOGGER.info("Max SOC for charging updated to %s%%", value)
 
             else:
                 # Generic config value update

@@ -906,6 +906,34 @@ class TestSAXBatteryConfigNumber:
         ):
             await number.async_set_native_value(-5.0)
 
+    async def test_set_native_value_max_soc_charging(
+        self,
+        mock_coordinator_config_base,
+        sax_item_max_soc_charging_base,
+        mock_hass_base,
+    ) -> None:
+        """Setting max SOC for charging must update SOC manager and persist."""
+        number = SAXBatteryConfigNumber(
+            coordinator=mock_coordinator_config_base,
+            sax_item=sax_item_max_soc_charging_base,
+        )
+        number.hass = mock_hass_base
+
+        with patch.object(number, "async_write_ha_state"):
+            await number.async_set_native_value(95.0)
+
+        assert mock_coordinator_config_base.soc_manager.max_soc_charging == 95
+        mock_hass_base.config_entries.async_update_entry.assert_called_once()
+
+        with (
+            patch.object(number, "async_write_ha_state"),
+            pytest.raises(
+                (ValueError, HomeAssistantError),
+                match="Max SOC for charging must be between 0-100%",
+            ),
+        ):
+            await number.async_set_native_value(150.0)
+
     def test_battery_count_property(
         self, mock_coordinator_config_base, sax_item_min_soc_base
     ) -> None:

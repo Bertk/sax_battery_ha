@@ -22,6 +22,7 @@ from custom_components.sax_battery.const import (
     DEFAULT_MIN_SOC,
     DESCRIPTION_SAX_COMBINED_SOC,
     DESCRIPTION_SAX_MAX_CHARGE,
+    DESCRIPTION_SAX_MAX_SOC_CHARGING,
     DESCRIPTION_SAX_MIN_SOC,
     DESCRIPTION_SAX_POWER_SETPOINT,
     DESCRIPTION_SAX_STATUS_SWITCH,
@@ -30,6 +31,7 @@ from custom_components.sax_battery.const import (
     SAX_COMBINED_SOC,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SAX_MAX_SOC_CHARGING,
     SAX_MIN_SOC,
     SAX_POWER_SETPOINT,
     SAX_POWER_SETPOINT_FACTOR,
@@ -192,6 +194,7 @@ def mock_coordinator_config_base(mock_hass_base, mock_config_entry_base):
     # Add soc_manager mock for min_soc initialization
     coordinator.soc_manager = MagicMock()
     coordinator.soc_manager.min_soc = 10  # Default minimum SOC
+    coordinator.soc_manager.max_soc_charging = 90  # Default max SOC for charging
 
     return coordinator
 
@@ -675,6 +678,26 @@ def sax_item_min_soc_base() -> SAXItem:
     min_soc_item.async_write_value = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     return min_soc_item
+
+
+@pytest.fixture
+def sax_item_max_soc_charging_base() -> SAXItem:
+    """Create a test SAX item for max SOC charging using real const.py data."""
+    max_soc_charging_item = next(
+        (item for item in PILOT_ITEMS if item.name == SAX_MAX_SOC_CHARGING), None
+    )
+
+    if max_soc_charging_item is None:
+        max_soc_charging_item = SAXItem(
+            name=SAX_MAX_SOC_CHARGING,
+            mtype=TypeConstants.NUMBER,
+            device=DeviceConstants.SYS,
+            entitydescription=DESCRIPTION_SAX_MAX_SOC_CHARGING,
+        )
+
+    max_soc_charging_item.async_write_value = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    return max_soc_charging_item
 
 
 # Core fixtures

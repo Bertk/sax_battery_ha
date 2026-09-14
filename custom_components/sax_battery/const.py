@@ -215,6 +215,7 @@ CONF_DEVICE_ID = "device_id"
 
 # config flow constants
 CONF_MIN_SOC = "min_soc"
+CONF_MAX_SOC_CHARGING = "max_soc_charging"
 CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
 
 DEFAULT_PORT = 502  # Default Modbus port
@@ -376,7 +377,7 @@ DESCRIPTION_SAX_MAX_SOC_CHARGING = NumberEntityDescription(
     native_unit_of_measurement=UnitOfRatio.PERCENTAGE,
     native_min_value=0,
     native_max_value=100,
-    native_step=5,
+    native_step=1,
     device_class=NumberDeviceClass.BATTERY,
     entity_category=EntityCategory.CONFIG,
     icon="mdi:battery-charging-high",

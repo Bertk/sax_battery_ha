@@ -25,8 +25,10 @@ from .circuit_breaker import (
 from .const import (
     CONF_BATTERY_IS_MASTER,
     CONF_LIMIT_POWER,
+    CONF_MAX_SOC_CHARGING,
     CONF_MIN_SOC,
     CONF_SM_TYPE,
+    DEFAULT_MAX_SOC_CHARGING,
     DEFAULT_MIN_SOC,
     DEFAULT_SM_TYPE,
     DOMAIN,
@@ -157,11 +159,15 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Initialize SOC manager
         min_soc = self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC)
+        max_soc_charging = self.config_entry.data.get(
+            CONF_MAX_SOC_CHARGING, DEFAULT_MAX_SOC_CHARGING
+        )
         limit_power_enabled = self.config_entry.data.get(CONF_LIMIT_POWER, False)
 
         self.soc_manager = SOCManager(
             coordinator=self,
             min_soc=min_soc,
+            max_soc_charging=max_soc_charging,
             enabled=limit_power_enabled,
         )
 

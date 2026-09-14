@@ -18,6 +18,8 @@ from .const_sunspec import get_canonical_sunspec_items_by_name
 from .items import ModbusItem
 from .sunspec_client import decode_sunspec_block_values, read_sunspec_register_block
 
+_SM_TYPES_WITHOUT_SAX_METER = frozenset({"none", "other"})
+
 
 @dataclass(frozen=True)
 class LegacyRegisterBlock:
@@ -287,8 +289,11 @@ class SunSpecDataProvider(DataProvider):
         return await self._get_values_for_block("battery_controls", items)
 
     async def get_smart_meter_values(self, items: list[ModbusItem]) -> dict[str, Any]:
-        """Return values from block 40054-40094 when smart meter is configured."""
-        if self._sm_type == "none":
+        """Return values from block 40054-40094 for a recognized SAX meter only.
+
+        "other" and "none" have no SM device entities and are skipped here too.
+        """
+        if self._sm_type in _SM_TYPES_WITHOUT_SAX_METER:
             return {}
         return await self._get_values_for_block("smartmeter_data", items)
 
