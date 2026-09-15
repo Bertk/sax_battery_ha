@@ -403,11 +403,9 @@ async def _log_registry_state_before_setup(
         entity_registry = er.async_get(hass)
 
         # Check for existing SAX Battery devices
-        existing_devices = [
-            device
-            for device in device_registry.devices.values()
-            if any(identifier[0] == "sax_battery" for identifier in device.identifiers)
-        ]
+        existing_devices = dr.async_entries_for_config_entry(
+            device_registry, entry.entry_id
+        )
 
         # Check for existing SAX Battery entities
         existing_entities = [
@@ -495,11 +493,7 @@ async def _log_comprehensive_setup_summary(
         enable_solar = config_data.get("enable_solar_charging", False)
 
         # Query device registry for SAX Battery devices
-        sax_devices = [
-            device
-            for device in device_registry.devices.values()
-            if any(identifier[0] == "sax_battery" for identifier in device.identifiers)
-        ]
+        sax_devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
 
         # Query entity registry for SAX Battery entities
         sax_entities = [
