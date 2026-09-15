@@ -348,7 +348,7 @@ DESCRIPTION_CHARGE_FROM_PV_SWITCH = SwitchEntityDescription(
 DESCRIPTION_CHARGE_FROM_GRID_SWITCH = SwitchEntityDescription(
     key=SAX_CHARGE_FROM_GRID_SWITCH,
     name="Grid Charging Switch",
-    icon="transmission-tower-export",
+    icon="mdi:transmission-tower-export",
 )
 
 DESCRIPTION_SAX_SOC = SensorEntityDescription(
