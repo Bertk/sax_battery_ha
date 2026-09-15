@@ -217,7 +217,7 @@ class PowerManager:
     async def async_start(self) -> None:
         """Start the power manager service.
 
-        Uses coordinator's update_interval instead of custom CONF_AUTO_PILOT_INTERVAL.
+        Uses coordinator's update_interval.
         Security: Only starts if not already running
         """
         if self._running:

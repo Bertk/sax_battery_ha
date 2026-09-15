@@ -163,7 +163,7 @@ class RegisterAccessConfig:
         """
         writable: set[int] = set()
 
-        # Pilot control registers require both control_power AND master battery
+        # Power setpoint registers require both control_power AND master battery
         if self.control_power and self.is_master_battery:
             writable.update({41, 42})
 
@@ -198,14 +198,14 @@ def get_battery_realtime_items(access_config: RegisterAccessConfig) -> list[Modb
     # Always add control items for master battery
     # Entity enabled state is controlled via entity_registry_enabled_default
     if access_config.is_master_battery:
-        # Add pilot control items (registers 41, 42)
+        # Add Power Setpoint items (registers 41, 42)
         items.extend(MODBUS_BATTERY_POWER_CONTROL_ITEMS)
 
         # Add power limit items (registers 43, 44)
         items.extend(MODBUS_BATTERY_POWER_LIMIT_ITEMS)
 
         _LOGGER.debug(
-            "Master battery: Added %d pilot control items and %d power limit items",
+            "Master battery: Added %d power setpoint items and %d power limit items",
             len(MODBUS_BATTERY_POWER_CONTROL_ITEMS),
             len(MODBUS_BATTERY_POWER_LIMIT_ITEMS),
         )

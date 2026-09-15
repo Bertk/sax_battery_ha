@@ -690,7 +690,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
         # Write to hardware via coordinator write queue
         try:
-            # Pilot control registers require atomic write with proper parameters
+            # Power setpoint control registers require atomic write with proper parameters
             if self._modbus_item.name in (
                 SAX_POWER_SETPOINT,
                 SAX_POWER_SETPOINT_FACTOR,
@@ -734,7 +734,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
     ) -> bool:
         """Write to power control registers (SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR).
 
-        Pilot control registers (addresses 41, 42) require atomic writes to prevent
+        Power Setpoint registers (addresses 41, 42) require atomic writes to prevent
         race conditions. This method coordinates writes through the coordinator's
         write queue to ensure proper sequencing.
 
@@ -810,14 +810,14 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                     # Update local cache on successful write
                     self._local_value = value
                     _LOGGER.info(
-                        "%s: Pilot control write successful: power=%.1fW, factor=%.1f%%",
+                        "%s: Power control write successful: power=%.1fW, factor=%.1f%%",
                         self.entity_id,
                         value,
                         factor_value,
                     )
                 else:
                     _LOGGER.error(
-                        "%s: Pilot control write failed: power=%.1fW, factor=%.1f%%",
+                        "%s: Power control write failed: power=%.1fW, factor=%.1f%%",
                         self.entity_id,
                         value,
                         factor_value,
@@ -971,7 +971,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         await super().async_added_to_hass()
 
         # Only set up periodic refresh for power limit registers
-        # Pilot control registers (43-44) are managed by power manager
+        # Power limit registers (43-44) are managed by power manager
         if self._modbus_item.address in REFRESH_REGISTERS:
             # Restore cached value from previous state
             last_number_data = await self.async_get_last_number_data()
@@ -1404,7 +1404,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._attr_native_value = float(power_value)
 
         _LOGGER.info(
-            "Pilot power updated: power=%sW, power_factor=%s",
+            "Setpoint power updated: power=%sW, power_factor=%s",
             nominal_power,
             nominal_factor,
         )

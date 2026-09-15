@@ -140,7 +140,7 @@ BATTERY_PHASES = {"bess_a": "L1", "bess_b": "L2", "bess_c": "L3"}
 
 
 # Configuration constants for write access control
-CONF_CONTROL_POWER = "control_power"  # Renamed from CONF_PILOT_FROM_HA
+CONF_CONTROL_POWER = "control_power"
 CONF_LIMIT_POWER = "limit_power"
 
 # Smart meter and balanced loading configuration
@@ -1059,8 +1059,8 @@ AGGREGATED_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_ENERGY_DISCHARGED_MONTHLY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_DISCHARGED_MONTHLY, translation_key="bms_energy_discharged_monthly"),
     SAXItem(name=SAX_ENERGY_CHARGED_MONTHLY, mtype=TypeConstants.SENSOR_CALC, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_ENERGY_CHARGED_MONTHLY, translation_key="bms_energy_charged_monthly"),
 ]
-# Pilot items - switches for grid charing control and PV charging
-PILOT_ITEMS: list[SAXItem] = [
+# SOC and power management items - switches for grid charing control and PV charging
+MANAGEMENT_ITEMS: list[SAXItem] = [
     SAXItem(name=SAX_CHARGE_FROM_PV_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_PV_SWITCH, translation_key="bms_charge_from_pv"),
     SAXItem(name=SAX_CHARGE_FROM_GRID_SWITCH,  mtype=TypeConstants.SWITCH, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_CHARGE_FROM_GRID_SWITCH, translation_key="bms_charge_from_grid"),
     SAXItem(name=SAX_MIN_SOC, mtype=TypeConstants.NUMBER, device=DeviceConstants.SYS, entitydescription=DESCRIPTION_SAX_MIN_SOC_LIMIT, translation_key="bms_min_soc"),

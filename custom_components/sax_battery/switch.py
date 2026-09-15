@@ -497,12 +497,12 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         Security:
             OWASP A01: Access control based on integration configuration
         """
-        # Control switches require CONF_PILOT_FROM_HA enabled
+        # Control switches require CONF_CONTROL_POWER enabled
         if self._sax_item.name in (
             SAX_CHARGE_FROM_PV_SWITCH,
             SAX_CHARGE_FROM_GRID_SWITCH,
         ):
-            # Check config entry options for CONF_PILOT_FROM_HA
+            # Check config entry options for CONF_CONTROL_POWER
             control_power = (
                 self.coordinator.config_entry.options.get(CONF_CONTROL_POWER, False)
                 if self.coordinator.config_entry
@@ -510,7 +510,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
             )
 
             _LOGGER.debug(
-                "Control switch %s: CONF_PILOT_FROM_HA=%s, enabled_default=%s",
+                "Control switch %s: CONF_CONTROL_POWER=%s, enabled_default=%s",
                 self.entity_id or self._attr_unique_id,
                 control_power,
                 control_power,
