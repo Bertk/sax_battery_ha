@@ -25,7 +25,7 @@ from .const import (
     DEFAULT_DEVICE_INFO,
     DEFAULT_SM_TYPE,
     DOMAIN,
-    PILOT_ITEMS,
+    MANAGEMENT_ITEMS,
     SM_TYPE_ADL400,
     SM_TYPE_ADW200,
 )
@@ -138,10 +138,10 @@ class BatteryModel(BaseModel):
         """Get SAX items for battery."""
         items = []
 
-        # Only master battery gets aggregated and pilot items
+        # Only master battery gets aggregated and management items
         if self.is_master:
             items.extend(AGGREGATED_ITEMS)
-            items.extend(PILOT_ITEMS)
+            items.extend(MANAGEMENT_ITEMS)
 
         return items
 

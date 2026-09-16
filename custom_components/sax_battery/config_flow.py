@@ -920,7 +920,7 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
     async def _async_stop_power_manager(self) -> None:
-        """Stop Power Manager when pilot feature is disabled.
+        """Stop when Control Power feature is disabled.
 
         Security:
             OWASP A05: Proper resource cleanup prevents memory leaks

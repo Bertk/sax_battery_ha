@@ -72,7 +72,7 @@ async def async_setup_entry(
        - Always available (no hardware dependency)
 
     2. Per-battery hardware numbers (ModbusItem → SAXBatteryModbusNumber)
-       - Examples: max_discharge, max_charge, nominal_power
+       - Examples: max_discharge, max_charge, power_setpoint
        - One per battery (bess_a, bess_b, bess_c)
        - Availability depends on Modbus connection
 
@@ -257,7 +257,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
     Architecture Separation:
         - **SAXBatteryModbusNumber** (this class): Hardware-backed Modbus registers
-            * Examples: max_discharge, max_charge, nominal_power, nominal_factor
+            * Examples: max_discharge, max_charge, power_setpoint, nominal_factor
             * Data source: Physical SAX battery hardware via Modbus TCP/IP
             * Availability: Depends on Modbus connection and coordinator state
             * Write operations: Direct hardware register writes with confirmation
@@ -270,7 +270,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         - `native_value` returns cached value instead of coordinator data
         - UI updates are immediate via `async_write_ha_state()`
         - Values persist across Home Assistant restarts via local cache
-        - Registers 41-44: nominal_power, nominal_factor, max_discharge, max_charge
+        - Registers 41-44: power_setpoint, nominal_factor, max_discharge, max_charge
 
     Power Control Registers (41, 42):
         These registers are written atomically by power_manager or coordinator:
@@ -690,7 +690,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
         # Write to hardware via coordinator write queue
         try:
-            # Pilot control registers require atomic write with proper parameters
+            # Power setpoint control registers require atomic write with proper parameters
             if self._modbus_item.name in (
                 SAX_POWER_SETPOINT,
                 SAX_POWER_SETPOINT_FACTOR,
@@ -734,7 +734,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
     ) -> bool:
         """Write to power control registers (SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR).
 
-        Pilot control registers (addresses 41, 42) require atomic writes to prevent
+        Power Setpoint registers (addresses 41, 42) require atomic writes to prevent
         race conditions. This method coordinates writes through the coordinator's
         write queue to ensure proper sequencing.
 
@@ -810,14 +810,14 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                     # Update local cache on successful write
                     self._local_value = value
                     _LOGGER.info(
-                        "%s: Pilot control write successful: power=%.1fW, factor=%.1f%%",
+                        "%s: Power control write successful: power=%.1fW, factor=%.1f%%",
                         self.entity_id,
                         value,
                         factor_value,
                     )
                 else:
                     _LOGGER.error(
-                        "%s: Pilot control write failed: power=%.1fW, factor=%.1f%%",
+                        "%s: Power control write failed: power=%.1fW, factor=%.1f%%",
                         self.entity_id,
                         value,
                         factor_value,
@@ -970,8 +970,8 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
         """
         await super().async_added_to_hass()
 
-        # Only set up periodic refresh for power limit registers
-        # Pilot control registers (43-44) are managed by power manager
+        # Only set up periodic refresh for charge/discharge limit registers
+        # charge/discharge limit registers (43-44) are controlled by SOC manager
         if self._modbus_item.address in REFRESH_REGISTERS:
             # Restore cached value from previous state
             last_number_data = await self.async_get_last_number_data()
@@ -1355,8 +1355,8 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         if not self.coordinator.soc_manager:
             raise HomeAssistantError("SOC manager not available")
 
-        # Derive nominal_power (same as  xxx power)
-        nominal_power: int = power_value
+        # Derive power_setpoint (same as  xxx power)
+        power_setpoint: int = power_value
 
         # Derive nominal_factor (power factor)
         # Default to 0.95 (9500 in scaled format for 10000 scaling)
@@ -1388,12 +1388,12 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._update_power_entity(
             SAX_POWER_SETPOINT_FACTOR, factor_item, nominal_factor
         )
-        self._update_power_entity(SAX_POWER_SETPOINT, power_item, nominal_power)
+        self._update_power_entity(SAX_POWER_SETPOINT, power_item, power_setpoint)
 
         # Write to control registers atomically via coordinator
         success = await self.coordinator.async_write_power_control_value(
             power_item=power_item,
-            power=nominal_power,
+            power=power_setpoint,
             power_factor=nominal_factor,
         )
 
@@ -1404,8 +1404,8 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         self._attr_native_value = float(power_value)
 
         _LOGGER.info(
-            "Pilot power updated: power=%sW, power_factor=%s",
-            nominal_power,
+            "Setpoint power updated: power=%sW, power_factor=%s",
+            power_setpoint,
             nominal_factor,
         )
 

@@ -16,7 +16,7 @@ from custom_components.sax_battery.const import (
     DOMAIN,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
-    PILOT_ITEMS,
+    MANAGEMENT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
@@ -310,15 +310,15 @@ class TestSAXBatteryModbusNumber:
             assert number._local_value == 0.0, f"Dangerous default for {item_name}"
 
 
-class TestSAXBatteryModbusNumberNominalPower:
-    """Test nominal power write behavior."""
+class TestSAXBatteryModbusNumberPowerSetpoint:
+    """Test power set_point write behavior."""
 
-    async def test_nominal_power_write_updates_local_cache(
+    async def test_power_setpoint_write_updates_local_cache(
         self,
         hass: HomeAssistant,
         mock_coordinator_modbus_base,
     ) -> None:
-        """Test nominal power write uses pilot control atomic write.
+        """Test power set_point write uses pilot control atomic write.
 
         SAX_POWER_SETPOINT triggers _write_pilot_control_register() which:
         - Looks up current SAX_POWER_SETPOINT_FACTOR value
@@ -349,7 +349,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         )
 
         number.hass = hass
-        number.entity_id = "number.test_nominal_power"
+        number.entity_id = "number.test_power_setpoint"
 
         # Mock _get_factor_entity to avoid entity registry lookup
         mock_factor_entity = MagicMock()
@@ -377,12 +377,12 @@ class TestSAXBatteryModbusNumberNominalPower:
         # Verify native_value returns cached value
         assert number.native_value == 2000.0
 
-    async def test_nominal_power_write_fallback_factor(
+    async def test_power_setpoint_write_fallback_factor(
         self,
         hass: HomeAssistant,
         mock_coordinator_modbus_base,
     ) -> None:
-        """Test nominal power write uses 100% factor when entity not found."""
+        """Test power set_point write uses 100% factor when entity not found."""
         mock_item = ModbusItem(
             address=_write_only_address(SAX_POWER_SETPOINT),
             name=SAX_POWER_SETPOINT,
@@ -405,7 +405,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         )
 
         number.hass = hass
-        number.entity_id = "number.test_nominal_power"
+        number.entity_id = "number.test_power_setpoint"
 
         # Mock _get_factor_entity returning None (entity not found)
         with (
@@ -424,7 +424,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         assert call_args[0][1] == 2000.0  # Second arg: power
         assert call_args[0][2] == 100  # Third arg: factor (100% fallback, int)
 
-    async def test_nominal_factor_write_cache_only(
+    async def test_power_setpoint_factor_write_cache_only(
         self,
         hass: HomeAssistant,
         mock_coordinator_modbus_base,
@@ -452,7 +452,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         )
 
         number.hass = hass
-        number.entity_id = "number.test_nominal_factor"
+        number.entity_id = "number.test_power_setpoint_factor"
 
         with patch.object(number, "async_write_ha_state"):
             await number.async_set_native_value(80.0)
@@ -465,12 +465,12 @@ class TestSAXBatteryModbusNumberNominalPower:
         assert number._local_value == 80.0
         assert number.native_value == 80.0
 
-    async def test_nominal_power_write_only_behavior(
+    async def test_power_setpoint_write_only_behavior(
         self,
         hass: HomeAssistant,
         mock_coordinator_modbus_base,
     ) -> None:
-        """Test write-only register behavior for nominal power.
+        """Test write-only register behavior for power_setpoint.
 
         Verifies:
         - Entity identified as write-only (address 41)
@@ -497,7 +497,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         )
 
         number.hass = hass
-        number.entity_id = "number.test_nominal_power"
+        number.entity_id = "number.test_power_setpoint"
 
         # Verify entity identified as write-only
         assert number._is_write_only is True
@@ -516,12 +516,12 @@ class TestSAXBatteryModbusNumberNominalPower:
         mock_coordinator_modbus_base.data = {}  # Empty coordinator data
         assert number.native_value == 3500.0  # Still returns cached value
 
-    async def test_nominal_power_soc_constraint_enforcement(
+    async def test_power_setpoint_soc_constraint_enforcement(
         self,
         hass: HomeAssistant,
         mock_coordinator_modbus_base,
     ) -> None:
-        """Test SOC constraint enforcement for nominal power writes.
+        """Test SOC constraint enforcement for power_setpoint writes.
 
         When SOC < min_soc, discharge power should be constrained to 0W.
         """
@@ -552,7 +552,7 @@ class TestSAXBatteryModbusNumberNominalPower:
         )
 
         number.hass = hass
-        number.entity_id = "number.test_nominal_power"
+        number.entity_id = "number.test_power_setpoint"
 
         # Try to write 2000W (discharge)
         await number.async_set_native_value(2000.0)
@@ -1033,11 +1033,11 @@ class TestSAXBatteryConfigNumberAdvanced:
     ) -> None:
         """Test setting config number native value."""
         sax_min_soc_item: SAXItem | None = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC),
+            (item for item in MANAGEMENT_ITEMS if item.name == SAX_MIN_SOC),
             None,
         )
 
-        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in PILOT_ITEMS"
+        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in MANAGEMENT_ITEMS"
 
         # Create number entity
         number = SAXBatteryConfigNumber(

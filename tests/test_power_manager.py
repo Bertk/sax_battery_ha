@@ -227,7 +227,7 @@ class TestPvChargingMode:
 
             # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_nominal_power", new_callable=AsyncMock
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 
@@ -264,7 +264,7 @@ class TestPvChargingMode:
 
         # ✅ FIX: Use patch.object instead of direct assignment
         with patch.object(
-            power_manager, "update_nominal_power", new_callable=AsyncMock
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
         ) as mock_update:
             await power_manager._update_pv_charging_power()
 
@@ -294,7 +294,7 @@ class TestPvChargingMode:
 
         # ✅ FIX: Use patch.object instead of direct assignment
         with patch.object(
-            power_manager, "update_nominal_power", new_callable=AsyncMock
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
         ) as mock_update:
             await power_manager._update_pv_charging_power()
 
@@ -325,7 +325,7 @@ class TestPvChargingMode:
 
         # ✅ FIX: Use patch.object instead of direct assignment
         with patch.object(
-            power_manager, "update_nominal_power", new_callable=AsyncMock
+            power_manager, "update_power_setpoint", new_callable=AsyncMock
         ) as mock_update:
             await power_manager._update_pv_charging_power()
 
@@ -389,7 +389,7 @@ class TestPvChargingMode:
 
             # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_nominal_power", new_callable=AsyncMock
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 
@@ -462,7 +462,7 @@ class TestPvChargingMode:
 
             # ✅ FIX: Use patch.object instead of direct assignment
             with patch.object(
-                power_manager, "update_nominal_power", new_callable=AsyncMock
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
             ) as mock_update:
                 await power_manager._update_pv_charging_power()
 

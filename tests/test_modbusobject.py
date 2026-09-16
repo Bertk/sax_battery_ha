@@ -10,7 +10,7 @@ from custom_components.sax_battery.const import (
     CONF_MIN_SOC,
     DESCRIPTION_SAX_MAX_CHARGE,
     DESCRIPTION_SAX_MIN_SOC_LIMIT,
-    PILOT_ITEMS,
+    MANAGEMENT_ITEMS,
     SAX_MAX_CHARGE,
     SAX_MIN_SOC,
 )
@@ -161,7 +161,7 @@ class TestSAXBatteryConfigNumber:
     ) -> None:
         """Test config number native value."""
         sax_min_soc_item = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC), None
+            (item for item in MANAGEMENT_ITEMS if item.name == SAX_MIN_SOC), None
         )
         assert sax_min_soc_item is not None
 
@@ -183,11 +183,11 @@ class TestSAXBatteryConfigNumber:
     ) -> None:
         """Test setting config number native value."""
         sax_min_soc_item: SAXItem | None = next(
-            (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC),
+            (item for item in MANAGEMENT_ITEMS if item.name == SAX_MIN_SOC),
             None,
         )
 
-        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in PILOT_ITEMS"
+        assert sax_min_soc_item is not None, "SAX_MIN_SOC not found in MANAGEMENT_ITEMS"
 
         # Create number entity
         number = SAXBatteryConfigNumber(

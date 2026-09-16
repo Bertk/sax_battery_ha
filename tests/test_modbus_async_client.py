@@ -580,7 +580,7 @@ class TestModbusAPIWrite:
             assert result is False
 
     @pytest.mark.enable_socket
-    async def test_write_nominal_power_success(
+    async def test_write_power_setpoint_success(
         self,
         modbus_api_instance,
         mock_modbus_client,
@@ -591,7 +591,7 @@ class TestModbusAPIWrite:
         mock_modbus_client.connected = True
         mock_modbus_client.write_registers = AsyncMock(return_value=mock_write_response)
 
-        result = await modbus_api_instance.write_nominal_power(
+        result = await modbus_api_instance.write_power_setpoint(
             1000.0, 95, mock_modbus_item
         )
 
@@ -599,7 +599,7 @@ class TestModbusAPIWrite:
         assert mock_modbus_client.write_registers.call_count == 1
 
     @pytest.mark.enable_socket
-    async def test_write_nominal_power_failure(
+    async def test_write_power_setpoint_failure(
         self, modbus_api_instance, mock_modbus_client, mock_modbus_item, caplog
     ):
         """Test nominal power write failure with logging."""
@@ -609,7 +609,7 @@ class TestModbusAPIWrite:
         )
 
         with caplog.at_level(logging.ERROR):
-            result = await modbus_api_instance.write_nominal_power(
+            result = await modbus_api_instance.write_power_setpoint(
                 1000.0, 95, mock_modbus_item
             )
 
@@ -801,8 +801,8 @@ class TestReconnectionBackoff:
                 assert modbus_api_instance._modbus_client is None
 
     @pytest.mark.enable_socket
-    async def test_write_nominal_power_no_retry_loop(self, modbus_api_instance):
-        """Test write_nominal_power() has no manual retry loop.
+    async def test_write_power_setpoint_no_retry_loop(self, modbus_api_instance):
+        """Test write_power_setpoint() has no manual retry loop.
 
         Performance:
             Validates single write operation without retry loops
@@ -821,7 +821,7 @@ class TestReconnectionBackoff:
         modbus_api_instance._modbus_client = mock_client
 
         # Execute write
-        result = await modbus_api_instance.write_nominal_power(
+        result = await modbus_api_instance.write_power_setpoint(
             value=1000,
             power_factor=9500,
             modbus_item=modbus_item,

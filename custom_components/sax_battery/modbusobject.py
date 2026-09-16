@@ -743,7 +743,7 @@ class ModbusAPI:
                 _LOGGER.error("Value conversion error for %s: %s", self.battery_id, exc)
                 return False
 
-    async def write_nominal_power(
+    async def write_power_setpoint(
         self, value: int, power_factor: int, modbus_item: ModbusItem | None = None
     ) -> bool:
         """Write nominal power value to SAX Battery.
@@ -797,7 +797,7 @@ class ModbusAPI:
                     return False
 
                 _LOGGER.debug(
-                    "Writing nominal_power=%dW, power_factor=%d to %s at address %d",
+                    "Writing power_setpoint=%dW, power_factor=%d to %s at address %d",
                     power_int_signed,
                     pf_int,
                     self.battery_id,
@@ -851,7 +851,7 @@ class ModbusAPI:
                 # Success - reset failure counter
                 self.consecutive_failures = 0
                 _LOGGER.debug(
-                    "Successfully wrote nominal_power=%dW to %s",
+                    "Successfully wrote power_setpoint=%dW to %s",
                     power_int_signed,
                     self.battery_id,
                 )

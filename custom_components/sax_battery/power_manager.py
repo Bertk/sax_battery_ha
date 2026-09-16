@@ -84,9 +84,9 @@ class PowerManager:
     to SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42).
 
     Write flow:
-        PowerManager.update_nominal_power()
+        PowerManager.update_power_setpoint()
         -> coordinator.async_write_power_control_value(power_item, power, factor)
-        -> modbus_api.write_nominal_power(value, power_factor, modbus_item)
+        -> modbus_api.write_power_setpoint(value, power_factor, modbus_item)
         -> register 41 (power) + register 42 (factor) atomic write
     """
 
@@ -217,7 +217,7 @@ class PowerManager:
     async def async_start(self) -> None:
         """Start the power manager service.
 
-        Uses coordinator's update_interval instead of custom CONF_AUTO_PILOT_INTERVAL.
+        Uses coordinator's update_interval.
         Security: Only starts if not already running
         """
         if self._running:
@@ -430,7 +430,7 @@ class PowerManager:
         )
 
         # Update nominal power via coordinator
-        await self.update_nominal_power(target_power)
+        await self.update_power_setpoint(target_power)
 
     async def _update_grid_balance_mode(self) -> None:
         """Update nominal power to balance grid power.
@@ -488,7 +488,7 @@ class PowerManager:
         )
 
         # Apply constraints and update hardware via coordinator
-        await self.update_nominal_power(target_power)
+        await self.update_power_setpoint(target_power)
 
     async def _get_grid_power(self) -> float | None:
         """Get current grid power from CONF_POWER_SENSOR.
@@ -557,7 +557,7 @@ class PowerManager:
             target_power,
         )
 
-        await self.update_nominal_power(target_power)
+        await self.update_power_setpoint(target_power)
 
     async def _get_battery_power(self) -> float | None:
         """Get current battery power (SAX_AC_POWER_TOTAL) from state machine.
@@ -842,7 +842,7 @@ class PowerManager:
 
         return battery_power  # noqa: RET504
 
-    async def update_nominal_power(self, power: float) -> None:
+    async def update_power_setpoint(self, power: float) -> None:
         """Update nominal power via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
@@ -854,7 +854,7 @@ class PowerManager:
             2. Apply SOC and hardware constraints
             3. Call coordinator.async_write_power_control_value(item, power, factor)
             4. Coordinator queues atomic write for next update cycle
-            5. modbus_api.write_nominal_power() writes both registers
+            5. modbus_api.write_power_setpoint() writes both registers
 
         Args:
             power: Per-battery power value in watts (positive = discharge, negative = charge)
@@ -1003,7 +1003,7 @@ class PowerManager:
         if enabled:
             # Apply grid charging power if specified
             if power != 0.0:
-                await self.update_nominal_power(power)
+                await self.update_power_setpoint(power)
             # Otherwise, grid charging logic will be handled by _async_update_power
 
     async def set_grid_charging_mode(
@@ -1075,10 +1075,10 @@ class PowerManager:
 
         if enabled:
             # Apply nominal power with constraint enforcement
-            await self.update_nominal_power(target_power)
+            await self.update_power_setpoint(target_power)
         else:
             # Reset to standby when disabling
-            await self.update_nominal_power(0.0)
+            await self.update_power_setpoint(0.0)
 
     @property
     def current_mode(self) -> str:

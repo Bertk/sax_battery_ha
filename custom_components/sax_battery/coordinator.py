@@ -113,7 +113,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Write queue for Modbus operations
         # Queue items: (ModbusItem, value, write_type)
-        # write_type: "normal" | "nominal_power" | "batch"
+        # write_type: "normal" | "power_setpoint" | "batch"
         self._write_queue: asyncio.Queue[
             tuple[ModbusItem, int, str, dict[str, Any]]
         ] = asyncio.Queue()
@@ -145,7 +145,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         # Track nominal power atomic write state
-        self._nominal_power_pending: dict[str, int] = {}  # {power: int, factor: int}
+        self._power_setpoint_pending: dict[str, int] = {}  # {power: int, factor: int}
 
         # Set the modbus API reference for all items
         for item in self.sax_data.get_modbus_items_for_battery(battery_id):
@@ -416,10 +416,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     success = False
 
                     # Handle atomic nominal power write
-                    if write_type == "nominal_power":
+                    if write_type == "power_setpoint":
                         factor = metadata.get("factor", 100)
 
-                        success = await self.modbus_api.write_nominal_power(
+                        success = await self.modbus_api.write_power_setpoint(
                             value,
                             int(factor),
                             item,
@@ -999,12 +999,12 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Handle power setpoint/factor as atomic operation
         if modbus_item.name == SAX_POWER_SETPOINT:
             # Store power value
-            self._nominal_power_pending["power"] = value
+            self._power_setpoint_pending["power"] = value
             self._pending_writes[modbus_item.name] = value
 
             # If we already have factor, queue atomic write
-            if "factor" in self._nominal_power_pending:
-                await self._queue_nominal_power_write()
+            if "factor" in self._power_setpoint_pending:
+                await self._queue_power_setpoint_write()
             else:
                 # Trigger refresh to show pending state
                 await self.async_request_refresh()
@@ -1012,12 +1012,12 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if modbus_item.name == SAX_POWER_SETPOINT_FACTOR:
             # Store factor value
-            self._nominal_power_pending["factor"] = int(value)
+            self._power_setpoint_pending["factor"] = int(value)
             self._pending_writes[modbus_item.name] = value
 
             # If we already have power, queue atomic write
-            if "power" in self._nominal_power_pending:
-                await self._queue_nominal_power_write()
+            if "power" in self._power_setpoint_pending:
+                await self._queue_power_setpoint_write()
             else:
                 # Trigger refresh to show pending state
                 await self.async_request_refresh()
@@ -1037,14 +1037,14 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             value,
         )
 
-    async def _queue_nominal_power_write(self) -> None:
+    async def _queue_power_setpoint_write(self) -> None:
         """Queue atomic nominal power write.
 
         Security:
             OWASP A05: Ensures atomic write for related registers
         """
-        power = self._nominal_power_pending.get("power")
-        factor = self._nominal_power_pending.get("factor")
+        power = self._power_setpoint_pending.get("power")
+        factor = self._power_setpoint_pending.get("factor")
 
         if power is None or factor is None:
             _LOGGER.error(
@@ -1055,20 +1055,20 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         # Create placeholder item for atomic write
-        nominal_power_item = self.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
+        power_setpoint_item = self.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
 
-        if not isinstance(nominal_power_item, ModbusItem):
+        if not isinstance(power_setpoint_item, ModbusItem):
             _LOGGER.error("SAX_POWER_SETPOINT is not a ModbusItem")
             return
 
         # Queue with special metadata
         metadata = {"factor": factor}
         await self._write_queue.put(
-            (nominal_power_item, power, "nominal_power", metadata)
+            (power_setpoint_item, power, "power_setpoint", metadata)
         )
 
         # Clear pending state
-        self._nominal_power_pending.clear()
+        self._power_setpoint_pending.clear()
 
         # Trigger coordinator refresh to process queue
         await self.async_request_refresh()
@@ -1139,8 +1139,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Performance: Single Modbus write for both registers
         """
         try:
-            # Performance: Use atomic write_nominal_power for both registers
-            success = await self.modbus_api.write_nominal_power(
+            # Performance: Use atomic write_power_setpoint for both registers
+            success = await self.modbus_api.write_power_setpoint(
                 value=power, power_factor=power_factor, modbus_item=power_item
             )
 

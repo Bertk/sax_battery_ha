@@ -129,10 +129,10 @@ class TestSAXBatteryCoordinator:
             coordinator._pending_writes = {}
 
         if (
-            not hasattr(coordinator, "_nominal_power_pending")
-            or coordinator._nominal_power_pending is None
+            not hasattr(coordinator, "_power_setpoint_pending")
+            or coordinator._power_setpoint_pending is None
         ):
-            coordinator._nominal_power_pending = {}
+            coordinator._power_setpoint_pending = {}
 
         return coordinator
 

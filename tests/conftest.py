@@ -27,7 +27,7 @@ from custom_components.sax_battery.const import (
     DESCRIPTION_SAX_POWER_SETPOINT,
     DESCRIPTION_SAX_STATUS_SWITCH,
     DOMAIN,
-    PILOT_ITEMS,
+    MANAGEMENT_ITEMS,
     SAX_COMBINED_SOC,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
@@ -660,13 +660,13 @@ def modbus_item_pilot_factor_base():
 @pytest.fixture
 def sax_item_min_soc_base() -> SAXItem:
     """Create a test SAX item for min SOC using real const.py data."""
-    # Extract the real SAX item from PILOT_ITEMS
+    # Extract the real SAX item from MANAGEMENT_ITEMS
     min_soc_item = next(
-        (item for item in PILOT_ITEMS if item.name == SAX_MIN_SOC), None
+        (item for item in MANAGEMENT_ITEMS if item.name == SAX_MIN_SOC), None
     )
 
     if min_soc_item is None:
-        # Fallback creation if not found in PILOT_ITEMS
+        # Fallback creation if not found in MANAGEMENT_ITEMS
         min_soc_item = SAXItem(
             name=SAX_MIN_SOC,
             mtype=TypeConstants.NUMBER,
@@ -684,7 +684,7 @@ def sax_item_min_soc_base() -> SAXItem:
 def sax_item_max_soc_charging_base() -> SAXItem:
     """Create a test SAX item for max SOC charging using real const.py data."""
     max_soc_charging_item = next(
-        (item for item in PILOT_ITEMS if item.name == SAX_MAX_SOC_CHARGING), None
+        (item for item in MANAGEMENT_ITEMS if item.name == SAX_MAX_SOC_CHARGING), None
     )
 
     if max_soc_charging_item is None:
