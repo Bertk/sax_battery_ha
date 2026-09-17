@@ -14,37 +14,52 @@ documentation: https://github.com/sunspec/pysunspec2#full-example-of-a-device-in
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import shutil
 import sys
 from typing import Any
 
-# Import client and device manager from sunspec2 core framework
-import sunspec2.core.device as sunspec_device
+# Import sunspec2 to find its installation path
+import sunspec2
 from sunspec2.modbus import client
 
 # Modbus Connection Defaults from SAX Power Documentation
 DEFAULT_IPADDR = "192.168.178.90"
 DEFAULT_IPPORT = 502
-DEFAULT_SLAVE_ID = 100  # Fixed: SAX default is 100, not 40
+DEFAULT_SLAVE_ID = 100
 
+
+# Dynamically resolve the absolute subfolder relative to this file
+SCRIPT_DIR = Path(__file__).resolve().parent
 # Folder containing custom JSON configurations
-FOLDER_PATH = "./sax_models/"
+FOLDER_PATH = SCRIPT_DIR / "sax_models"
 
 
-def load_custom_models(folder: str) -> None:
-    """Pre-load custom SAX JSON models into the sunspec2 runtime database."""
-    if not os.path.exists(folder):  # noqa: PTH110
-        print(f"Error: Model directory '{folder}' not found.", file=sys.stderr)  # noqa: T201
+def deploy_custom_models(src_folder: str) -> None:
+    """Locate the active sunspec2 package and inject custom SAX models into its internal JSON directory."""
+    if not os.path.exists(src_folder): # noqa:  PTH110
+        print(f"Error: Model directory '{src_folder}' not found.", file=sys.stderr) # noqa: T201
         sys.exit(2)
 
-    for file_name in os.listdir(folder):  # noqa: PTH208
-        if file_name.endswith(".json"):
-            full_path = os.path.join(folder, file_name)  # noqa: PTH118
-            try:
-                sunspec_device.models_load_file(full_path)
-            except Exception as e:  # noqa: BLE001
-                print(f"Failed to load model file {file_name}: {e}", file=sys.stderr)  # noqa: T201
-                sys.exit(2)
+    # Find where sunspec2 is installed in the current environment
+    sunspec_base_dir = os.path.dirname(sunspec2.__file__) # noqa: PTH120
+    target_json_dir = os.path.join(sunspec_base_dir, "models", "json") # noqa: PTH118
 
+    if not os.path.exists(target_json_dir): # noqa: PTH110
+        print(f"Error: Target sunspec2 JSON path not found at {target_json_dir}", file=sys.stderr) # noqa: T201
+        sys.exit(2)
+
+    # Copy files across
+    for file_name in os.listdir(src_folder): # noqa: PTH208
+        if file_name.endswith(".json"):
+            src_file = os.path.join(src_folder, file_name) # noqa: PTH118
+            dest_file = os.path.join(target_json_dir, file_name) # noqa: PTH118
+            try:
+                # Copy file to package site-packages directory
+                shutil.copy2(src_file, dest_file)
+            except Exception as e: # noqa: BLE001
+                print(f"Failed to deploy model file {file_name} to runtime: {e}", file=sys.stderr) # noqa: T201
+                sys.exit(2)
 
 def prompt_with_default(prompt_text: str, default_value: str) -> str:
     """Prompt the user for input, providing a default value if no input is given."""
@@ -89,8 +104,8 @@ def main() -> int:
     Returns:
         int: Exit code (0 for success, 1 for verification failure, 2 for input errors).
     """
-    # Pre-inject our custom models before spinning up the client link
-    load_custom_models(FOLDER_PATH)
+    # Deploy files directly into the active package environment
+    deploy_custom_models(FOLDER_PATH)
 
     ipaddr = prompt_with_default("Enter IP address", DEFAULT_IPADDR)
 
