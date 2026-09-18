@@ -47,7 +47,7 @@
                 },
                 "data_description": {
                     "sm_type": "ADW200/ADL400: creates the Smart Meter device and uses it directly for balanced power control. Other Modbus Smart Meter: no Smart Meter device is created; an external grid power sensor can be configured for balanced or manual power control. None: no Smart Meter device is created and only manual power control is supported",
-                    "balanced_loading": "Only applies when 'Other Modbus Smart Meter' is selected. Enable balanced loading using an external grid power sensor. Negative grid power (production/export to grid) indicates surplus power available for charging — this typically means solar photovoltaic (PV) energy is available. Positive grid power (consumption/import from grid) means no surplus is available. Manual grid charging is always available independently"
+                    "balanced_loading": "Only applies when 'ADW200/ADL400' or 'Other Modbus Smart Meter' is selected. Enable balanced loading using an external grid power sensor. Negative grid power (production/export to grid) indicates surplus power available for charging — this typically means solar photovoltaic (PV) energy is available. Positive grid power (consumption/import from grid) means no surplus is available. Manual grid charging is always available independently"
                 }
             },
             "sensors": {
