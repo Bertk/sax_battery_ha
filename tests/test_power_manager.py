@@ -10,10 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery.const import (
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_GRID_POWER_MODE,
     CONF_POWER_SENSOR,
     CONF_SM_CONNECTED,
     DOMAIN,
     GRID_CHARGING_MODE,
+    GRID_POWER_MODE_CHARGE,
+    GRID_POWER_MODE_DISCHARGE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
     PV_CHARGING_MODE,
@@ -23,6 +27,7 @@ from custom_components.sax_battery.const import (
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.power_manager import PowerManager, PowerManagerState
+from custom_components.sax_battery.protocol_mode import ProtocolMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -886,6 +891,168 @@ class TestPowerManagerState:
         assert state.mode == GRID_CHARGING_MODE
         assert state.grid_charging_enabled is True
         assert state.pv_charging_enabled is False
+
+
+class TestGridPowerMode:
+    """Test grid power charge/discharge mode."""
+
+    @staticmethod
+    def _manager(
+        hass: HomeAssistant,
+        coordinator: SAXBatteryCoordinator,
+        mode: str | None = None,
+    ) -> PowerManager:
+        data = {CONF_GRID_POWER_MODE: mode} if mode else {}
+        entry = MockConfigEntry(domain=DOMAIN, data=data)
+        entry.add_to_hass(hass)
+        coordinator.data = {SAX_COMBINED_SOC: 50.0}
+        return PowerManager(hass=hass, coordinator=coordinator, config_entry=entry)
+
+    async def test_default_mode_is_charge_with_max_charge_limit(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Charge is the default and writes the negative max charge limit."""
+        manager = self._manager(hass, mock_coordinator_master)
+        assert manager._state.grid_power_mode == GRID_POWER_MODE_CHARGE
+
+        with (
+            patch.object(manager, "_get_max_charge_limit", return_value=3000.0),
+            patch.object(manager, "_get_max_soc_charging_limit", return_value=90.0),
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+        ):
+            await manager._update_grid_load_mode()
+
+        write.assert_awaited_once_with(-3000.0)
+
+    async def test_discharge_mode_uses_max_discharge_limit(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Discharge writes the positive max discharge limit."""
+        manager = self._manager(
+            hass, mock_coordinator_master, GRID_POWER_MODE_DISCHARGE
+        )
+
+        with (
+            patch.object(manager, "_get_max_discharge_limit", return_value=4000.0),
+            patch.object(manager, "_get_min_soc_limit", return_value=10.0),
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+        ):
+            await manager._update_grid_load_mode()
+
+        write.assert_awaited_once_with(4000.0)
+
+    async def test_charge_stops_at_max_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Reaching the max charging SOC stops grid mode instead of writing."""
+        manager = self._manager(hass, mock_coordinator_master)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 90.0}
+
+        with (
+            patch.object(manager, "_get_max_soc_charging_limit", return_value=90.0),
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+            patch.object(
+                manager, "_async_stop_grid_mode", new_callable=AsyncMock
+            ) as stop,
+        ):
+            await manager._update_grid_load_mode()
+
+        stop.assert_awaited_once()
+        write.assert_not_awaited()
+
+    async def test_discharge_stops_at_min_soc(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Reaching the minimum SOC stops grid discharge."""
+        manager = self._manager(
+            hass, mock_coordinator_master, GRID_POWER_MODE_DISCHARGE
+        )
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 10.0}
+
+        with (
+            patch.object(manager, "_get_min_soc_limit", return_value=10.0),
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+            patch.object(
+                manager, "_async_stop_grid_mode", new_callable=AsyncMock
+            ) as stop,
+        ):
+            await manager._update_grid_load_mode()
+
+        stop.assert_awaited_once()
+        write.assert_not_awaited()
+
+    async def test_stop_restores_pv_mode_and_clears_config_flag(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Stopping grid mode switches it off and falls back to balanced PV mode."""
+        manager = self._manager(hass, mock_coordinator_master)
+        manager._state.pv_charging_enabled = True
+        await manager.set_grid_control_mode(True)
+        assert manager._state.pv_charging_enabled is False
+        hass.config_entries.async_update_entry(
+            manager.config_entry,
+            data={**manager.config_entry.data, CONF_ENABLE_GRID_CHARGING: True},
+        )
+
+        with patch.object(manager, "_async_update_power", new_callable=AsyncMock):
+            await manager._async_stop_grid_mode("test")
+
+        assert manager._state.grid_charging_enabled is False
+        assert manager._state.pv_charging_enabled is True
+        assert manager.config_entry.data[CONF_ENABLE_GRID_CHARGING] is False
+
+    async def test_sunspec_writes_total_power_via_model_123(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """SunSpec converts per-battery power to the cluster total."""
+        manager = self._manager(hass, mock_coordinator_master)
+        mock_coordinator_master.protocol_mode = ProtocolMode.SUNSPEC
+        manager.battery_count = 2
+
+        with patch(
+            "custom_components.sax_battery.power_manager.SunSpecPowerControlStrategy"
+        ) as strategy_cls:
+            strategy_cls.return_value.async_set_power = AsyncMock()
+            await manager._async_write_power(-3500.0)
+
+        strategy_cls.return_value.async_set_power.assert_awaited_once_with(-7000.0)
+
+    async def test_sunspec_stop_returns_to_zero_balance_mode(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """SunSpec falls back to the battery's Smart Meter balancing."""
+        manager = self._manager(hass, mock_coordinator_master)
+        mock_coordinator_master.protocol_mode = ProtocolMode.SUNSPEC
+
+        with patch(
+            "custom_components.sax_battery.power_manager.SunSpecPowerControlStrategy"
+        ) as strategy_cls:
+            strategy_cls.return_value.async_set_mode_zero_balance = AsyncMock()
+            await manager.set_grid_control_mode(False)
+
+        strategy_cls.return_value.async_set_mode_zero_balance.assert_awaited_once()
 
 
 class TestChargeFromGridMode:

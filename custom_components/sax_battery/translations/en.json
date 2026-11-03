@@ -157,6 +157,15 @@
         "name": "BMS Power limits configured"
       }
     },
+    "select": {
+      "bms_grid_power_mode": {
+        "name": "Grid Power Mode",
+        "state": {
+          "charge": "Charge",
+          "discharge": "Discharge"
+        }
+      }
+    },
     "number": {
       "bms_max_charge": {
         "name": "Max Charge"
@@ -374,7 +383,7 @@
         }
       },
       "bms_charge_from_grid": {
-        "name": "Charging from Grid",
+        "name": "Grid Power Charge/Discharge",
         "state": {
           "off": "Disabled",
           "on": "Enabled"

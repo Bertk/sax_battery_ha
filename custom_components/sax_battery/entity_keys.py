@@ -15,6 +15,7 @@ SAX_CAPACITY = "sax_capacity"
 SAX_CYCLES = "sax_cycles"
 SAX_TEMPERATURE = "sax_temperature"
 SAX_POWER_CONTROL_CONFIGURED = "power_control_configured"
+SAX_GRID_POWER_MODE = "grid_power_mode"
 SAX_POWER_LIMITS_CONFIGURED = "power_limits_configured"
 
 # SAX battery constants (storage)

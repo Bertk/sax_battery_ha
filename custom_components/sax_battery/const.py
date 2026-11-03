@@ -8,6 +8,7 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
+from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -57,6 +58,7 @@ from .entity_keys import (
     SAX_ENERGY_DISCHARGED_DAILY,
     SAX_ENERGY_DISCHARGED_MONTHLY,
     SAX_GRID_FREQUENCY,
+    SAX_GRID_POWER_MODE,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC,
@@ -236,6 +238,10 @@ CONF_DEVICE_ID = "device_id"
 CONF_MIN_SOC = "min_soc"
 CONF_MAX_SOC_CHARGING = "max_soc_charging"
 CONF_ENABLE_GRID_CHARGING = "enable_grid_charging"
+CONF_GRID_POWER_MODE = "grid_power_mode"
+GRID_POWER_MODE_CHARGE = "charge"
+GRID_POWER_MODE_DISCHARGE = "discharge"
+DEFAULT_GRID_POWER_MODE = GRID_POWER_MODE_CHARGE
 
 DEFAULT_PORT = 502  # Default Modbus port
 DEFAULT_MIN_SOC = 15  # 15% default minimum
@@ -366,8 +372,17 @@ DESCRIPTION_CHARGE_FROM_PV_SWITCH = SwitchEntityDescription(
 
 DESCRIPTION_CHARGE_FROM_GRID_SWITCH = SwitchEntityDescription(
     key=SAX_CHARGE_FROM_GRID_SWITCH,
-    name="Grid Charging Switch",
+    name="Grid Power Charge/Discharge",
     icon="mdi:transmission-tower-export",
+)
+
+DESCRIPTION_GRID_POWER_MODE = SelectEntityDescription(
+    key=SAX_GRID_POWER_MODE,
+    name="Grid Power Mode",
+    translation_key="bms_grid_power_mode",
+    options=[GRID_POWER_MODE_CHARGE, GRID_POWER_MODE_DISCHARGE],
+    entity_category=EntityCategory.CONFIG,
+    icon="mdi:swap-vertical",
 )
 
 DESCRIPTION_SAX_SOC = SensorEntityDescription(

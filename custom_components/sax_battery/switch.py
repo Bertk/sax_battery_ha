@@ -645,15 +645,9 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
                     "Cannot enable grid control: PV charging is active. "
                     "Disabling PV charging first."
                 )
-                # Auto-disable PV charging
+                # Auto-disable PV charging; the power manager remembers it and
+                # restores it when grid mode ends
                 self.coordinator.data[SAX_CHARGE_FROM_PV_SWITCH] = False
-
-                # Trigger power manager update if it exists
-                if (
-                    hasattr(self.coordinator, "power_manager")
-                    and self.coordinator.power_manager
-                ):
-                    await self.coordinator.power_manager.set_pv_charging_mode(False)
 
             # Enable grid control (keep in config entry for now)
             new_data = {

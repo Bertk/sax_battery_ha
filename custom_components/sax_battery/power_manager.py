@@ -32,11 +32,15 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     CONF_BALANCED_LOADING,
     CONF_ENABLE_GRID_CHARGING,
+    CONF_GRID_POWER_MODE,
     CONF_MIN_SOC,
     CONF_POWER_SENSOR,
     CONF_SM_CONNECTED,
+    DEFAULT_GRID_POWER_MODE,
     DEFAULT_MIN_SOC,
     GRID_CHARGING_MODE,
+    GRID_POWER_MODE_CHARGE,
+    GRID_POWER_MODE_DISCHARGE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
     PV_CHARGING_MODE,
@@ -51,6 +55,8 @@ from .const import (
 )
 from .coordinator import SAXBatteryCoordinator
 from .items import ModbusItem
+from .power_control_strategy import SunSpecPowerControlStrategy
+from .protocol_mode import ProtocolMode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,7 +73,7 @@ class PowerManagerState:
     last_update: datetime
     pv_charging_enabled: bool = False
     grid_charging_enabled: bool = False
-
+    grid_power_mode: str = DEFAULT_GRID_POWER_MODE
     # State persistence for mode transitions
     previous_pv_state: bool = False  # Store PV state before grid charging
     previous_grid_state: bool = False  # Store grid state before PV charging
@@ -209,6 +215,14 @@ class PowerManager:
         self._state.pv_charging_enabled = pv_enabled
         self._state.grid_charging_enabled = grid_enabled
 
+        grid_power_mode = self.config_entry.data.get(
+            CONF_GRID_POWER_MODE, DEFAULT_GRID_POWER_MODE
+        )
+        self._state.grid_power_mode = (
+            grid_power_mode
+            if grid_power_mode in (GRID_POWER_MODE_CHARGE, GRID_POWER_MODE_DISCHARGE)
+            else DEFAULT_GRID_POWER_MODE
+        )
         _LOGGER.info(
             "Power manager config updated: PV=%s, grid=%s, pv_sensor=%s, "
             "sm_connected=%s, balanced_loading=%s",
@@ -309,11 +323,11 @@ class PowerManager:
         try:
             # Check current mode (priority order: grid > pv)
             if self._state.grid_charging_enabled:
-                _LOGGER.debug(
-                    "Charge from grid - maintaining power: %sW",
-                    LIMIT_MAX_CHARGE_PER_BATTERY,
-                )
-                await self._update_grid_balance_mode()
+                await self._update_grid_load_mode()
+                return
+
+            if self._is_sunspec:
+                # The battery balances itself (Model 123 Mode 0) in PV mode
                 return
 
             if self._state.pv_charging_enabled:
@@ -357,6 +371,82 @@ class PowerManager:
 
         except (OSError, ValueError, TypeError) as err:
             _LOGGER.error("Error updating power: %s", err)
+
+    @property
+    def _is_sunspec(self) -> bool:
+        """Return whether the master coordinator uses SunSpec Model 123 controls."""
+        return (
+            getattr(self.coordinator, "protocol_mode", ProtocolMode.LEGACY)
+            == ProtocolMode.SUNSPEC
+        )
+
+    async def _update_grid_load_mode(self) -> None:
+        """Charge from or discharge to the grid at the configured power limit.
+
+        Charging uses number.sax_bms_max_charge until the max SOC for charging is
+        reached; discharging uses number.sax_bms_max_discharge until the minimum
+        SOC is reached. At either SOC limit grid mode is switched off and the
+        battery falls back to balanced operation.
+        """
+        combined_soc = (
+            self.coordinator.data.get(SAX_COMBINED_SOC)
+            if self.coordinator.data
+            else None
+        )
+        if combined_soc is None:
+            _LOGGER.warning("Combined SOC not available, skipping grid power update")
+            return
+
+        if self._state.grid_power_mode == GRID_POWER_MODE_DISCHARGE:
+            if combined_soc <= await self._get_min_soc_limit():
+                await self._async_stop_grid_mode(
+                    f"SOC {combined_soc:.1f}% reached minimum SOC"
+                )
+                return
+            target_power = await self._get_max_discharge_limit()
+        else:
+            if combined_soc >= await self._get_max_soc_charging_limit():
+                await self._async_stop_grid_mode(
+                    f"SOC {combined_soc:.1f}% reached maximum charging SOC"
+                )
+                return
+            target_power = -await self._get_max_charge_limit()
+
+        self._state.mode = GRID_CHARGING_MODE
+        await self._async_write_power(target_power)
+
+    async def _async_write_power(self, per_battery_power: float) -> None:
+        """Write a per-battery power target using the active protocol."""
+        if not self._is_sunspec:
+            await self.update_power_setpoint(per_battery_power)
+            return
+
+        # Model 123 setpoint is relative to the cluster reference power
+        await SunSpecPowerControlStrategy(self.coordinator).async_set_power(
+            per_battery_power * max(self.battery_count, 1)
+        )
+        self._state.target_power = per_battery_power
+        self._state.last_update = datetime.now()
+
+    async def _async_stop_grid_mode(self, reason: str) -> None:
+        """Leave grid mode because a limit was reached and fall back to balancing."""
+        _LOGGER.info("Grid power mode stopped: %s", reason)
+        await self.set_grid_control_mode(False)
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, CONF_ENABLE_GRID_CHARGING: False},
+        )
+
+    async def _async_apply_balanced_fallback(self) -> None:
+        """Hand control back to balanced operation after grid mode."""
+        if self._is_sunspec:
+            await SunSpecPowerControlStrategy(
+                self.coordinator
+            ).async_set_mode_zero_balance()
+        elif self._state.pv_charging_enabled:
+            await self._async_update_power(None)
+        else:
+            await self.update_power_setpoint(0.0)
 
     async def _update_pv_charging_power(self) -> None:
         """Update nominal power for PV charging mode.
@@ -974,6 +1064,10 @@ class PowerManager:
         )
 
         if enabled:
+            if self._is_sunspec:
+                await SunSpecPowerControlStrategy(
+                    self.coordinator
+                ).async_set_mode_zero_balance()
             await self._async_update_power(None)
 
     async def set_grid_control_mode(self, enabled: bool, power: float = 0.0) -> None:
@@ -989,7 +1083,8 @@ class PowerManager:
         """
         # Store previous PV state before enabling grid charging
         if enabled:
-            self._state.previous_pv_state = self._state.pv_charging_enabled
+            if not self._state.grid_charging_enabled:
+                self._state.previous_pv_state = self._state.pv_charging_enabled
             self._state.pv_charging_enabled = False  # Mutual exclusion
         elif self._state.previous_pv_state:
             # Restore previous PV state when disabling grid charging
@@ -1016,7 +1111,10 @@ class PowerManager:
             # Apply grid charging power if specified
             if power != 0.0:
                 await self.update_power_setpoint(power)
-            # Otherwise, grid charging logic will be handled by _async_update_power
+            else:
+                await self._async_update_power(None)
+        else:
+            await self._async_apply_balanced_fallback()
 
     async def set_grid_charging_mode(
         self,

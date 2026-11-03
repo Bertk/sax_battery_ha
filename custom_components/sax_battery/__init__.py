@@ -66,6 +66,7 @@ DEVELOPER_MODE = False
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
@@ -125,11 +126,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
         # Update sax_data with coordinators for cross-battery calculations
         sax_data.coordinators = coordinators
 
-        # Initialize power manager for master battery if enabled
+        # Initialize power manager for master battery if enabled (legacy and SunSpec)
         power_manager_enabled = (
-            entry.data.get(CONF_CONTROL_POWER, False)
-            and master_coordinator is not None
-            and master_coordinator.protocol_mode == ProtocolMode.LEGACY
+            entry.data.get(CONF_CONTROL_POWER, False) and master_coordinator is not None
         )
         if power_manager_enabled:
             master_battery_id = sax_data.master_battery_id
