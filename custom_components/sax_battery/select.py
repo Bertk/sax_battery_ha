@@ -59,6 +59,9 @@ class SAXBatteryGridPowerModeSelect(SelectEntity):
         self._attr_device_info = sax_data.get_device_info(
             "cluster", DeviceConstants.SYS
         )
+        # Without this HA prefixes the area name; existing entities use the unique ID
+        if self._attr_unique_id:
+            self.entity_id = f"select.{self._attr_unique_id}"
         # Only relevant when power control is configured, like the control switches
         self._attr_entity_registry_enabled_default = bool(
             entry.data.get(CONF_CONTROL_POWER, False)

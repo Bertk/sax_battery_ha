@@ -25,9 +25,15 @@ def _select(hass: HomeAssistant, data: dict) -> SAXBatteryGridPowerModeSelect:
     entry.add_to_hass(hass)
     select = SAXBatteryGridPowerModeSelect(entry, SAXBatteryData(hass, entry))
     select.hass = hass
-    select.entity_id = "select.test_grid_power_mode"
     select.async_write_ha_state = MagicMock()  # type: ignore[method-assign, misc]
     return select
+
+
+async def test_entity_id_has_no_area_prefix(hass: HomeAssistant) -> None:
+    """The suggested entity ID follows the other SAX BMS entities."""
+    select = _select(hass, {CONF_CONTROL_POWER: True})
+
+    assert select.entity_id == "select.sax_bms_grid_power_mode"
 
 
 async def test_default_option_is_charge(hass: HomeAssistant) -> None:

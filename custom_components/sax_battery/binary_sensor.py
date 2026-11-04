@@ -90,6 +90,9 @@ class SAXBatteryConfiguredFeatureSensor(BinarySensorEntity):
         self._attr_device_info = sax_data.get_device_info(
             "cluster", DeviceConstants.SYS
         )
+        # Without this HA prefixes the area name; existing entities use the unique ID
+        if self._attr_unique_id:
+            self.entity_id = f"binary_sensor.{self._attr_unique_id}"
 
     @property
     def is_on(self) -> bool:

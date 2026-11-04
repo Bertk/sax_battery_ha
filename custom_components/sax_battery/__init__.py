@@ -33,6 +33,9 @@ from .const import (
     DOMAIN,
     PROTOCOL_MODE_LEGACY,
     PROTOCOL_MODE_SUNSPEC,
+    SAX_CHARGE_FROM_GRID_SWITCH,
+    SAX_CHARGE_FROM_PV_SWITCH,
+    SAX_GRID_POWER_MODE,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
 )
@@ -168,6 +171,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
         if sax_data.developer_mode:
             _enable_development_sm_entities(hass, entry)
 
+        if entry.data.get(CONF_CONTROL_POWER, False):
+            _enable_control_power_entities(hass, entry)
+
         # Auto-enable power limit entities if CONF_LIMIT_POWER is True
         limit_power_enabled = entry.data.get(CONF_LIMIT_POWER, False)
         if limit_power_enabled:
@@ -281,6 +287,27 @@ async def _enable_power_limit_entities(
             "Auto-enabled %d power limit entities based on CONF_LIMIT_POWER configuration",
             enabled_count,
         )
+
+
+def _enable_control_power_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Enable control entities that were registered while power control was off."""
+    ent_reg = er.async_get(hass)
+    suffixes = {
+        SAX_GRID_POWER_MODE,
+        SAX_CHARGE_FROM_PV_SWITCH.removeprefix("sax_"),
+        SAX_CHARGE_FROM_GRID_SWITCH.removeprefix("sax_"),
+    }
+
+    for entity_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if (
+            entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+            and entity_entry.unique_id
+            and entity_entry.unique_id.removeprefix("sax_bms_") in suffixes
+        ):
+            ent_reg.async_update_entity(entity_entry.entity_id, disabled_by=None)
+            _LOGGER.info(
+                "Enabled %s because power control is on", entity_entry.entity_id
+            )
 
 
 def _enable_development_sm_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
