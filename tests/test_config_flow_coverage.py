@@ -18,6 +18,7 @@ from custom_components.sax_battery.const import (
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
+    CONF_POWER_SENSOR,
     DEFAULT_PORT,
     DOMAIN,
 )
@@ -99,6 +100,7 @@ class TestOptionsFlowHelperMethods:
             data={
                 CONF_BATTERY_COUNT: 1,
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,
                 CONF_BATTERIES: {
@@ -179,6 +181,7 @@ class TestOptionsFlowHelperMethods:
             data={
                 CONF_BATTERY_COUNT: 1,
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
                 CONF_BATTERIES: {
@@ -259,6 +262,7 @@ class TestOptionsFlowHelperMethods:
             data={
                 CONF_BATTERY_COUNT: 1,
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,
                 CONF_BATTERIES: {
@@ -317,6 +321,7 @@ class TestOptionsFlowHelperMethods:
             data={
                 CONF_BATTERY_COUNT: 1,
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,
                 CONF_BATTERIES: {

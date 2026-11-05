@@ -28,6 +28,8 @@ from .const import (
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_PROTOCOL_MODE,
+    CONF_SM_CONNECTED,
+    CONF_SM_TYPE,
     CONF_VERIFY_SUNSPEC,
     DEFAULT_PORT,
     DOMAIN,
@@ -38,6 +40,7 @@ from .const import (
     SAX_GRID_POWER_MODE,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
+    SM_TYPE_OTHER,
 )
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 from .coordinator import SAXBatteryCoordinator
@@ -82,6 +85,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
     try:
         # Attach pymodbus transaction-ID error handler (process-wide, idempotent)
         _setup_txid_handler()
+
+        _normalize_power_control_meter(hass, entry)
 
         # Initialize SAX Battery Data
         sax_data = SAXBatteryData(hass, entry, developer_mode=DEVELOPER_MODE)
@@ -204,6 +209,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
     except Exception as err:
         _LOGGER.exception("Failed to setup SAX Battery integration")
         raise ConfigEntryNotReady(f"Unexpected error during setup: {err}") from err
+
+
+def _normalize_power_control_meter(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Make power control use the external (Other) smart meter.
+
+    With power control the battery no longer provides the ADW200/ADL400 values.
+    """
+    if not entry.data.get(CONF_CONTROL_POWER, False):
+        return
+    if (
+        entry.data.get(CONF_SM_TYPE) == SM_TYPE_OTHER
+        and entry.data.get(CONF_SM_CONNECTED) is False
+    ):
+        return
+
+    _LOGGER.warning(
+        "Power control requires the Other smart meter; switching from %s. "
+        "Select an external grid power sensor in the integration options",
+        entry.data.get(CONF_SM_TYPE, "default"),
+    )
+    try:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_SM_TYPE: SM_TYPE_OTHER,
+                CONF_SM_CONNECTED: False,
+            },
+        )
+    except UnknownEntry:
+        _LOGGER.debug("Skipping smart meter migration for unregistered entry")
 
 
 async def _enable_power_limit_entities(

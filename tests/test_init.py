@@ -19,6 +19,7 @@ from custom_components.sax_battery import (
     _log_comprehensive_setup_summary,
     _log_registry_state_before_setup,
     _log_setup_summary,
+    _normalize_power_control_meter,
     #    _restore_write_only_register_values,
     _setup_battery_coordinator,
     _validate_battery_config,
@@ -38,7 +39,11 @@ from custom_components.sax_battery.const import (
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
+    CONF_SM_CONNECTED,
+    CONF_SM_TYPE,
     DOMAIN,
+    SM_TYPE_ADL400,
+    SM_TYPE_OTHER,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.entity_keys import (
@@ -98,6 +103,43 @@ class TestSunSpecDeviceMetadata:
         assert device.model == "HOME"
         assert device.serial_number == "1234"
         assert device.sw_version == "61 / 54"
+
+
+class TestPowerControlMeterMigration:
+    """Power control always runs on the Other smart meter."""
+
+    async def test_sax_meter_entry_is_switched_to_other(
+        self, hass: HomeAssistant
+    ) -> None:
+        """An old power-control entry using ADL400 is migrated."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CONTROL_POWER: True,
+                CONF_SM_TYPE: SM_TYPE_ADL400,
+                CONF_SM_CONNECTED: True,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        _normalize_power_control_meter(hass, entry)
+
+        assert entry.data[CONF_SM_TYPE] == SM_TYPE_OTHER
+        assert entry.data[CONF_SM_CONNECTED] is False
+
+    async def test_entry_without_power_control_is_untouched(
+        self, hass: HomeAssistant
+    ) -> None:
+        """The SAX smart meter stays available without power control."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={CONF_CONTROL_POWER: False, CONF_SM_TYPE: SM_TYPE_ADL400},
+        )
+        entry.add_to_hass(hass)
+
+        _normalize_power_control_meter(hass, entry)
+
+        assert entry.data[CONF_SM_TYPE] == SM_TYPE_ADL400
 
 
 class TestDeveloperModeEntities:

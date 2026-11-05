@@ -36,6 +36,7 @@ from .const import (
     CONF_PROTOCOL_MODE,
     CONF_SM_CONNECTED,
     CONF_SM_TYPE,
+    CONF_USE_OTHER_SM,
     CONF_VERIFY_SUNSPEC,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
@@ -47,7 +48,6 @@ from .const import (
     SAX_MAX_DISCHARGE,
     SM_TYPE_ADL400,
     SM_TYPE_ADW200,
-    SM_TYPE_NONE,
     SM_TYPE_OTHER,
 )
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
@@ -134,10 +134,19 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._limit_power,
             )
 
-            # Route to appropriate next step based on selections
+            # Power control (registers 41/42) disables the SAX smart meter values, so
+            # it always uses the external grid power sensor ("Other" smart meter).
             if self._control_power:
-                return await self.async_step_power_options()
-            # Skip control-specific steps if not enabled
+                self._sm_type = SM_TYPE_OTHER
+                self._sm_connected = False
+                self._balanced_loading = False
+                self._data[CONF_SM_TYPE] = SM_TYPE_OTHER
+                self._data[CONF_SM_CONNECTED] = False
+                self._data[CONF_BALANCED_LOADING] = False
+                return await self.async_step_sensors()
+            # Power limits can optionally use an external smart meter
+            if self._limit_power:
+                return await self.async_step_smart_meter()
             return await self.async_step_protocol_options()
 
         return self.async_show_form(
@@ -155,77 +164,25 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_power_options(
+    async def async_step_smart_meter(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure power management options (smart meter, balanced loading)."""
-        errors: dict[str, str] = {}
-
+        """Choose between the SAX smart meter (default) and an external meter."""
         if user_input is not None:
-            self._sm_type = user_input.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
-            # sm_type is the single source of truth: only a recognized SAX
-            # meter (ADW200/ADL400) creates the SM device and drives it directly.
-            self._sm_connected = self._sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400)
-            # Balanced loading via an external grid sensor only applies to
-            # "Other". "None" supports manual power control only.
-            self._balanced_loading = bool(
-                self._control_power
-                and self._sm_type == SM_TYPE_OTHER
-                and user_input.get(CONF_BALANCED_LOADING, False)
-            )
-            self._data.update(user_input)
-            self._data[CONF_SM_CONNECTED] = self._sm_connected
+            use_other = bool(user_input.get(CONF_USE_OTHER_SM, False))
+            self._sm_type = SM_TYPE_OTHER if use_other else DEFAULT_SM_TYPE
+            self._sm_connected = not use_other
             self._data[CONF_SM_TYPE] = self._sm_type
-            self._data[CONF_BALANCED_LOADING] = self._balanced_loading
-
-            _LOGGER.debug(
-                "Power options saved: sm_connected=%s, sm_type=%s, balanced_loading=%s",
-                self._sm_connected,
-                self._sm_type,
-                self._balanced_loading,
-            )
-
-            # External-meter balancing needs a configured grid power sensor.
-            if self._control_power and self._sm_type == SM_TYPE_OTHER:
+            self._data[CONF_SM_CONNECTED] = self._sm_connected
+            if use_other:
                 return await self.async_step_sensors()
             return await self.async_step_protocol_options()
 
-        current_sm_type = getattr(self, "_sm_type", DEFAULT_SM_TYPE)
-
         return self.async_show_form(
-            step_id="power_options",
+            step_id="smart_meter",
             data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_SM_TYPE,
-                        default=current_sm_type,
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(
-                                    value=SM_TYPE_ADW200, label="ADW200 Smart Meter"
-                                ),
-                                selector.SelectOptionDict(
-                                    value=SM_TYPE_ADL400, label="ADL400 Smart Meter"
-                                ),
-                                selector.SelectOptionDict(
-                                    value=SM_TYPE_OTHER,
-                                    label="Other Modbus Smart Meter",
-                                ),
-                                selector.SelectOptionDict(
-                                    value=SM_TYPE_NONE, label="None (No Smart Meter)"
-                                ),
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                            translation_key="sm_type_selection",
-                        )
-                    ),
-                    vol.Required(
-                        CONF_BALANCED_LOADING, default=self._balanced_loading
-                    ): bool,
-                }
+                {vol.Required(CONF_USE_OTHER_SM, default=False): bool}
             ),
-            errors=errors,
         )
 
     async def async_step_sensors(
@@ -241,9 +198,7 @@ class SAXBatteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Build schema based on current configuration
         schema = {}
-        needs_grid_sensor = self._control_power and (
-            getattr(self, "_sm_type", DEFAULT_SM_TYPE) == SM_TYPE_OTHER
-        )
+        needs_grid_sensor = self._control_power or self._sm_type == SM_TYPE_OTHER
 
         if needs_grid_sensor:
             schema[vol.Required(CONF_POWER_SENSOR)] = selector.EntitySelector(
@@ -559,17 +514,18 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             if user_input is not None
             else self.config_entry.data.get(CONF_CONTROL_POWER, False)
         )
-        sm_type_for_input = (
-            user_input.get(
-                CONF_SM_TYPE, self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+        current_sm_type = self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
+        use_other_for_input = bool(
+            control_power_for_input  # power control always uses the other meter
+            or (
+                user_input.get(CONF_USE_OTHER_SM, current_sm_type == SM_TYPE_OTHER)
+                if user_input is not None
+                else current_sm_type == SM_TYPE_OTHER
             )
-            if user_input is not None
-            else self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
         )
         missing_required_sensor = bool(
             user_input is not None
-            and control_power_for_input
-            and sm_type_for_input == SM_TYPE_OTHER
+            and use_other_for_input
             and not user_input.get(CONF_POWER_SENSOR)
             and not self.config_entry.data.get(CONF_POWER_SENSOR)
         )
@@ -590,11 +546,14 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_MIN_SOC in user_input:
                 power_options[CONF_MIN_SOC] = user_input[CONF_MIN_SOC]
 
-            # sm_type is the single source of truth: only a recognized SAX
-            # meter (ADW200/ADL400) creates the SM device and drives it directly.
-            new_sm_type = user_input.get(
-                CONF_SM_TYPE, self.config_entry.data.get(CONF_SM_TYPE, DEFAULT_SM_TYPE)
-            )
+            # An external meter is used for power control or when selected; otherwise
+            # the SAX smart meter (ADW200/ADL400) stays the default.
+            if use_other_for_input:
+                new_sm_type = SM_TYPE_OTHER
+            elif current_sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400):
+                new_sm_type = current_sm_type
+            else:
+                new_sm_type = DEFAULT_SM_TYPE
             new_sm_connected = new_sm_type in (SM_TYPE_ADW200, SM_TYPE_ADL400)
 
             # Build result data - always include feature toggles
@@ -608,14 +567,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
             }
             if CONF_POWER_SENSOR in user_input:
                 result_data[CONF_POWER_SENSOR] = user_input[CONF_POWER_SENSOR]
-
-            # Balanced loading via an external grid sensor only applies to
-            # "Other". "None" and a recognized SAX meter support manual only.
-            result_data[CONF_BALANCED_LOADING] = (
-                user_input.get(CONF_BALANCED_LOADING, False)
-                if new_sm_type == SM_TYPE_OTHER and result_data[CONF_CONTROL_POWER]
-                else False
-            )
 
             # Only include power-specific options when control power is enabled
             if user_input.get(CONF_CONTROL_POWER, current_control_power):
@@ -675,8 +626,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema: dict[vol.Marker, Any] = {}
 
-        current_sm_type = sm_type_for_input
-
         # Always show feature toggle options
         schema.update(
             {
@@ -695,38 +644,12 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): bool,
                 vol.Optional(
-                    CONF_SM_TYPE,
-                    default=current_sm_type,
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(
-                                value=SM_TYPE_ADW200, label="ADW200 Smart Meter"
-                            ),
-                            selector.SelectOptionDict(
-                                value=SM_TYPE_ADL400, label="ADL400 Smart Meter"
-                            ),
-                            selector.SelectOptionDict(
-                                value=SM_TYPE_OTHER,
-                                label="Other Modbus Smart Meter",
-                            ),
-                            selector.SelectOptionDict(
-                                value=SM_TYPE_NONE, label="None (No Smart Meter)"
-                            ),
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                        translation_key="sm_type_selection",
-                    )
-                ),
+                    CONF_USE_OTHER_SM,
+                    default=current_sm_type == SM_TYPE_OTHER,
+                ): bool,
             }
         )
 
-        schema[
-            vol.Optional(
-                CONF_BALANCED_LOADING,
-                default=self.config_entry.data.get(CONF_BALANCED_LOADING, False),
-            )
-        ] = bool
         power_sensor = self.config_entry.data.get(CONF_POWER_SENSOR)
         power_sensor_marker = (
             vol.Optional(CONF_POWER_SENSOR, default=power_sensor)

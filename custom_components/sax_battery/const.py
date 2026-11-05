@@ -157,6 +157,7 @@ SM_TYPE_OTHER = "other"
 SM_TYPE_NONE = "none"
 DEFAULT_SM_TYPE = SM_TYPE_ADW200
 CONF_BALANCED_LOADING = "balanced_loading"
+CONF_USE_OTHER_SM = "use_other_smartmeter"
 
 # Protocol selection configuration
 CONF_PROTOCOL_MODE = "protocol_mode"

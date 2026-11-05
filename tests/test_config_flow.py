@@ -33,13 +33,12 @@ from custom_components.sax_battery.const import (
     CONF_PROTOCOL_MODE,
     CONF_SM_CONNECTED,
     CONF_SM_TYPE,
+    CONF_USE_OTHER_SM,
     CONF_VERIFY_SUNSPEC,
     DEFAULT_MIN_SOC,
     DEFAULT_PORT,
     DOMAIN,
-    SM_TYPE_ADL400,
     SM_TYPE_ADW200,
-    SM_TYPE_NONE,
     SM_TYPE_OTHER,
 )
 from homeassistant.core import HomeAssistant
@@ -91,7 +90,7 @@ class TestSAXBatteryConfigFlowExtended:
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "power_options"
+        assert result.get("step_id") == "sensors"
         assert flow._control_power is True
         assert flow._limit_power is False
 
@@ -109,7 +108,7 @@ class TestSAXBatteryConfigFlowExtended:
         )
 
         assert result.get("type") == FlowResultType.FORM
-        assert result.get("step_id") == "protocol_options"
+        assert result.get("step_id") == "smart_meter"
         assert flow._control_power is False
         assert flow._limit_power is True
 
@@ -543,8 +542,11 @@ class TestSAXBatteryConfigFlowExtended:
 
             result = await flow.async_step_control_options(control_options_input)
 
-            # Should proceed to protocol_options step
+            # Power limits ask for the smart meter first
             assert result.get("type") == FlowResultType.FORM
+            assert result.get("step_id") == "smart_meter"
+
+            result = await flow.async_step_smart_meter({CONF_USE_OTHER_SM: False})
             assert result.get("step_id") == "protocol_options"
 
             result = await flow.async_step_protocol_options(
@@ -754,101 +756,70 @@ class TestSAXBatteryConfigFlowExtended:
 
 
 class TestSAXBatteryConfigFlowSmartMeterSelection:
-    """Test that sm_type alone drives SM device creation and balanced loading."""
+    """Power control always uses the external (Other) smart meter."""
 
-    async def test_sm_type_other_enables_balanced_loading_and_grid_sensor_step(
+    async def test_power_control_forces_other_meter_and_asks_for_sensor(
         self, hass: HomeAssistant
     ) -> None:
-        """'Other' smart meter drops the SM device but supports balanced loading."""
+        """Enabling power control skips meter selection and requires a sensor."""
         flow = SAXBatteryConfigFlow()
         flow.hass = hass
-        flow._control_power = True
 
-        result = await flow.async_step_power_options(
-            {
-                CONF_SM_TYPE: SM_TYPE_OTHER,
-                CONF_BALANCED_LOADING: True,
-            }
+        result = await flow.async_step_control_options(
+            {CONF_CONTROL_POWER: True, CONF_LIMIT_POWER: False}
         )
 
-        assert flow._data[CONF_SM_CONNECTED] is False
         assert flow._data[CONF_SM_TYPE] == SM_TYPE_OTHER
-        assert flow._data[CONF_BALANCED_LOADING] is True
-        # Balanced loading requires an external grid sensor
-        assert result.get("step_id") == "sensors"
-
-    async def test_sm_type_none_forces_manual_only_control(
-        self, hass: HomeAssistant
-    ) -> None:
-        """'None' drops the SM device and only supports manual power control."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._control_power = True
-
-        result = await flow.async_step_power_options(
-            {
-                CONF_SM_TYPE: SM_TYPE_NONE,
-                # Even if a user tries to enable balanced loading, it must be
-                # ignored since there is no smart meter or grid sensor.
-                CONF_BALANCED_LOADING: True,
-            }
-        )
-
         assert flow._data[CONF_SM_CONNECTED] is False
         assert flow._data[CONF_BALANCED_LOADING] is False
-        # No grid sensor needed for manual-only control
-        assert result.get("step_id") == "protocol_options"
-
-    async def test_sm_type_adw200_creates_sm_device_and_ignores_balanced_loading(
-        self, hass: HomeAssistant
-    ) -> None:
-        """A recognized SAX meter always drives balancing directly, no toggle needed."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._control_power = True
-
-        result = await flow.async_step_power_options(
-            {
-                CONF_SM_TYPE: SM_TYPE_ADW200,
-                CONF_BALANCED_LOADING: True,
-            }
-        )
-
-        assert flow._data[CONF_SM_CONNECTED] is True
-        assert flow._data[CONF_BALANCED_LOADING] is False
-        assert result.get("step_id") == "protocol_options"
-
-    async def test_adl400_power_control_does_not_require_external_sensor(
-        self, hass: HomeAssistant
-    ) -> None:
-        """ADL400 uses its integrated SAX meter for balancing."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._control_power = True
-
-        result = await flow.async_step_power_options(
-            {CONF_SM_TYPE: SM_TYPE_ADL400, CONF_BALANCED_LOADING: False}
-        )
-
-        assert result.get("step_id") == "protocol_options"
-
-    async def test_other_meter_control_routes_to_required_external_sensor(
-        self, hass: HomeAssistant
-    ) -> None:
-        """Other meter control asks for an external grid power sensor."""
-        flow = SAXBatteryConfigFlow()
-        flow.hass = hass
-        flow._control_power = True
-
-        result = await flow.async_step_power_options(
-            {CONF_SM_TYPE: SM_TYPE_OTHER, CONF_BALANCED_LOADING: False}
-        )
-
         assert result.get("step_id") == "sensors"
         data_schema = result["data_schema"]
         assert data_schema is not None
-        sensor_schema = data_schema.schema
-        assert any(CONF_POWER_SENSOR in str(marker) for marker in sensor_schema)
+        assert any(CONF_POWER_SENSOR in str(key) for key in data_schema.schema)
+
+    async def test_without_power_control_keeps_sax_meter_default(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Without power control no external sensor is requested."""
+        flow = SAXBatteryConfigFlow()
+        flow.hass = hass
+
+        result = await flow.async_step_control_options(
+            {CONF_CONTROL_POWER: False, CONF_LIMIT_POWER: True}
+        )
+
+        assert CONF_SM_TYPE not in flow._data
+        assert result.get("step_id") == "smart_meter"
+
+    async def test_smart_meter_step_default_uses_sax_meter(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Unchecked option keeps ADW200 as default meter."""
+        flow = SAXBatteryConfigFlow()
+        flow.hass = hass
+
+        result = await flow.async_step_smart_meter({CONF_USE_OTHER_SM: False})
+
+        assert flow._data[CONF_SM_TYPE] == SM_TYPE_ADW200
+        assert flow._data[CONF_SM_CONNECTED] is True
+        assert result.get("step_id") == "protocol_options"
+
+    async def test_smart_meter_step_other_requires_power_sensor(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Checked option leads to the sensors step with a required sensor."""
+        flow = SAXBatteryConfigFlow()
+        flow.hass = hass
+        flow._battery_count = 1
+
+        result = await flow.async_step_smart_meter({CONF_USE_OTHER_SM: True})
+
+        assert flow._data[CONF_SM_TYPE] == SM_TYPE_OTHER
+        assert flow._data[CONF_SM_CONNECTED] is False
+        assert result.get("step_id") == "sensors"
+        schema = result["data_schema"]
+        assert schema is not None
+        assert any(CONF_POWER_SENSOR in str(key) for key in schema.schema)
 
 
 class TestSAXBatteryOptionsFlowExtended:
@@ -863,6 +834,7 @@ class TestSAXBatteryOptionsFlowExtended:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_SM_TYPE: SM_TYPE_ADW200,
                 CONF_SM_CONNECTED: True,
@@ -879,7 +851,7 @@ class TestSAXBatteryOptionsFlowExtended:
         schema = data_schema.schema
         schema_keys = {str(key) for key in schema}
         assert any(CONF_POWER_SENSOR in key for key in schema_keys)
-        assert any(CONF_BALANCED_LOADING in key for key in schema_keys)
+        assert any(CONF_USE_OTHER_SM in key for key in schema_keys)
 
         with (
             patch.object(
@@ -896,8 +868,6 @@ class TestSAXBatteryOptionsFlowExtended:
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
                 user_input={
-                    CONF_SM_TYPE: SM_TYPE_OTHER,
-                    CONF_BALANCED_LOADING: True,
                     CONF_POWER_SENSOR: "sensor.tibber_power",
                     CONF_CONTROL_POWER: True,
                     CONF_LIMIT_POWER: False,
@@ -907,7 +877,7 @@ class TestSAXBatteryOptionsFlowExtended:
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert entry.data[CONF_SM_TYPE] == SM_TYPE_OTHER
         assert entry.data[CONF_POWER_SENSOR] == "sensor.tibber_power"
-        assert entry.data[CONF_BALANCED_LOADING] is True
+        assert entry.data[CONF_SM_CONNECTED] is False
         disable_sm.assert_not_awaited()
 
     @pytest.mark.usefixtures("_mock_setup_integration")
@@ -981,6 +951,7 @@ class TestSAXBatteryOptionsFlowExtended:
                 result["flow_id"],
                 user_input={
                     CONF_CONTROL_POWER: True,
+                    CONF_POWER_SENSOR: "sensor.grid_power",
                     CONF_LIMIT_POWER: False,
                 },
             )
@@ -1005,6 +976,7 @@ class TestSAXBatteryOptionsFlowExtended:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
             },
@@ -1041,6 +1013,7 @@ class TestSAXBatteryOptionsFlowExtended:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: DEFAULT_MIN_SOC,
             },
@@ -1112,6 +1085,7 @@ class TestSAXBatteryOptionsFlowExtended:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
             },
             options={
@@ -1162,6 +1136,7 @@ class TestSAXBatteryOptionsFlowExtended:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 15,
             },
@@ -1192,43 +1167,79 @@ class TestSAXBatteryOptionsFlowExtended:
         assert mock_entry.data[CONF_MIN_SOC] == 35
 
     @pytest.mark.usefixtures("_mock_setup_integration")
-    async def test_options_flow_sm_type_none_forces_balanced_loading_off(
+    async def test_options_flow_other_meter_requires_power_sensor(
         self,
         hass: HomeAssistant,
     ) -> None:
-        """Reconfiguring to 'None' must drop SM connection and balanced loading."""
+        """Using another smart meter without a power sensor is rejected."""
         mock_entry = MockConfigEntry(
             domain=DOMAIN,
             data={
-                CONF_CONTROL_POWER: True,
-                CONF_LIMIT_POWER: False,
-                CONF_SM_TYPE: SM_TYPE_OTHER,
-                CONF_SM_CONNECTED: False,
-                CONF_BALANCED_LOADING: True,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_SM_TYPE: SM_TYPE_ADW200,
+                CONF_SM_CONNECTED: True,
             },
             options={},
-            entry_id="test_entry_sm_type_none",
+            entry_id="test_entry_other_requires_sensor",
         )
         mock_entry.add_to_hass(hass)
-
         await hass.config_entries.async_setup(mock_entry.entry_id)
         await hass.async_block_till_done()
 
         result = await hass.config_entries.options.async_init(mock_entry.entry_id)
-
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                CONF_SM_TYPE: SM_TYPE_NONE,
-                CONF_CONTROL_POWER: True,
-                CONF_LIMIT_POWER: False,
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_USE_OTHER_SM: True,
             },
         )
 
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "power_sensor_required"}
+
+    @pytest.mark.usefixtures("_mock_setup_integration")
+    async def test_options_flow_unchecked_other_meter_restores_sax_meter(
+        self,
+        hass: HomeAssistant,
+    ) -> None:
+        """Without power control and other meter the SAX meter is the default."""
+        mock_entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CONTROL_POWER: False,
+                CONF_LIMIT_POWER: True,
+                CONF_SM_TYPE: SM_TYPE_OTHER,
+                CONF_SM_CONNECTED: False,
+                CONF_POWER_SENSOR: "sensor.tibber_power",
+            },
+            options={},
+            entry_id="test_entry_restore_sax_meter",
+        )
+        mock_entry.add_to_hass(hass)
+        await hass.config_entries.async_setup(mock_entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await hass.config_entries.options.async_init(mock_entry.entry_id)
+        with patch.object(
+            SAXBatteryOptionsFlowHandler,
+            "_async_enable_sm_entities",
+            new_callable=AsyncMock,
+        ):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_CONTROL_POWER: False,
+                    CONF_LIMIT_POWER: True,
+                    CONF_USE_OTHER_SM: False,
+                },
+            )
+
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert mock_entry.data[CONF_SM_TYPE] == SM_TYPE_NONE
-        assert mock_entry.data[CONF_SM_CONNECTED] is False
-        assert mock_entry.data[CONF_BALANCED_LOADING] is False
+        assert mock_entry.data[CONF_SM_TYPE] == SM_TYPE_ADW200
+        assert mock_entry.data[CONF_SM_CONNECTED] is True
 
 
 class TestSAXBatteryConfigFlowCompleteValidation:
@@ -1280,6 +1291,7 @@ class TestSAXBatteryConfigFlowCompleteValidation:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 25,
             },
@@ -1565,6 +1577,7 @@ class TestSAXBatteryConfigFlowEdgeCases:
                 result["flow_id"],
                 user_input={
                     CONF_CONTROL_POWER: True,
+                    CONF_POWER_SENSOR: "sensor.grid_power",
                     CONF_LIMIT_POWER: True,
                 },
             )
@@ -1650,6 +1663,7 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 20,
             },
@@ -1686,6 +1700,7 @@ class TestSAXBatteryOptionsFlowCompleteFlow:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: True,
                 CONF_MIN_SOC: 25,
             },
@@ -1773,6 +1788,7 @@ class TestSAXBatteryConfigFlowSecurityEdgeCases:
             domain=DOMAIN,
             data={
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,  # In data
             },
@@ -2086,6 +2102,7 @@ class TestSAXBatteryConfigFlowFullCoverage:
             data={
                 CONF_BATTERY_COUNT: 1,
                 CONF_CONTROL_POWER: True,
+                CONF_POWER_SENSOR: "sensor.grid_power",
                 CONF_LIMIT_POWER: False,
                 CONF_MIN_SOC: 20,
                 CONF_BATTERIES: {
