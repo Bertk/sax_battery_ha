@@ -310,10 +310,10 @@ class TestPvChargingMode:
 
                 mock_update.assert_called_once()
                 call_args = mock_update.call_args[0]
-                # New Battery Power = Current Battery Power - Grid Power
-                # Battery: 500W, Grid: -1000W (exporting)
-                # Target = 500 - (-1000) = 1500W
-                assert call_args[0] == 1500
+                # New Setpoint = Current Battery Power + Grid Power
+                # Battery: 500W discharging, Grid: -1000W (exporting)
+                # Target = 500 + (-1000) = -500W (charge)
+                assert call_args[0] == -500
 
     async def test_pv_charging_with_unavailable_sensor(
         self,
@@ -476,8 +476,8 @@ class TestPvChargingMode:
                 call_args = mock_update.call_args[0]
                 constrained_power = call_args[0]
 
-                # VERIFY: Power is clamped to per-battery discharge limit
-                assert constrained_power == LIMIT_MAX_DISCHARGE_PER_BATTERY
+                # VERIFY: Power is clamped to per-battery charge limit
+                assert constrained_power == -LIMIT_MAX_CHARGE_PER_BATTERY
 
     async def test_pv_charging_respects_soc_manager_constraints(
         self,
@@ -498,7 +498,7 @@ class TestPvChargingMode:
         entry.add_to_hass(hass)
 
         # Mock grid importing
-        hass.states.async_set("sensor.grid_power", "2000")  # 2kW import
+        hass.states.async_set("sensor.grid_power", "-2000")  # 2kW export
 
         # Mock battery power
         mock_battery_item = MagicMock()

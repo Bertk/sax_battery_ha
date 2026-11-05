@@ -451,7 +451,9 @@ class PowerManager:
     async def _update_pv_charging_power(self) -> None:
         """Update nominal power for PV charging mode.
 
-        Uses the formula: New Battery Power = Current Battery Power - Grid Power
+        Uses the formula: New Setpoint = Current Battery Power + Grid Power
+        (grid power is positive for import, negative for export; setpoint and
+        battery power are positive for discharge). Export therefore charges.
         This ensures grid power goes to zero by adjusting battery charge/discharge.
 
         Security:
@@ -464,7 +466,7 @@ class PowerManager:
             _LOGGER.warning("PV power sensor not configured")
             return
 
-        # Get PV power state (production value from CONF_POWER_SENSOR)
+        # Grid power from CONF_POWER_SENSOR: positive = import, negative = export
         pv_state = self.hass.states.get(self.pv_power_sensor)
         if pv_state is None:
             _LOGGER.warning("PV power sensor %s not found", self.pv_power_sensor)
@@ -495,9 +497,9 @@ class PowerManager:
             _LOGGER.warning("Battery power not available, skipping pv charging update")
             return
 
-        # CORRECT CALCULATION:
-        # New Battery Power = Current Battery Power - PV Power
-        target_power = current_battery_power - pv_power
+        # Export (negative grid) lowers the setpoint below the current discharge,
+        # which charges the battery
+        target_power = current_battery_power + pv_power
 
         _LOGGER.debug(
             "PV charging calculation: pv=%sW, current_battery=%sW, raw_target=%sW",
