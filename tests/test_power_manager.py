@@ -23,7 +23,7 @@ from custom_components.sax_battery.const import (
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_COMBINED_SOC,
-    SAX_SMARTMETER_TOTAL_POWER,
+    SAX_POWER_SM,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.power_manager import PowerManager, PowerManagerState
@@ -83,7 +83,7 @@ class TestPowerManagerLegacyBalancing:
         )
         manager._state.pv_charging_enabled = True
         mock_coordinator_master.data = {
-            SAX_SMARTMETER_TOTAL_POWER: 100,
+            SAX_POWER_SM: 100,
             SAX_COMBINED_SOC: 50.0,
         }
 
@@ -113,7 +113,7 @@ class TestPowerManagerLegacyBalancing:
             coordinator=mock_coordinator_master,
             config_entry=entry,
         )
-        mock_coordinator_master.data = {SAX_SMARTMETER_TOTAL_POWER: 123}
+        mock_coordinator_master.data = {SAX_POWER_SM: 123}
 
         with (
             patch.object(manager, "_get_battery_power", return_value=-1160),

@@ -51,7 +51,7 @@ from .const import (
     SAX_MAX_DISCHARGE,
     SAX_MAX_SOC_CHARGING,
     SAX_POWER_SETPOINT,
-    SAX_SMARTMETER_TOTAL_POWER,
+    SAX_POWER_SM,
 )
 from .coordinator import SAXBatteryCoordinator
 from .items import ModbusItem
@@ -309,7 +309,7 @@ class PowerManager:
         """Update power via coordinator based on current mode.
 
         Power source selection:
-        - sm_connected=True: Use SAX_SMARTMETER_TOTAL_POWER from coordinator
+        - sm_connected=True: Use SAX_POWER_SM from coordinator
         - sm_connected=False, balanced_loading=True: Check PV threshold,
           use balanced loading if sufficient PV, otherwise charge from grid
         - sm_connected=False, balanced_loading=False: Standard PV/grid modes
@@ -618,11 +618,12 @@ class PowerManager:
     async def _update_sm_balanced_power(self) -> None:
         """Update setpoint using SAX smart meter data.
 
-        Uses SAX_SMARTMETER_TOTAL_POWER from coordinator data for balanced loading
-        when the SAX smart meter is connected via RS485.
+        Uses SAX_POWER_SM (sensor.sax_bess_a_power_smartmeter, register 48) from
+        coordinator data for balanced loading when an ADW200/ADL400 is connected.
+        The battery reports it positive for import from the grid.
 
         Formula:
-            target_battery_power = current_battery_power + sm_total_power
+            target_battery_power = current_battery_power + sm_power
 
         Battery power and setpoint are positive for discharge, the smart-meter
         value is positive for import.
@@ -630,9 +631,9 @@ class PowerManager:
         Security:
             OWASP A05: Validates coordinator data availability
         """
-        sm_power = self.coordinator.data.get(SAX_SMARTMETER_TOTAL_POWER)
+        sm_power = self.coordinator.data.get(SAX_POWER_SM)
         if sm_power is None:
-            _LOGGER.warning("Smart meter total power not available from coordinator")
+            _LOGGER.warning("Smart meter power not available from coordinator")
             return
 
         try:
