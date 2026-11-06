@@ -25,6 +25,7 @@ from .const import (
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
     CONF_EFFECTIVE_PROTOCOL_MODE,
+    CONF_ENABLE_GRID_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_PROTOCOL_MODE,
@@ -80,6 +81,11 @@ type SAXBatteryConfigEntry = ConfigEntry[dict[str, SAXBatteryCoordinator]]
 async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -> bool:
     """Set up SAX Battery from a config entry with multi-battery support."""
     try:
+        if entry.data.get(CONF_ENABLE_GRID_CHARGING, False):
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_ENABLE_GRID_CHARGING: False}
+            )
+
         # Attach pymodbus transaction-ID error handler (process-wide, idempotent)
         _setup_txid_handler()
 

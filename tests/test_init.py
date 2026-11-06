@@ -35,10 +35,13 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
+    CONF_ENABLE_GRID_CHARGING,
+    CONF_GRID_POWER_MODE,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
     CONF_MIN_SOC,
     DOMAIN,
+    GRID_POWER_MODE_DISCHARGE,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.entity_keys import (
@@ -137,6 +140,54 @@ class TestDeveloperModeEntities:
 
 class TestAsyncSetupEntry:
     """Test async_setup_entry function."""
+
+    @pytest.mark.parametrize("control_power", [False, True])
+    async def test_setup_resets_grid_switch_before_manager_starts(
+        self, hass: HomeAssistant, control_power: bool
+    ) -> None:
+        """A previously enabled grid switch stays off after setup or reload."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_BATTERY_COUNT: 1,
+                CONF_MASTER_BATTERY: "bess_a",
+                "bess_a_host": "192.168.1.100",
+                "bess_a_port": 502,
+                CONF_CONTROL_POWER: control_power,
+                CONF_ENABLE_GRID_CHARGING: True,
+                CONF_GRID_POWER_MODE: GRID_POWER_MODE_DISCHARGE,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        with (
+            patch("custom_components.sax_battery.ModbusAPI.connect", return_value=True),
+            patch(
+                "custom_components.sax_battery.SAXBatteryCoordinator.async_config_entry_first_refresh",
+                return_value=None,
+            ),
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+            ),
+            patch(
+                "custom_components.sax_battery.PowerManager", autospec=True
+            ) as manager,
+        ):
+
+            def create_manager(**kwargs: object) -> object:
+                assert entry.data[CONF_ENABLE_GRID_CHARGING] is False
+                return manager.return_value
+
+            manager.side_effect = create_manager
+            assert await async_setup_entry(hass, entry)
+
+        assert entry.data[CONF_ENABLE_GRID_CHARGING] is False
+        assert entry.data[CONF_GRID_POWER_MODE] == GRID_POWER_MODE_DISCHARGE
+        if control_power:
+            manager.assert_called_once()
+            manager.return_value.async_start.assert_awaited_once()
+        else:
+            manager.assert_not_called()
 
     async def test_setup_single_battery_success(
         self, hass: HomeAssistant, mock_config_entry: ConfigEntry

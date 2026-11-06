@@ -6,12 +6,15 @@ from datetime import datetime
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # custom_component cannot use "from tests.common import MockConfigEntry"
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery.const import (
     CONF_ENABLE_GRID_CHARGING,
     CONF_GRID_POWER_MODE,
+    CONF_LIMIT_POWER,
     CONF_POWER_SENSOR,
     CONF_SM_CONNECTED,
     DOMAIN,
@@ -23,13 +26,21 @@ from custom_components.sax_battery.const import (
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_COMBINED_SOC,
+    SAX_MAX_CHARGE,
+    SAX_MAX_DISCHARGE,
     SAX_POWER_SM,
 )
+from custom_components.sax_battery.const_legacy import (
+    MODBUS_BATTERY_POWER_CONTROL_ITEMS,
+)
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
+from custom_components.sax_battery.entity_keys import SAX_POWER_SETPOINT
+from custom_components.sax_battery.models import SAXBatteryData
 from custom_components.sax_battery.power_manager import PowerManager, PowerManagerState
 from custom_components.sax_battery.protocol_mode import ProtocolMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +69,103 @@ class TestPowerManagerInitialization:
 
 class TestPowerManagerLegacyBalancing:
     """Test legacy power-control calculations."""
+
+    async def test_setpoint_write_skips_small_change(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Changes below the deadband do not create another setpoint event."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+        mock_coordinator_master.last_written_power_control = {SAX_POWER_SETPOINT: -1808}
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        with (
+            patch.object(
+                manager,
+                "apply_power_constraints",
+                new_callable=AsyncMock,
+                side_effect=lambda target_power, combined_soc: target_power,
+            ),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+            ) as write,
+        ):
+            await manager.update_power_setpoint(-1817)
+
+        write.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("previous", "requested", "charge_limit", "discharge_limit", "expected"),
+        [
+            (1540, 2000, 3500, 1500, 1500),
+            (-1540, -2000, 1500, 4600, -1500),
+        ],
+    )
+    async def test_setpoint_deadband_respects_reduced_power_limit(  # noqa: PLR0917
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        previous: int,
+        requested: int,
+        charge_limit: int,
+        discharge_limit: int,
+        expected: int,
+    ) -> None:
+        """A new limit overrides the deadband when the previous setpoint exceeds it."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+        mock_coordinator_master.last_written_power_control = {
+            SAX_POWER_SETPOINT: previous
+        }
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        manager = PowerManager(hass, mock_coordinator_master, entry)
+
+        with (
+            patch.object(manager, "_get_max_charge_limit", return_value=charge_limit),
+            patch.object(
+                manager, "_get_max_discharge_limit", return_value=discharge_limit
+            ),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as write,
+        ):
+            await manager.update_power_setpoint(requested)
+
+        write.assert_awaited_once_with(
+            power_item=setpoint_item, power=expected, power_factor=1000
+        )
 
     async def test_developer_mode_balances_with_configured_power_sensor(
         self,
@@ -606,12 +714,15 @@ class TestGridBalanceMode:
             config_entry=entry,
         )
 
-        # ✅ FIX: Use patch.object for method mocking
-        with patch.object(power_manager, "_get_battery_power", return_value=500.0):
+        with (
+            patch.object(power_manager, "_get_battery_power", return_value=500.0),
+            patch.object(
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
+            ) as update,
+        ):
             await power_manager._update_grid_balance_mode()
 
-        # battery discharging 500W + export 1000W -> charge 500W
-        assert power_manager._state.target_power == -500.0
+        update.assert_awaited_once_with(-500.0)
 
     async def test_grid_balance_with_export(
         self,
@@ -640,11 +751,15 @@ class TestGridBalanceMode:
             config_entry=entry,
         )
 
-        # ✅ FIX: Use patch.object for method mocking
-        with patch.object(power_manager, "_get_battery_power", return_value=1000.0):
+        with (
+            patch.object(power_manager, "_get_battery_power", return_value=1000.0),
+            patch.object(
+                power_manager, "update_power_setpoint", new_callable=AsyncMock
+            ) as update,
+        ):
             await power_manager._update_grid_balance_mode()
 
-        assert power_manager._state.target_power == 1500.0
+        update.assert_awaited_once_with(1500.0)
 
 
 class TestBatteryPowerLookup:
@@ -1178,6 +1293,46 @@ class TestChargeFromGridMode:
 
 class TestPowerConstraintEngine:
     """Test power constraint enforcement engine."""
+
+    @pytest.mark.parametrize(
+        ("item_name", "configured_limit", "target", "expected"),
+        [
+            (SAX_MAX_DISCHARGE, 1500, 3000.0, 1500.0),
+            (SAX_MAX_DISCHARGE, 0, 3000.0, 0.0),
+            (SAX_MAX_DISCHARGE, 9000, 6000.0, LIMIT_MAX_DISCHARGE_PER_BATTERY),
+            (SAX_MAX_CHARGE, 1200, -2500.0, -1200.0),
+        ],
+    )
+    async def test_constraints_use_renamed_limit_entity(  # noqa: PLR0917
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        item_name: str,
+        configured_limit: int,
+        target: float,
+        expected: float,
+    ) -> None:
+        """Use the registered number's state even when its entity ID was renamed."""
+        entry = MockConfigEntry(domain=DOMAIN, data={CONF_LIMIT_POWER: True})
+        entry.add_to_hass(hass)
+        sax_data = SAXBatteryData(hass, entry)
+        item = sax_data.get_item_by_name(item_name)
+        assert item is not None
+        mock_coordinator_master.battery_id = "bess_a"
+        mock_coordinator_master.sax_data = sax_data
+        unique_id = sax_data.get_unique_id_for_item(item, battery_id="bess_a")
+        assert unique_id is not None
+        registry = er.async_get(hass)
+        registry_entry = registry.async_get_or_create(
+            "number", DOMAIN, unique_id, config_entry=entry
+        )
+        registry.async_update_entity(
+            registry_entry.entity_id, new_entity_id="number.renamed_power_limit"
+        )
+        hass.states.async_set("number.renamed_power_limit", str(configured_limit))
+        manager = PowerManager(hass, mock_coordinator_master, entry)
+
+        assert await manager.apply_power_constraints(target, 50.0) == expected
 
     async def test_constraint_discharge_blocked_at_min_soc(
         self,

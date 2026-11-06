@@ -191,6 +191,7 @@ GRID_CHARGING_MODE = "enable_grid_charging"
 # ╚════════════════════════════════════════════════════════════════════════╝
 LIMIT_MAX_CHARGE_PER_BATTERY = 3500  # Watts - ABSOLUTE hardware limit per battery
 LIMIT_MAX_DISCHARGE_PER_BATTERY = 4600  # Watts - ABSOLUTE hardware limit per battery
+POWER_SETPOINT_DEADBAND_W = 50
 LIMIT_REFRESH_INTERVAL = (
     3  # minutes for periodic refresh of write-only limits registers
 )

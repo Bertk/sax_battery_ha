@@ -27,6 +27,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
@@ -38,11 +39,13 @@ from .const import (
     CONF_SM_CONNECTED,
     DEFAULT_GRID_POWER_MODE,
     DEFAULT_MIN_SOC,
+    DOMAIN,
     GRID_CHARGING_MODE,
     GRID_POWER_MODE_CHARGE,
     GRID_POWER_MODE_DISCHARGE,
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
+    POWER_SETPOINT_DEADBAND_W,
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_CHARGE_FROM_PV_SWITCH,
@@ -793,9 +796,15 @@ class PowerManager:
             if not item:
                 return hw_limit
 
-            entity_id = self.coordinator.sax_data.get_entity_id_for_item(
+            unique_id = self.coordinator.sax_data.get_unique_id_for_item(
                 item,
                 battery_id=self.coordinator.battery_id,
+            )
+            if not unique_id:
+                return hw_limit
+
+            entity_id = er.async_get(self.hass).async_get_entity_id(
+                "number", DOMAIN, unique_id
             )
 
             if entity_id:
@@ -1006,9 +1015,36 @@ class PowerManager:
                 combined_soc,
             )
 
-        # Update state immediately
-        self._state.target_power = constrained_power
-        self._state.last_update = datetime.now()
+        last_written_power: float | None = None
+        last_written_values = getattr(
+            self.coordinator, "last_written_power_control", None
+        )
+        if isinstance(last_written_values, dict):
+            written_power = last_written_values.get(SAX_POWER_SETPOINT)
+            if isinstance(written_power, (int, float)):
+                last_written_power = float(written_power)
+
+        if last_written_power is not None:
+            same_direction = (
+                last_written_power == 0
+                or constrained_power == 0
+                or (last_written_power > 0) == (constrained_power > 0)
+            )
+            within_deadband = (
+                abs(constrained_power - last_written_power) < POWER_SETPOINT_DEADBAND_W
+            )
+            zero_already_written = constrained_power == 0 and last_written_power == 0
+            if (
+                within_deadband
+                and same_direction
+                and (constrained_power != 0 or zero_already_written)
+            ):
+                last_allowed_power = await self.apply_power_constraints(
+                    target_power=last_written_power,
+                    combined_soc=combined_soc,
+                )
+                if last_allowed_power == last_written_power:
+                    return
 
         # Get SAX_POWER_SETPOINT ModbusItem from coordinator's sax_data
         power_item = self.coordinator.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
@@ -1029,6 +1065,8 @@ class PowerManager:
                 )
 
             if success:
+                self._state.target_power = constrained_power
+                self._state.last_update = datetime.now()
                 _LOGGER.info(
                     "Power setpoint updated to %sW via coordinator",
                     constrained_power,
