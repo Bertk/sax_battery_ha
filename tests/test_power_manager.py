@@ -13,6 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sax_battery.const import (
     CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_MODE,
     CONF_LIMIT_POWER,
     CONF_POWER_SENSOR,
@@ -65,6 +66,50 @@ class TestPowerManagerInitialization:
         assert power_manager.coordinator == mock_coordinator_master
         assert power_manager.battery_count == 1
         assert power_manager._running is False
+
+    def test_initialization_restores_persisted_pv_switch(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """PV switch state is read from entry data before entities are set up."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={CONF_ENABLE_PV_CHARGING: True},
+        )
+        entry.add_to_hass(hass)
+
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        assert power_manager.get_pv_charging_enabled is True
+
+    def test_initialization_restores_pv_flag_from_entry(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """The manager restores persisted PV mode before switch entities load."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_ENABLE_PV_CHARGING: True,
+                CONF_ENABLE_GRID_CHARGING: False,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        assert manager.get_pv_charging_enabled is True
+        assert manager.get_grid_charging_enabled is False
 
 
 class TestPowerManagerLegacyBalancing:
@@ -883,6 +928,29 @@ class TestPowerManagerProperties:
         power_manager._update_config_values()
 
         assert power_manager._state.pv_charging_enabled is True
+
+    async def test_pv_mode_changes_are_persisted(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Direct power-manager mode changes persist the PV switch state."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={CONF_ENABLE_PV_CHARGING: False},
+        )
+        entry.add_to_hass(hass)
+        power_manager = PowerManager(
+            hass=hass,
+            coordinator=mock_coordinator_master,
+            config_entry=entry,
+        )
+
+        await power_manager.set_pv_charging_mode(True)
+        assert entry.data[CONF_ENABLE_PV_CHARGING] is True
+
+        await power_manager.set_pv_charging_mode(False)
+        assert entry.data[CONF_ENABLE_PV_CHARGING] is False
 
     def test_get_pv_charging_enabled_property(
         self,

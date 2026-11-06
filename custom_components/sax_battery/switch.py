@@ -7,11 +7,12 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -20,6 +21,7 @@ from .const import (
     CONF_BATTERY_PHASE,
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     DOMAIN,
     SAX_CHARGE_FROM_GRID_SWITCH,
     SAX_CHARGE_FROM_PV_SWITCH,
@@ -437,7 +439,9 @@ class SAXBatterySwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
         return EntityCategory.CONFIG  # Default for switch entities
 
 
-class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity):
+class SAXBatteryControlSwitch(
+    CoordinatorEntity[SAXBatteryCoordinator], SwitchEntity, RestoreEntity
+):
     """SAX Battery control switch entity for system-wide settings."""
 
     _attr_has_entity_name = True
@@ -480,6 +484,29 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         self._attr_device_info: DeviceInfo = coordinator.sax_data.get_device_info(
             "cluster", self._sax_item.device
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the PV switch without restoring the grid switch."""
+        await super().async_added_to_hass()
+        if self._sax_item.name != SAX_CHARGE_FROM_PV_SWITCH:
+            return
+
+        last_state = await self.async_get_last_state()
+        if last_state is None or last_state.state not in (STATE_ON, STATE_OFF):
+            return
+
+        enabled = last_state.state == STATE_ON
+        manager = getattr(self.coordinator, "power_manager", None)
+        if manager is not None:
+            await manager.set_pv_charging_mode(enabled)
+        if self.coordinator.config_entry is not None:
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_PV_CHARGING: enabled,
+                },
+            )
 
     @property
     def entity_registry_enabled_default(self) -> bool:
@@ -536,18 +563,14 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
 
         # Get state from coordinator data (stored by switch toggle actions)
         if self._sax_item.name == SAX_CHARGE_FROM_PV_SWITCH:
-            # coordinator.data is rebuilt every refresh, so prefer the manager state
+            pv_enabled = self.coordinator.config_entry.data.get(CONF_ENABLE_PV_CHARGING)
+            if pv_enabled is not None:
+                return bool(pv_enabled)
+
             manager = getattr(self.coordinator, "power_manager", None)
             if manager is not None:
                 return bool(manager.get_pv_charging_enabled)
-            pv_enabled = bool(
-                self.coordinator.data.get(SAX_CHARGE_FROM_PV_SWITCH, False)
-            )
-            _LOGGER.debug(
-                "PV charging switch state check: pv_enabled=%s",
-                pv_enabled,
-            )
-            return pv_enabled
+            return bool(self.coordinator.data.get(SAX_CHARGE_FROM_PV_SWITCH, False))
 
         if self._sax_item.name == SAX_CHARGE_FROM_GRID_SWITCH:
             grid_enabled = bool(
@@ -607,6 +630,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
                     data={
                         **self.coordinator.config_entry.data,
                         CONF_ENABLE_GRID_CHARGING: False,
+                        CONF_ENABLE_PV_CHARGING: False,
                     },
                 )
 
@@ -621,6 +645,13 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
 
             # Enable PV charging in coordinator data
             self.coordinator.data[SAX_CHARGE_FROM_PV_SWITCH] = True
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_PV_CHARGING: True,
+                },
+            )
 
             _LOGGER.info(
                 "Switch state updated: PV charging enabled, grid control disabled"
@@ -653,6 +684,7 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
             new_data = {
                 **self.coordinator.config_entry.data,
                 CONF_ENABLE_GRID_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: False,
             }
             self.coordinator.data[SAX_CHARGE_FROM_GRID_SWITCH] = True
 
@@ -687,6 +719,13 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
         if self._sax_item.name == SAX_CHARGE_FROM_PV_SWITCH:
             # Disable PV charging in coordinator data
             self.coordinator.data[SAX_CHARGE_FROM_PV_SWITCH] = False
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_PV_CHARGING: False,
+                },
+            )
 
             _LOGGER.info("Switch state updated: PV charging disabled")
 
@@ -718,5 +757,20 @@ class SAXBatteryControlSwitch(CoordinatorEntity[SAXBatteryCoordinator], SwitchEn
             ):
                 _LOGGER.info("Disabling power manager grid charging mode")
                 await self.coordinator.power_manager.set_grid_control_mode(False, 0.0)
+                new_data = {
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_GRID_CHARGING: False,
+                    CONF_ENABLE_PV_CHARGING: self.coordinator.power_manager.get_pv_charging_enabled,
+                }
+            else:
+                new_data = {
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_GRID_CHARGING: False,
+                    CONF_ENABLE_PV_CHARGING: False,
+                }
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data=new_data,
+            )
 
         await self.coordinator.async_request_refresh()

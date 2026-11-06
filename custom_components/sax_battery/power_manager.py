@@ -33,6 +33,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     CONF_BALANCED_LOADING,
     CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_MODE,
     CONF_MIN_SOC,
     CONF_POWER_SENSOR,
@@ -200,7 +201,12 @@ class PowerManager:
         pv_enabled = (
             self._state.pv_charging_enabled
             if self._running
-            else self._get_switch_state(SAX_CHARGE_FROM_PV_SWITCH)
+            else bool(
+                self.config_entry.data.get(
+                    CONF_ENABLE_PV_CHARGING,
+                    self._get_switch_state(SAX_CHARGE_FROM_PV_SWITCH),
+                )
+            )
         )
         grid_enabled = bool(
             self.config_entry.data.get(CONF_ENABLE_GRID_CHARGING, False)
@@ -437,7 +443,11 @@ class PowerManager:
         await self.set_grid_control_mode(False)
         self.hass.config_entries.async_update_entry(
             self.config_entry,
-            data={**self.config_entry.data, CONF_ENABLE_GRID_CHARGING: False},
+            data={
+                **self.config_entry.data,
+                CONF_ENABLE_GRID_CHARGING: False,
+                CONF_ENABLE_PV_CHARGING: self._state.pv_charging_enabled,
+            },
         )
 
     async def _async_apply_balanced_fallback(self) -> None:
@@ -1097,6 +1107,18 @@ class PowerManager:
         # Update grid charging state (mutual exclusion)
         if enabled:
             self._state.grid_charging_enabled = False
+
+        if self.config_entry.data.get(CONF_ENABLE_PV_CHARGING, False) != enabled:
+            new_data = {
+                **self.config_entry.data,
+                CONF_ENABLE_PV_CHARGING: enabled,
+            }
+            if enabled:
+                new_data[CONF_ENABLE_GRID_CHARGING] = False
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+            )
 
         _LOGGER.info(
             "PV charging mode %s (grid_charging=%s)",

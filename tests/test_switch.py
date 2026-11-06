@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    mock_restore_cache,
+)
 
 from custom_components.sax_battery.const import (
     BATTERY_IDS,
@@ -16,6 +21,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     DEFAULT_DEVICE_INFO,
     DESCRIPTION_SAX_STATUS_SWITCH,
     DOMAIN,
@@ -34,8 +40,10 @@ from custom_components.sax_battery.switch import (
 )
 from custom_components.sax_battery.utils import should_include_entity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, EntityCategory
+from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
 
 
 class TestSAXBatterySwitch:
@@ -729,6 +737,131 @@ class TestSAXBatterySwitch:
 class TestSAXBatteryControlSwitch:
     """Test SAX Battery control switch."""
 
+    @pytest.mark.parametrize("restored_state", [STATE_ON, STATE_OFF])
+    async def test_pv_restores_from_ha_cache(
+        self,
+        hass: HomeAssistant,
+        mock_control_coordinator,
+        mock_sax_item_control,
+        restored_state,
+    ) -> None:
+        """A registered PV switch restores through Home Assistant's entity lifecycle."""
+        entry = MockConfigEntry(domain=DOMAIN, data={CONF_ENABLE_PV_CHARGING: False})
+        entry.add_to_hass(hass)
+        mock_control_coordinator.config_entry = entry
+        mock_control_coordinator.power_manager = MagicMock()
+        mock_control_coordinator.power_manager.set_pv_charging_mode = AsyncMock()
+        mock_control_coordinator.sax_data.get_device_info.return_value = {
+            "identifiers": {(DOMAIN, "cluster")},
+            "name": "SAX BMS",
+        }
+        mock_sax_item_control.name = SAX_CHARGE_FROM_PV_SWITCH
+        switch = SAXBatteryControlSwitch(
+            mock_control_coordinator,
+            mock_sax_item_control,
+            {"bess_a": mock_control_coordinator},
+        )
+        unique_id = switch.unique_id
+        assert unique_id is not None
+        registry_entry = er.async_get(hass).async_get_or_create(
+            "switch",
+            "switch",
+            unique_id,
+            config_entry=entry,
+            suggested_object_id="sax_bms_pv_charging_switch",
+        )
+        mock_restore_cache(hass, [State(registry_entry.entity_id, restored_state)])
+        component = EntityComponent(logging.getLogger(__name__), "switch", hass)
+
+        await component.async_add_entities([switch])
+        await hass.async_block_till_done()
+
+        enabled = restored_state == STATE_ON
+        mock_control_coordinator.power_manager.set_pv_charging_mode.assert_awaited_once_with(
+            enabled
+        )
+        assert entry.data[CONF_ENABLE_PV_CHARGING] is enabled
+        current_state = hass.states.get(registry_entry.entity_id)
+        assert current_state is not None
+        assert current_state.state == restored_state
+
+    @pytest.mark.parametrize(
+        "restored_state", [STATE_ON, STATE_OFF, STATE_UNAVAILABLE, None]
+    )
+    async def test_pv_restores_last_state(
+        self,
+        hass: HomeAssistant,
+        mock_control_coordinator,
+        mock_sax_item_control,
+        restored_state,
+    ) -> None:
+        """Valid restored PV state updates the manager and config entry."""
+        entry = MockConfigEntry(domain=DOMAIN, data={CONF_ENABLE_PV_CHARGING: False})
+        entry.add_to_hass(hass)
+        mock_control_coordinator.config_entry = entry
+        mock_control_coordinator.power_manager = MagicMock()
+        mock_control_coordinator.power_manager.set_pv_charging_mode = AsyncMock()
+        mock_sax_item_control.name = SAX_CHARGE_FROM_PV_SWITCH
+        switch = SAXBatteryControlSwitch(
+            mock_control_coordinator,
+            mock_sax_item_control,
+            {"bess_a": mock_control_coordinator},
+        )
+        switch.hass = hass
+        state = (
+            State("switch.sax_bms_pv_charging_switch", restored_state)
+            if restored_state
+            else None
+        )
+
+        with (
+            patch(
+                "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                switch,
+                "async_get_last_state",
+                new_callable=AsyncMock,
+                return_value=state,
+            ),
+        ):
+            await switch.async_added_to_hass()
+
+        if restored_state in (STATE_ON, STATE_OFF):
+            enabled = restored_state == STATE_ON
+            mock_control_coordinator.power_manager.set_pv_charging_mode.assert_awaited_once_with(
+                enabled
+            )
+            assert entry.data[CONF_ENABLE_PV_CHARGING] is enabled
+            assert switch.is_on is enabled
+        else:
+            mock_control_coordinator.power_manager.set_pv_charging_mode.assert_not_awaited()
+            assert entry.data[CONF_ENABLE_PV_CHARGING] is False
+
+    async def test_grid_switch_does_not_restore_last_state(
+        self, hass: HomeAssistant, mock_control_coordinator, mock_sax_item_control
+    ) -> None:
+        """The grid switch never restores an old on state."""
+        mock_sax_item_control.name = SAX_CHARGE_FROM_GRID_SWITCH
+        switch = SAXBatteryControlSwitch(
+            mock_control_coordinator,
+            mock_sax_item_control,
+            {"bess_a": mock_control_coordinator},
+        )
+        switch.hass = hass
+        with (
+            patch(
+                "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                switch, "async_get_last_state", new_callable=AsyncMock
+            ) as get_last_state,
+        ):
+            await switch.async_added_to_hass()
+        get_last_state.assert_not_awaited()
+
     @pytest.fixture
     def mock_control_coordinator(self, mock_config_entry):
         """Fixture for control switch coordinator."""
@@ -954,6 +1087,12 @@ class TestSAXBatteryControlSwitch:
 
         # ✅ Verify switch state reflects change
         assert switch.is_on is True
+        assert (
+            switch.hass.config_entries.async_update_entry.call_args.kwargs["data"][
+                CONF_ENABLE_PV_CHARGING
+            ]
+            is True
+        )
 
     async def test_control_switch_turn_on_starts_power_manager_mode(
         self, mock_control_coordinator, mock_sax_item_control
@@ -1008,6 +1147,13 @@ class TestSAXBatteryControlSwitch:
 
         # ✅ Verify switch state reflects change
         assert switch.is_on is False
+        switch.hass.config_entries.async_update_entry.assert_called_once()
+        assert (
+            switch.hass.config_entries.async_update_entry.call_args.kwargs["data"][
+                CONF_ENABLE_PV_CHARGING
+            ]
+            is False
+        )
 
 
 class TestAsyncSetupEntry:
@@ -1482,15 +1628,17 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         # Grid control should remain unchanged
         assert mock_coordinator_comprehensive.data[SAX_CHARGE_FROM_GRID_SWITCH] is False
 
-    def test_control_switch_pv_enabled_with_power_control(
+    def test_control_switch_uses_persisted_pv_state(
         self, mock_coordinator_comprehensive
     ) -> None:
-        """Test pv charging switch state when power control enabled."""
+        """Persisted PV state wins over stale coordinator and manager values."""
 
-        # Initialize coordinator data with PV charging enabled
+        mock_coordinator_comprehensive.config_entry.data[CONF_ENABLE_PV_CHARGING] = True
         mock_coordinator_comprehensive.data = {
-            SAX_CHARGE_FROM_PV_SWITCH: True,
+            SAX_CHARGE_FROM_PV_SWITCH: False,
         }
+        mock_coordinator_comprehensive.power_manager = MagicMock()
+        mock_coordinator_comprehensive.power_manager.get_pv_charging_enabled = False
 
         sax_item = SAXItem(
             name=SAX_CHARGE_FROM_PV_SWITCH,
@@ -1506,5 +1654,4 @@ class TestSAXBatterySwitchComprehensiveCoverage:
             coordinators=coordinators,
         )
 
-        # ✅ FIXED: Switch state reflects coordinator data
         assert switch.is_on is True

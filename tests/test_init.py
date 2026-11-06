@@ -36,6 +36,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_PORT,
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
+    CONF_ENABLE_PV_CHARGING,
     CONF_GRID_POWER_MODE,
     CONF_LIMIT_POWER,
     CONF_MASTER_BATTERY,
@@ -155,6 +156,7 @@ class TestAsyncSetupEntry:
                 "bess_a_port": 502,
                 CONF_CONTROL_POWER: control_power,
                 CONF_ENABLE_GRID_CHARGING: True,
+                CONF_ENABLE_PV_CHARGING: True,
                 CONF_GRID_POWER_MODE: GRID_POWER_MODE_DISCHARGE,
             },
         )
@@ -182,9 +184,14 @@ class TestAsyncSetupEntry:
             assert await async_setup_entry(hass, entry)
 
         assert entry.data[CONF_ENABLE_GRID_CHARGING] is False
+        assert entry.data[CONF_ENABLE_PV_CHARGING] is True
         assert entry.data[CONF_GRID_POWER_MODE] == GRID_POWER_MODE_DISCHARGE
         if control_power:
             manager.assert_called_once()
+            assert (
+                manager.call_args.kwargs["config_entry"].data[CONF_ENABLE_PV_CHARGING]
+                is True
+            )
             manager.return_value.async_start.assert_awaited_once()
         else:
             manager.assert_not_called()

@@ -155,9 +155,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
                 # Store power manager in integration data
                 hass.data[DOMAIN][entry.entry_id]["power_manager"] = power_manager
 
-                # Start power manager
-                await power_manager.async_start()
-
                 _LOGGER.info(
                     "Power manager initialized for master battery %s",
                     master_battery_id,
@@ -173,6 +170,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
 
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+        if (
+            power_manager_enabled
+            and master_coordinator is not None
+            and master_coordinator.power_manager is not None
+        ):
+            await master_coordinator.power_manager.async_start()
 
         if sax_data.developer_mode:
             _enable_development_sm_entities(hass, entry)
