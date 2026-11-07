@@ -11,14 +11,14 @@ A Home Assistant add-on that helps you monitor and control your SAX-power home b
 - **Multi-Battery Support**: Control up to three batteries working together across your home's three electrical phases
 - **Real-Time Monitoring**: See your battery's charge level, temperature, and power flow updated every 15-30 seconds
 - **Smart Power Management**: Automatically protect your battery from over-discharge by setting minimum charge levels
-- **Solar Charging Control**: Choose when your battery charges from your solar panels
-- **Priority Device Support**: Prevent your battery from powering specific devices (like EV chargers) - save battery power for what matters
+- **PV Charging Control**: Choose when your battery charges from your solar panels
+- **Charge from Grid**: Choose when dynamic electricity price is cheap and use for expensive electricity price period.
 - **Comprehensive Diagnostics**: Check connection health and troubleshoot issues easily
 - **Private & Local**: All data stays on your home network - no cloud connection required
 - **Easy Setup**: Configure everything through Home Assistant's friendly interface
 
-> [!IMPORTANT]  
-**Currently Being Improved**  
+> [!IMPORTANT]
+**Currently Being Improved**
 The battery control features are being actively enhanced. Some advanced control features require additional permissions to be enabled in your SAX-power online account settings. Check the SAX-power documentation or contact their support to learn how to enable these features.
 
 ## Supported Devices
@@ -27,7 +27,7 @@ This integration supports SAX-power battery energy storage systems with:
 
 - **Communication**: Modbus TCP/IP (Ethernet) and Modbus RTU (RS485)
 - **Battery Models**: SAX-power BESS (Battery Energy Storage System)
-- **Smart Meters**: SAX-compatible smart meters with RS485 connection
+- **Smart Meters**: SAX-compatible smart meters with RS485 connection (ADL400/ADW200)
 - **Firmware**: Tested with SAX Battery Management System (BMS) current firmware version
 
 **For Homes with Multiple Batteries:**
@@ -43,7 +43,7 @@ This integration supports SAX-power battery energy storage systems with:
 ### Monitoring (Read-Only)
 
 - State of Charge (SOC) - individual and combined
-- Battery voltage, current, and temperature
+- Battery voltage, current
 - Power flow (charge/discharge)
 - Energy statistics (daily, monthly, lifetime)
 - Grid power measurements (per phase and total)
@@ -56,15 +56,14 @@ This integration supports SAX-power battery energy storage systems with:
 
 - **Max Discharge Power**: Limit how much power the battery can provide to your home (0-4600W per battery)
 - **Max Charge Power**: Limit how fast the battery charges (0-3500W per battery)
-- **Pilot Control**: Direct control over battery power with smart adjustments
+- **Grid Charging**: Direct control over battery power with smart adjustments
 - **Solar Charging**: Turn solar charging on or off independently from grid charging
-- **Manual Mode**: Override automatic controls for testing purposes
 - **Minimum Charge Protection**: Prevent the battery from discharging completely by setting a minimum charge level
+- **Maximum Charge Limit": Stops battery charging by setting a maximum charge level
 
 ### Automation Features
 
 - SOC-based discharge limiting
-- Priority device detection and battery protection
 - Time-based power management (via Home Assistant automations)
 - Grid power monitoring and response
 
@@ -91,7 +90,7 @@ This means you'll see near real-time information without overloading your networ
 
 **Just want to see your battery data quickly?**
 
-1. Install the integration through HACS (see Installation section below)
+1. Install the integration through Marketplace (see Installation section below)
 2. Go to Settings → Devices & Services → Add Integration
 3. Search for "SAX battery"
 4. Enter your battery's network address (IP address) - see "How to Find Your Battery's IP Address" below
@@ -105,19 +104,13 @@ That's it! Within a minute, you'll see your battery charge level, power usage, a
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via Marketplace (Recommended)
 
-1. **Add Custom Repository**
-   - Open HACS in Home Assistant
-   - Go to `HACS > Integrations > ⋮ > Custom repositories`
-   - Add repository URL: `https://github.com/matfroh/sax_battery_ha`
-   - Select category: **Integration**
-   - Click **Add**
+**Install Integration**
 
-2. **Install Integration**
-   - Search for "SAX battery" in HACS
-   - Click **Download**
-   - Restart Home Assistant
+- Search for "**SAX Power**" in Marketplace
+- Select **Install**
+- Restart Home Assistant
 
 ### Manual Installation
 
@@ -184,7 +177,7 @@ Before you begin:
    > Write registers must be enabled in SAX-power portal settings before these options work.
 
 4. **Select power management options** (41,42)
-  
+
    - Disable SAX default smart meter setup (ADL400/C, ADW220)
    - Enable balanced or manual loading
 
@@ -277,7 +270,7 @@ Tracks grid measurements:
 
 **What You Need:**
 
-- Enable **Pilot from Home Assistant** (in integration settings)
+- Enable **Power Control from Home Assistant** (in integration settings)
 - Enable **Solar Charging** (in integration settings)
 - Set minimum charge level to 15-20% (protects battery health)
 - Tell the system which sensor measures your home's power usage
@@ -325,7 +318,6 @@ automation:
           entity_id: number.sax_max_discharge
         data:
           value: 3000  # Allow 3kW discharge
-  
   - alias: "Battery: Stop discharge after peak"
     trigger:
       - platform: time
@@ -491,7 +483,7 @@ automation:
 2. Move your battery or router closer together if signal is weak
 3. Restart your Wi-Fi router
 4. Check for firmware updates for your router
-5. Update to the latest version of this integration (Settings → HACS → SAX Battery → Update)
+5. Update to the latest version of this integration (Settings → Marketplace → SAX Battery → Update)
 
 **Advanced Troubleshooting** (If simple solutions don't help):
 
@@ -645,7 +637,7 @@ This guide uses some technical terms. Here's what they mean in plain English:
 - **Entity**: A piece of information or control in Home Assistant (like battery percentage, temperature sensor, or power switches)
 - **Modbus TCP/IP**: The technical name for how Home Assistant talks to your battery over your network
 - **Port 502**: A specific "door" on your network that the battery uses to communicate (like different channels on a radio)
-- **HACS**: Home Assistant Community Store - an add-on store for Home Assistant
+- **Marketplace**: Home Assistant Community Store - an add-on store for Home Assistant
 - **Integration**: An add-on that connects Home Assistant to devices (like this SAX Battery integration)
 - **Coordinator**: The part of the integration that fetches data from your battery
 - **Register**: A specific piece of information stored in the battery (like a memory address)
@@ -667,11 +659,11 @@ This guide uses some technical terms. Here's what they mean in plain English:
 
 ### Uninstall Integration Files
 
-#### Via HACS
+#### Via Marketplace
 
-1. Open **HACS → Integrations**
+1. Open **Marketplace**
 2. Find **SAX battery**
-3. Click **⋮ → Remove**
+3. Select **⋮ → Remove**
 4. Restart Home Assistant
 
 #### Manual Uninstall
