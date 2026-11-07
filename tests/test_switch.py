@@ -819,6 +819,7 @@ class TestSAXBatteryControlSwitch:
                 "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
                 new_callable=AsyncMock,
             ),
+            patch.object(switch, "async_write_ha_state") as write_state,
             patch.object(
                 switch,
                 "async_get_last_state",
@@ -835,9 +836,11 @@ class TestSAXBatteryControlSwitch:
             )
             assert entry.data[CONF_ENABLE_PV_CHARGING] is enabled
             assert switch.is_on is enabled
+            write_state.assert_called_once()
         else:
             mock_control_coordinator.power_manager.set_pv_charging_mode.assert_not_awaited()
             assert entry.data[CONF_ENABLE_PV_CHARGING] is False
+            write_state.assert_not_called()
 
     async def test_grid_switch_does_not_restore_last_state(
         self, hass: HomeAssistant, mock_control_coordinator, mock_sax_item_control

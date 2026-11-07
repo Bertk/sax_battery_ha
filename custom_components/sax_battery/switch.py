@@ -507,6 +507,7 @@ class SAXBatteryControlSwitch(
                     CONF_ENABLE_PV_CHARGING: enabled,
                 },
             )
+        self.async_write_ha_state()
 
     @property
     def entity_registry_enabled_default(self) -> bool:

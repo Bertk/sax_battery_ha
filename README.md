@@ -190,7 +190,11 @@ Before you begin:
 
    ![Power monitor sensor](assets/conf-power-sensor.png)
 
-6. **Enter Battery Network Information**
+6. **Select Protocol Options**
+
+    ![Configure Protocol Options](assets/conf-protocol-mode.png)
+
+7. **Enter Battery Network Information**
 
    For each battery, you'll need:
    - **IP Address**: Your battery's network address (from the steps above)
@@ -200,7 +204,7 @@ Before you begin:
 
    ![Configure Battery Connection](assets/conf-connection.png)
 
-7. **Finish Setup**
+8. **Finish Setup**
 
    Add location area and click **FINISH**.
 
