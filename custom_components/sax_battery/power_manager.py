@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -47,6 +48,7 @@ from .const import (
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
     POWER_SETPOINT_DEADBAND_W,
+    POWER_SETPOINT_REFRESH_SECONDS,
     PV_CHARGING_MODE,
     SAX_AC_POWER_TOTAL,
     SAX_CHARGE_FROM_PV_SWITCH,
@@ -141,6 +143,7 @@ class PowerManager:
         self._remove_interval_update: Callable[[], None] | None = None
         self._remove_config_update: Callable[[], None] | None = None
         self._running = False
+        self._last_power_write_monotonic: float | None = None
 
         # Configuration values
         self._update_config_values()
@@ -424,10 +427,12 @@ class PowerManager:
         self._state.mode = GRID_CHARGING_MODE
         await self._async_write_power(target_power)
 
-    async def _async_write_power(self, per_battery_power: float) -> None:
+    async def _async_write_power(
+        self, per_battery_power: float, *, force: bool = False
+    ) -> None:
         """Write a per-battery power target using the active protocol."""
         if not self._is_sunspec:
-            await self.update_power_setpoint(per_battery_power)
+            await self.update_power_setpoint(per_battery_power, force=force)
             return
 
         # Model 123 setpoint is relative to the cluster reference power
@@ -966,7 +971,7 @@ class PowerManager:
 
         return battery_power  # noqa: RET504
 
-    async def update_power_setpoint(self, power: float) -> None:
+    async def update_power_setpoint(self, power: float, *, force: bool = False) -> None:
         """Update nominal power via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
@@ -998,15 +1003,19 @@ class PowerManager:
 
         # Get current combined SOC for constraint enforcement
         combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
-        if combined_soc is None:
+        if combined_soc is None and power != 0:
             _LOGGER.warning("Combined SOC not available, cannot apply constraints")
             return
 
         # Apply all power constraints (SOC protection, hardware limits)
         # Returns per-battery value already clamped to hardware limits
-        constrained_power = await self.apply_power_constraints(
-            target_power=power,
-            combined_soc=combined_soc,
+        constrained_power = (
+            await self.apply_power_constraints(
+                target_power=power,
+                combined_soc=combined_soc,
+            )
+            if combined_soc is not None
+            else 0.0
         )
 
         # CRITICAL SAFETY: Final absolute per-battery hardware clamp before register write.
@@ -1034,7 +1043,7 @@ class PowerManager:
             if isinstance(written_power, (int, float)):
                 last_written_power = float(written_power)
 
-        if last_written_power is not None:
+        if not force and combined_soc is not None and last_written_power is not None:
             same_direction = (
                 last_written_power == 0
                 or constrained_power == 0
@@ -1048,12 +1057,18 @@ class PowerManager:
                 within_deadband
                 and same_direction
                 and (constrained_power != 0 or zero_already_written)
+                and constrained_power in (power, last_written_power)
             ):
                 last_allowed_power = await self.apply_power_constraints(
                     target_power=last_written_power,
                     combined_soc=combined_soc,
                 )
-                if last_allowed_power == last_written_power:
+                if (
+                    last_allowed_power == last_written_power
+                    and self._last_power_write_monotonic is not None
+                    and time.monotonic() - self._last_power_write_monotonic
+                    < POWER_SETPOINT_REFRESH_SECONDS
+                ):
                     return
 
         # Get SAX_POWER_SETPOINT ModbusItem from coordinator's sax_data
@@ -1075,6 +1090,7 @@ class PowerManager:
                 )
 
             if success:
+                self._last_power_write_monotonic = time.monotonic()
                 self._state.target_power = constrained_power
                 self._state.last_update = datetime.now()
                 _LOGGER.info(
@@ -1132,8 +1148,17 @@ class PowerManager:
                     self.coordinator
                 ).async_set_mode_zero_balance()
             await self._async_update_power(None)
+        else:
+            await self._async_write_power(0.0, force=True)
 
-    async def set_grid_control_mode(self, enabled: bool, power: float = 0.0) -> None:
+    async def set_grid_control_mode(
+        self,
+        enabled: bool,
+        power: float = 0.0,
+        *,
+        restore_pv: bool = True,
+        fallback_to_balance: bool = True,
+    ) -> None:
         """Enable or disable grid charging mode.
 
         Args:
@@ -1149,10 +1174,12 @@ class PowerManager:
             if not self._state.grid_charging_enabled:
                 self._state.previous_pv_state = self._state.pv_charging_enabled
             self._state.pv_charging_enabled = False  # Mutual exclusion
-        elif self._state.previous_pv_state:
+        elif restore_pv and self._state.previous_pv_state:
             # Restore previous PV state when disabling grid charging
             _LOGGER.info("Restoring PV charging mode after grid charging disabled")
             self._state.pv_charging_enabled = self._state.previous_pv_state
+            self._state.previous_pv_state = False
+        elif not restore_pv:
             self._state.previous_pv_state = False
 
         self._state.grid_charging_enabled = enabled
@@ -1176,8 +1203,10 @@ class PowerManager:
                 await self.update_power_setpoint(power)
             else:
                 await self._async_update_power(None)
-        else:
+        elif fallback_to_balance:
             await self._async_apply_balanced_fallback()
+        else:
+            await self._async_write_power(0.0, force=True)
 
     async def set_grid_charging_mode(
         self,

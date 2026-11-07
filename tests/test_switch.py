@@ -1155,6 +1155,31 @@ class TestSAXBatteryControlSwitch:
             is False
         )
 
+    async def test_turning_off_grid_switch_requests_zero_setpoint(
+        self, mock_control_coordinator, mock_sax_item_control
+    ) -> None:
+        """The grid switch passes explicit-stop semantics to the manager."""
+        mock_sax_item_control.name = SAX_CHARGE_FROM_GRID_SWITCH
+        manager = MagicMock()
+        manager.set_grid_control_mode = AsyncMock()
+        mock_control_coordinator.power_manager = manager
+        switch = SAXBatteryControlSwitch(
+            coordinator=mock_control_coordinator,
+            sax_item=mock_sax_item_control,
+            coordinators={"bess_a": mock_control_coordinator},
+        )
+        switch.hass = MagicMock()
+        switch.hass.config_entries.async_update_entry = MagicMock()
+
+        await switch.async_turn_off()
+
+        manager.set_grid_control_mode.assert_awaited_once_with(
+            False,
+            0.0,
+            restore_pv=False,
+            fallback_to_balance=False,
+        )
+
 
 class TestAsyncSetupEntry:
     """Test async_setup_entry function."""

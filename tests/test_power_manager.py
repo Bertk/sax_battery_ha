@@ -137,6 +137,10 @@ class TestPowerManagerLegacyBalancing:
         )
 
         with (
+            patch(
+                "custom_components.sax_battery.power_manager.time.monotonic",
+                return_value=100,
+            ),
             patch.object(
                 manager,
                 "apply_power_constraints",
@@ -154,9 +158,145 @@ class TestPowerManagerLegacyBalancing:
                 new_callable=AsyncMock,
             ) as write,
         ):
+            manager._last_power_write_monotonic = 100
             await manager.update_power_setpoint(-1817)
 
         write.assert_not_awaited()
+
+    async def test_capped_setpoint_refreshes_after_two_minutes(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Sustained demand refreshes the capped setpoint before firmware timeout."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+        mock_coordinator_master.last_written_power_control = {}
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        manager = PowerManager(hass, mock_coordinator_master, entry)
+
+        with (
+            patch(
+                "custom_components.sax_battery.power_manager.time.monotonic",
+                return_value=100,
+            ) as clock,
+            patch.object(manager, "_get_max_discharge_limit", return_value=250),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as write,
+        ):
+            await manager.update_power_setpoint(1200)
+            mock_coordinator_master.last_written_power_control = {
+                SAX_POWER_SETPOINT: 250
+            }
+            clock.return_value = 219
+            await manager.update_power_setpoint(1200)
+            assert write.await_count == 1
+            clock.return_value = 220
+            await manager.update_power_setpoint(1200)
+
+        assert write.await_count == 2
+        write.assert_awaited_with(
+            power_item=setpoint_item, power=250, power_factor=1000
+        )
+
+    async def test_setpoint_reaches_discharge_limit_within_deadband(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """High demand sends the discharge limit even when close to the last write."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 20.0}
+        mock_coordinator_master.last_written_power_control = {SAX_POWER_SETPOINT: 238}
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        manager = PowerManager(hass, mock_coordinator_master, entry)
+        manager._last_power_write_monotonic = 100
+
+        with (
+            patch(
+                "custom_components.sax_battery.power_manager.time.monotonic",
+                return_value=101,
+            ),
+            patch.object(manager, "_get_max_discharge_limit", return_value=250),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as write,
+        ):
+            await manager.update_power_setpoint(1106)
+
+        write.assert_awaited_once_with(
+            power_item=setpoint_item, power=250, power_factor=1000
+        )
+
+    async def test_failed_setpoint_refresh_is_retried(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Only a successful refresh advances the refresh deadline."""
+        entry = MockConfigEntry(domain=DOMAIN, data={})
+        entry.add_to_hass(hass)
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+        mock_coordinator_master.last_written_power_control = {SAX_POWER_SETPOINT: 250}
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        manager = PowerManager(hass, mock_coordinator_master, entry)
+        manager._last_power_write_monotonic = 100
+
+        with (
+            patch(
+                "custom_components.sax_battery.power_manager.time.monotonic",
+                return_value=220,
+            ),
+            patch.object(manager, "_get_max_discharge_limit", return_value=250),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+                side_effect=[False, True],
+            ) as write,
+        ):
+            await manager.update_power_setpoint(1200)
+            assert manager._last_power_write_monotonic == 100
+            await manager.update_power_setpoint(1200)
+
+        assert write.await_count == 2
+        assert manager._last_power_write_monotonic == 220
 
     @pytest.mark.parametrize(
         ("previous", "requested", "charge_limit", "discharge_limit", "expected"),
@@ -1201,6 +1341,44 @@ class TestGridPowerMode:
         assert manager._state.grid_charging_enabled is False
         assert manager._state.pv_charging_enabled is True
         assert manager.config_entry.data[CONF_ENABLE_GRID_CHARGING] is False
+
+    async def test_manual_grid_switch_off_forces_zero_without_pv_restore(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Manual grid switch-off sends zero instead of resuming PV balancing."""
+        manager = self._manager(hass, mock_coordinator_master)
+        manager._state.grid_charging_enabled = True
+        manager._state.previous_pv_state = True
+
+        with patch.object(
+            manager, "_async_write_power", new_callable=AsyncMock
+        ) as write:
+            await manager.set_grid_control_mode(
+                False, restore_pv=False, fallback_to_balance=False
+            )
+
+        write.assert_awaited_once_with(0.0, force=True)
+        assert manager._state.pv_charging_enabled is False
+        assert manager._state.grid_charging_enabled is False
+
+    async def test_manual_pv_switch_off_forces_zero(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """Turning PV control off sends an explicit zero setpoint."""
+        manager = self._manager(hass, mock_coordinator_master)
+        manager._state.pv_charging_enabled = True
+
+        with patch.object(
+            manager, "_async_write_power", new_callable=AsyncMock
+        ) as write:
+            await manager.set_pv_charging_mode(False)
+
+        write.assert_awaited_once_with(0.0, force=True)
+        assert manager._state.pv_charging_enabled is False
 
     async def test_sunspec_writes_total_power_via_model_123(
         self,
