@@ -17,6 +17,7 @@ from custom_components.sax_battery.const import (
     LIMIT_MAX_CHARGE_PER_BATTERY,
     LIMIT_MAX_DISCHARGE_PER_BATTERY,
     MANAGEMENT_ITEMS,
+    SAX_COMBINED_SOC,
     SAX_MAX_CHARGE,
     SAX_MAX_DISCHARGE,
     SAX_MIN_SOC,
@@ -58,6 +59,33 @@ def _write_only_address(item_name: str) -> int:
 
 class TestSAXBatteryModbusNumber:
     """Test SAX Battery modbus number entity - consolidated tests."""
+
+    @pytest.mark.parametrize(
+        ("item_name", "boundary_soc", "recovered_soc"),
+        [(SAX_MAX_DISCHARGE, 20, 21), (SAX_MAX_CHARGE, 90, 89)],
+    )
+    async def test_soc_boundary_requires_explicit_reenable(
+        self, mock_coordinator_modbus_base, item_name, boundary_soc, recovered_soc
+    ) -> None:
+        """An automation must explicitly restore a limit after SOC recovers."""
+        coordinator = mock_coordinator_modbus_base
+        coordinator.soc_manager = MagicMock(min_soc=20, max_soc_charging=90)
+        coordinator.data = {SAX_COMBINED_SOC: boundary_soc}
+        item = next(
+            item for item in MODBUS_BATTERY_POWER_LIMIT_ITEMS if item.name == item_name
+        )
+        number = SAXBatteryModbusNumber(coordinator, "battery_a", item)
+
+        with patch.object(number, "async_write_ha_state"):
+            await number.async_set_native_value(1000)
+            assert number.native_value == 0
+            coordinator.async_write_number_value.assert_awaited_with(item, 0)
+            coordinator.data = {SAX_COMBINED_SOC: recovered_soc}
+            assert number.native_value == 0
+            await number.async_set_native_value(1000)
+
+        assert number.native_value == 1000
+        coordinator.async_write_number_value.assert_awaited_with(item, 1000)
 
     def test_initialization_modbus_item(
         self,

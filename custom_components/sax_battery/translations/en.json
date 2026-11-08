@@ -176,6 +176,9 @@
       "bms_min_soc": {
         "name": "Minimum SOC"
       },
+      "bms_max_soc_charging": {
+        "name": "Maximum SOC"
+      },
       "bms_power_setpoint_factor": {
         "name": "Power Setpoint Factor (cos φ)"
       },

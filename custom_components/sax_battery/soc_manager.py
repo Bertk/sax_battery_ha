@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN, SAX_COMBINED_SOC, SAX_MAX_DISCHARGE
+from .const import DOMAIN, SAX_COMBINED_SOC, SAX_MAX_CHARGE, SAX_MAX_DISCHARGE
 from .const_legacy import MODBUS_BATTERY_POWER_LIMIT_ITEMS
 from .items import ModbusItem
 from .power_control_strategy import SunSpecPowerControlStrategy
@@ -172,10 +172,10 @@ class SOCManager:
             return False, "Combined SOC not yet available", None
 
         # Guard clause: Check if SOC is above minimum (no action needed)
-        if combined_soc >= self.min_soc:
+        if combined_soc > self.min_soc:
             return (
                 False,
-                f"SOC {combined_soc:.1f}% >= min {self.min_soc:.1f}%",
+                f"SOC {combined_soc:.1f}% > min {self.min_soc:.1f}%",
                 combined_soc,
             )
 
@@ -439,6 +439,56 @@ class SOCManager:
             "combined_soc must be set when can_enforce=True"
         )
         return await self._enforce_discharge_constraint(combined_soc)
+
+    async def check_and_enforce_charge_limit(self) -> bool:
+        """Set the legacy charge limit to zero at or above maximum SOC."""
+        if not self.enabled or not self.coordinator.is_master or self._is_sunspec:
+            return False
+        if not self.coordinator.data:
+            return False
+        combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
+        if combined_soc is None or combined_soc < self.max_soc_charging:
+            return False
+
+        item = next(
+            (
+                item
+                for item in MODBUS_BATTERY_POWER_LIMIT_ITEMS
+                if item.name == SAX_MAX_CHARGE
+            ),
+            None,
+        )
+        if item is None:
+            return False
+        unique_id = self.coordinator.sax_data.get_unique_id_for_item(
+            item, battery_id=self.coordinator.battery_id
+        )
+        if not unique_id:
+            return False
+        entity_id = er.async_get(self.hass).async_get_entity_id(
+            "number", DOMAIN, unique_id
+        )
+        if not entity_id:
+            _LOGGER.warning("Maximum charge entity not found for SOC enforcement")
+            return False
+        state = self.hass.states.get(entity_id)
+        if state is not None:
+            try:
+                if float(state.state) == 0:
+                    return False
+            except TypeError, ValueError:
+                pass
+        try:
+            await self.hass.services.async_call(
+                "number",
+                "set_value",
+                {"entity_id": entity_id, "value": 0},
+                blocking=True,
+            )
+        except (HomeAssistantError, OSError, TimeoutError) as exc:
+            _LOGGER.error("Failed to enforce charge limit via %s: %s", entity_id, exc)
+            return False
+        return True
 
     def get_diagnostics(self) -> dict[str, object]:
         """Return diagnostic information for troubleshooting.

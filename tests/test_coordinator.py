@@ -17,6 +17,7 @@ from custom_components.sax_battery.const import (
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_BATTERY_PORT,
+    SAX_COMBINED_SOC,
 )
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
@@ -204,6 +205,35 @@ class TestSAXBatteryCoordinator:
             assert isinstance(
                 sax_battery_coordinator_instance.last_update_success_time, datetime
             )
+
+    async def test_update_schedules_charge_limit_at_maximum_soc(
+        self, hass: HomeAssistant, sax_battery_coordinator_instance
+    ) -> None:
+        """The master schedules charge-limit enforcement at the maximum SOC."""
+        coordinator = sax_battery_coordinator_instance
+        coordinator.battery_config[CONF_BATTERY_IS_MASTER] = True
+
+        async def set_soc(data, registry):
+            data[SAX_COMBINED_SOC] = coordinator.soc_manager.max_soc_charging
+
+        with (
+            patch(
+                "homeassistant.helpers.entity_registry.async_get",
+                return_value=MagicMock(),
+            ),
+            patch.object(
+                coordinator, "_update_enabled_calculated_values", side_effect=set_soc
+            ),
+            patch.object(
+                coordinator.soc_manager,
+                "check_and_enforce_charge_limit",
+                new_callable=AsyncMock,
+            ) as enforce,
+        ):
+            await coordinator._async_update_data()
+            await hass.async_block_till_done()
+
+        enforce.assert_awaited_once()
 
     async def test_poll_device_batch_uses_data_provider(
         self,

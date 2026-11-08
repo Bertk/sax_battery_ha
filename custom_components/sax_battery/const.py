@@ -409,7 +409,7 @@ DESCRIPTION_SAX_MIN_SOC_LIMIT = NumberEntityDescription(
 
 DESCRIPTION_SAX_MAX_SOC_CHARGING = NumberEntityDescription(
     key=SAX_MAX_SOC_CHARGING,
-    name="Max SOC for Charging",
+    name="Maximum SOC",
     mode=NumberMode.BOX,
     native_unit_of_measurement=UnitOfRatio.PERCENTAGE,
     native_min_value=0,

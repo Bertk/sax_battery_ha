@@ -683,7 +683,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
             if (
                 current_soc is not None
-                and current_soc < self.coordinator.soc_manager.min_soc
+                and current_soc <= self.coordinator.soc_manager.min_soc
             ):
                 # SOC below minimum - constrain discharge power to 0W
                 _LOGGER.warning(
@@ -694,6 +694,16 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                     value_to_validate,
                 )
                 value_to_validate = 0
+
+        if (
+            self._modbus_item.name == SAX_MAX_CHARGE
+            and hasattr(self.coordinator, "soc_manager")
+            and self.coordinator.soc_manager is not None
+            and self.coordinator.data
+            and (current_soc := self.coordinator.data.get(SAX_COMBINED_SOC)) is not None
+            and current_soc >= self.coordinator.soc_manager.max_soc_charging
+        ):
+            value_to_validate = 0
 
         # Update local cache and UI BEFORE hardware write
         # This ensures UI shows the new value immediately, even if write is queued

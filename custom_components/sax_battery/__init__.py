@@ -198,6 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SAXBatteryConfigEntry) -
             _LOGGER.debug("Checking SOC constraints after initial setup")
             try:
                 await master_coordinator.soc_manager.check_and_enforce_discharge_limit()
+                await master_coordinator.soc_manager.check_and_enforce_charge_limit()
             except Exception as err:  # noqa: BLE001
                 # Don't fail setup if SOC check fails - log and continue
                 _LOGGER.warning("Failed to check SOC constraints on startup: %s", err)

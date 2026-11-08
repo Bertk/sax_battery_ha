@@ -105,6 +105,8 @@ Use the Home Assistant entity picker to select the BMS configuration-status bina
 
 Set power limits with the corresponding number entities. For Legacy control, the power manager applies the configured limit to its balancing requests, checks SOC limits, and refreshes write-only setpoints periodically because the battery does not report those values back.
 
+When SOC reaches the minimum, **Max discharge** is set to 0 W. When it reaches **Maximum SOC**, **Max charge** is set to 0 W. Once SOC returns inside the configured range, an automation or user must set the relevant limit to a nonzero value to enable that direction again; it is not restored automatically.
+
 ## Protocols
 
 - **Legacy:** Uses SAX-specific Modbus registers, including the write-only setpoint and limit registers where enabled.

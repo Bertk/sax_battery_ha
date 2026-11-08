@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from custom_components.sax_battery.const import SAX_COMBINED_SOC
 from custom_components.sax_battery.protocol_mode import ProtocolMode
 from custom_components.sax_battery.soc_manager import SOCManager
@@ -91,6 +93,72 @@ class TestSOCManagerProperties:
 
 class TestCheckAndEnforceDischargeLimit:
     """Test check_and_enforce_discharge_limit method."""
+
+    async def test_enforces_at_minimum_soc(self, soc_manager) -> None:
+        """The minimum boundary is enforced at equality."""
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: soc_manager.min_soc}
+        with patch.object(
+            soc_manager, "_enforce_discharge_constraint", new_callable=AsyncMock
+        ) as enforce:
+            await soc_manager.check_and_enforce_discharge_limit()
+        enforce.assert_awaited_once_with(soc_manager.min_soc)
+
+    @patch("homeassistant.helpers.entity_registry.async_get")
+    async def test_charge_limit_zero_at_maximum_soc(
+        self, mock_registry, soc_manager
+    ) -> None:
+        """At maximum SOC the charge limit is zeroed through the number entity."""
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: soc_manager.max_soc_charging}
+        mock_registry.return_value.async_get_entity_id.return_value = (
+            "number.sax_bms_max_charge"
+        )
+
+        assert await soc_manager.check_and_enforce_charge_limit() is True
+
+        soc_manager.hass.services.async_call.assert_awaited_once_with(
+            "number",
+            "set_value",
+            {"entity_id": "number.sax_bms_max_charge", "value": 0},
+            blocking=True,
+        )
+
+    @pytest.mark.parametrize("soc", [89, 90, 91])
+    @patch("homeassistant.helpers.entity_registry.async_get")
+    async def test_charge_enforcement_boundary(
+        self, mock_registry, soc_manager, soc
+    ) -> None:
+        """Charge is blocked at or above the maximum, not below it."""
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: soc}
+        mock_registry.return_value.async_get_entity_id.return_value = (
+            "number.sax_bms_max_charge"
+        )
+
+        assert await soc_manager.check_and_enforce_charge_limit() is (soc >= 90)
+        assert soc_manager.hass.services.async_call.await_count == int(soc >= 90)
+
+    @pytest.mark.parametrize("state_value", ["0", "0.0"])
+    @patch("homeassistant.helpers.entity_registry.async_get")
+    async def test_charge_enforcement_skips_zero(
+        self, mock_registry, soc_manager, state_value
+    ) -> None:
+        """Already-zero limits are not rewritten on each poll."""
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: 90}
+        mock_registry.return_value.async_get_entity_id.return_value = (
+            "number.sax_bms_max_charge"
+        )
+        soc_manager.hass.states.get.side_effect = None
+        soc_manager.hass.states.get.return_value = MagicMock(state=state_value)
+
+        assert await soc_manager.check_and_enforce_charge_limit() is False
+        soc_manager.hass.services.async_call.assert_not_awaited()
+
+    async def test_charge_enforcement_skips_sunspec(self, soc_manager) -> None:
+        """SunSpec does not expose a writable legacy max-charge number."""
+        soc_manager.coordinator.protocol_mode = ProtocolMode.SUNSPEC
+        soc_manager.coordinator.data = {SAX_COMBINED_SOC: 90}
+
+        assert await soc_manager.check_and_enforce_charge_limit() is False
+        soc_manager.hass.services.async_call.assert_not_awaited()
 
     @patch("homeassistant.helpers.entity_registry.async_get")
     async def test_enforce_writes_to_entity(

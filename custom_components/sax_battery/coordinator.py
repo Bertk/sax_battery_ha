@@ -331,14 +331,25 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Check SOC constraints after data update
             if self.soc_manager and self.is_master:
                 combined_soc = data.get(SAX_COMBINED_SOC)
-                if combined_soc is not None and combined_soc < self.soc_manager.min_soc:
+                if (
+                    combined_soc is not None
+                    and combined_soc <= self.soc_manager.min_soc
+                ):
                     _LOGGER.debug(
-                        "SOC %.1f%% below minimum %.1f%% - triggering enforcement",
+                        "SOC %.1f%% at or below minimum %.1f%% - triggering enforcement",
                         combined_soc,
                         self.soc_manager.min_soc,
                     )
                     self.hass.async_create_task(
                         self.soc_manager.check_and_enforce_discharge_limit()
+                    )
+
+                if (
+                    combined_soc is not None
+                    and combined_soc >= self.soc_manager.max_soc_charging
+                ):
+                    self.hass.async_create_task(
+                        self.soc_manager.check_and_enforce_charge_limit()
                     )
 
             _LOGGER.debug(
