@@ -9,3 +9,4 @@ wheel
 pylint
 pyright
 pysunspec2
+deadcode>=2.6.0
