@@ -81,7 +81,7 @@ class LegacyPowerControlStrategy(PowerControlStrategy):
         return float(battery_count * 4600)
 
     async def async_set_power(self, target_watts: float, timeout_s: int = 60) -> bool:
-        """Write nominal power and factor atomically."""
+        """Write setpoint and factor atomically."""
         power_item = self.coordinator.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
         if not power_item or not isinstance(power_item, ModbusItem):
             _LOGGER.error("SAX_POWER_SETPOINT item not found")

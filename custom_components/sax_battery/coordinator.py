@@ -147,8 +147,8 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             last_cycle_duration_fn=lambda: self._last_cycle_duration,
         )
 
-        # Track nominal power atomic write state
-        self._power_setpoint_pending: dict[str, int] = {}  # {power: int, factor: int}
+        # Track setpoint atomic write state
+        self._power_setpoint_pending: dict[str, int] = {}  # noqa: DC12 {power: int, factor: int}
 
         # Set the modbus API reference for all items
         for item in self.sax_data.get_modbus_items_for_battery(battery_id):
@@ -432,7 +432,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                     success = False
 
-                    # Handle atomic nominal power write
+                    # Handle atomic setpoint write
                     if write_type == "power_setpoint":
                         factor = metadata.get("factor", 100)
 
@@ -487,10 +487,10 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except builtins.TimeoutError:
                     break  # No more pending writes
                 except Exception as err:  # noqa: BLE001
-                    if item is not None:  # pyright: ignore[reportPossiblyUnboundVariable]
+                    if item is not None:  # pyright: ignore[reportPossiblyUnboundVariable] # noqa: DC12
                         _LOGGER.error(
                             "Write queue error for %s: %s",
-                            item.name if "item" in locals() else "unknown",  # pyright: ignore[reportPossiblyUnboundVariable]
+                            item.name if "item" in locals() else "unknown",  # pyright: ignore[reportPossiblyUnboundVariable] # noqa: DC12
                             err,
                         )
 
@@ -758,7 +758,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Security: Validate coordinator data is available
             if self.data is None:
-                _LOGGER.debug(  # type:ignore[unreachable]
+                _LOGGER.debug(  # type:ignore[unreachable] # noqa: DC12
                     "Coordinator data not yet available, skipping calculated values update"
                 )
                 return
@@ -770,7 +770,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             enabled_sax_items = []
             for sax_item in all_sax_items:
                 if not isinstance(sax_item, SAXItem):
-                    continue  # type: ignore[unreachable]
+                    continue  # type: ignore[unreachable] # noqa: DC12
 
                 # Check if SAX entity is enabled in registry
                 unique_id = (
@@ -842,7 +842,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 except (ValueError, TypeError, ZeroDivisionError) as err:
                     _LOGGER.warning("Failed to calculate %s: %s", sax_item.name, err)
-                    # calculated_values[sax_item.name] = None
 
             # Performance: Single update operation
             data.update(calculated_values)
@@ -1055,7 +1054,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _queue_power_setpoint_write(self) -> None:
-        """Queue atomic nominal power write.
+        """Queue atomic setpoint write.
 
         Security:
             OWASP A05: Ensures atomic write for related registers
@@ -1065,7 +1064,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if power is None or factor is None:
             _LOGGER.error(
-                "Cannot queue nominal power write: missing values (power=%s, factor=%s)",
+                "Cannot queue setpoint write: missing values (power=%s, factor=%s)",
                 power,
                 factor,
             )
@@ -1091,7 +1090,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_request_refresh()
 
         _LOGGER.debug(
-            "Queued atomic nominal power write: power=%sW, factor=%s%%",
+            "Queued atomic setpoint write: power=%sW, factor=%s%%",
             power,
             factor,
         )

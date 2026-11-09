@@ -17,7 +17,6 @@ from custom_components.sax_battery.const import (
     CONF_CONTROL_POWER,
     CONF_ENABLE_GRID_CHARGING,
     CONF_MIN_SOC,
-    CONF_PF_SENSOR,
     CONF_POWER_SENSOR,
     DEFAULT_MIN_SOC,
     DESCRIPTION_SAX_COMBINED_SOC,
@@ -878,7 +877,6 @@ def mock_config_entry():
         CONF_MIN_SOC: DEFAULT_MIN_SOC,
         # Legacy pilot configuration
         CONF_POWER_SENSOR: None,
-        CONF_PF_SENSOR: None,
     }
     entry.options = {}
     entry.add_update_listener = MagicMock(return_value=MagicMock())

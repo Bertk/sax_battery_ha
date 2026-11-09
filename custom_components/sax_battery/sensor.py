@@ -307,7 +307,7 @@ class SAXBatteryModbusSensor(CoordinatorEntity[SAXBatteryCoordinator], SensorEnt
 
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
-            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         # Set entity registry enabled state from ModbusItem
         # CONF_PROTOCOL_MODE == legacy shall not enable modbus_item with battery_device_id==100
@@ -415,7 +415,7 @@ class SAXBatteryCalculatedSensor(
 
         # Set entity description from sax item if available
         if self._sax_item.entitydescription is not None:
-            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         if (
             hasattr(self, "entity_description")
@@ -668,7 +668,7 @@ class SAXBatteryCoordinatorCycleSensor(
         self._coordinators = coordinator
 
         if sax_item.entitydescription is not None:
-            self.entity_description = sax_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = sax_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         # Generate unique ID using get_unique_id_for_item
         self._attr_unique_id = coordinator.sax_data.get_unique_id_for_item(
@@ -823,7 +823,7 @@ class SAXBatteryPeriodEnergySensor(
         )
 
         if sax_item.entitydescription is not None:
-            self.entity_description = sax_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = sax_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         # System-level device (cluster device)
         self._attr_device_info: DeviceInfo = coordinator.sax_data.get_device_info(

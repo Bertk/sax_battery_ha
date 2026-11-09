@@ -78,22 +78,11 @@ class BaseModel(ABC):
 class BatteryModel(BaseModel):
     """Battery model using predefined items from const.py."""
 
-    # slave_id: int = 1
     host: str = ""
     port: int = 502
     is_master: bool = False
     config_data: dict[str, Any] = field(default_factory=dict)
     developer_mode: bool = False
-
-    # def get_device_info(self) -> DeviceInfo:
-    #     """Get device info for battery."""
-    #     return DeviceInfo(
-    #         identifiers={("sax_battery", self.device_id)},
-    #         name=self.name,
-    #         manufacturer=DEFAULT_DEVICE_INFO.manufacturer,
-    #         model=DEFAULT_DEVICE_INFO.model,
-    #         sw_version=DEFAULT_DEVICE_INFO.sw_version,
-    #     )
 
     def get_modbus_items(self) -> list[ModbusItem]:
         """Get modbus items based on battery role.
@@ -294,7 +283,7 @@ class SAXBatteryData:
                 sw_version=DEFAULT_DEVICE_INFO.sw_version,
             )
 
-        _LOGGER.error("Unknown device type: %s, %s", battery_id, device)  # type: ignore [unreachable]
+        _LOGGER.error("Unknown device type: %s, %s", battery_id, device)  # type: ignore [unreachable] # noqa: DC12
         raise ValueError(f"Unknown device type: {device}")
 
     def get_unique_id_for_item(

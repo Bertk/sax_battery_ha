@@ -37,7 +37,6 @@ from .entity_keys import (
     SAX_AC_CURRENT_C,
     SAX_AC_CURRENT_SUM,
     SAX_AC_POWER_TOTAL,
-    SAX_ACTIVE_POWER,
     SAX_APPARENT_POWER,
     SAX_CAPACITY,
     SAX_CHARGE_FROM_GRID_SWITCH,
@@ -49,8 +48,6 @@ from .entity_keys import (
     SAX_CURRENT_L1,
     SAX_CURRENT_L2,
     SAX_CURRENT_L3,
-    SAX_CURRENT_SOC,
-    SAX_CYCLES,
     SAX_DEPTH_OF_DISCHARGE,
     SAX_DISCHARGE_POWER,
     SAX_ENERGY_CHARGED_DAILY,
@@ -232,7 +229,6 @@ DESCRIPTION_POWER_LIMITS_CONFIGURED = BinarySensorEntityDescription(
 # Configuration constants
 CONF_BATTERY_COUNT = "battery_count"
 CONF_POWER_SENSOR = "power_sensor"  # power sensor for balanced charging
-CONF_PF_SENSOR = "pf_sensor_entity_id"
 CONF_MASTER_BATTERY = "master_battery"
 CONF_DEVICE_ID = "device_id"
 
@@ -356,17 +352,6 @@ DESCRIPTION_SAX_STATUS_SWITCH = SwitchEntityDescription(
     icon="mdi:battery",
 )
 
-# Register 45 (40046): Switching state of the storage unit
-# Write commands: "Off" = 1, "On" = 2
-# Read commands: "Off" = 1, "On" = 2, "Connected" = 3, "Standby" = 4
-SAX_STATUS_STATES: dict[int, str] = {
-    1: "Off",  # Battery disabled
-    2: "On",  # Normal operation
-    3: "Connected",  # Read-only: Battery connected to grid
-    4: "Standby",  # Read-only: Requires power cycle
-}
-
-
 DESCRIPTION_CHARGE_FROM_PV_SWITCH = SwitchEntityDescription(
     key=SAX_CHARGE_FROM_PV_SWITCH,
     name="PV Charging Switch",
@@ -444,13 +429,6 @@ DESCRIPTION_SAX_CAPACITY = SensorEntityDescription(
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL,
     native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-)
-
-DESCRIPTION_SAX_CYCLES = SensorEntityDescription(
-    key=SAX_CYCLES,
-    name="Sax Cycles",
-    state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement="cycles",  # No standard unit, using "cycles"
 )
 
 DESCRIPTION_SAX_TEMPERATURE = SensorEntityDescription(
@@ -542,14 +520,6 @@ DESCRIPTION_SAX_VOLTAGE_C = SensorEntityDescription(
     native_unit_of_measurement=UnitOfElectricPotential.VOLT,
 )
 
-DESCRIPTION_SAX_ACTIVE_POWER = SensorEntityDescription(
-    key=SAX_ACTIVE_POWER,
-    name="Storage Active Power",
-    device_class=SensorDeviceClass.POWER,
-    state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement=UnitOfPower.WATT,
-)
-
 DESCRIPTION_SAX_APPARENT_POWER = SensorEntityDescription(
     key=SAX_APPARENT_POWER,
     name="Storage Apparent Power",
@@ -633,14 +603,6 @@ DESCRIPTION_SAX_MIN_SOC = SensorEntityDescription(
     native_unit_of_measurement=UnitOfRatio.PERCENTAGE,
 )
 
-DESCRIPTION_SAX_CURRENT_SOC = SensorEntityDescription(
-    key=SAX_CURRENT_SOC,
-    name="Storage Current SoC",
-    device_class=SensorDeviceClass.BATTERY,
-    state_class=SensorStateClass.MEASUREMENT,
-    native_unit_of_measurement=UnitOfRatio.PERCENTAGE,
-)
-
 DESCRIPTION_SAX_DEPTH_OF_DISCHARGE = SensorEntityDescription(
     key=SAX_DEPTH_OF_DISCHARGE,
     name="Storage Depth of Discharge",
@@ -656,6 +618,7 @@ DESCRIPTION_SAX_PHASE_CURRENTS_SUM = SensorEntityDescription(
     state_class=SensorStateClass.MEASUREMENT,
     native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
 )
+
 DESCRIPTION_SAX_CURRENT_L1 = SensorEntityDescription(
     key=SAX_CURRENT_L1,
     name="Sax Current L1",

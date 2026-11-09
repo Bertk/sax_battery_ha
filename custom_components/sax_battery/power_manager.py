@@ -467,7 +467,7 @@ class PowerManager:
             await self.update_power_setpoint(0.0)
 
     async def _update_pv_charging_power(self) -> None:
-        """Update nominal power for PV charging mode.
+        """Update setpoint for PV charging mode.
 
         Uses the formula: New Setpoint = Current Battery Power + Grid Power
         (grid power is positive for import, negative for export; setpoint and
@@ -544,11 +544,11 @@ class PowerManager:
             current_battery_power,
         )
 
-        # Update nominal power via coordinator
+        # Update setpoint via coordinator
         await self.update_power_setpoint(target_power)
 
     async def _update_grid_balance_mode(self) -> None:
-        """Update nominal power to balance grid power.
+        """Update setpoint to balance grid power.
 
         Uses grid power sensor to calculate battery power needed
         to achieve zero grid import/export.
@@ -972,7 +972,7 @@ class PowerManager:
         return battery_power  # noqa: RET504
 
     async def update_power_setpoint(self, power: float, *, force: bool = False) -> None:
-        """Update nominal power via coordinator atomic write.
+        """Update setpoint via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
         SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42)
@@ -998,7 +998,7 @@ class PowerManager:
         """
         # Security: Validate power value type
         if not isinstance(power, (int, float)):
-            _LOGGER.error("Invalid power value type: %s", type(power))  # type:ignore[unreachable]
+            _LOGGER.error("Invalid power value type: %s", type(power))  # type:ignore[unreachable] # noqa: DC12
             return
 
         # Get current combined SOC for constraint enforcement
@@ -1098,7 +1098,7 @@ class PowerManager:
                     constrained_power,
                 )
             else:
-                _LOGGER.error("Failed to write nominal power via coordinator")
+                _LOGGER.error("Failed to write setpoint via coordinator")
 
         except TimeoutError:
             _LOGGER.error(
@@ -1106,7 +1106,7 @@ class PowerManager:
                 constrained_power,
             )
         except (OSError, ValueError) as err:
-            _LOGGER.error("Failed to update nominal power: %s", err)
+            _LOGGER.error("Failed to update setpoint: %s", err)
 
     async def set_pv_charging_mode(self, enabled: bool) -> None:
         """Enable or disable PV charging mode.
@@ -1217,7 +1217,7 @@ class PowerManager:
 
         Args:
             enabled: True to enable grid charging mode
-            target_power: Fixed nominal power (W)
+            target_power: Fixed setpoint (W)
                          Positive = discharge to grid
                          Negative = charge from grid/PV
                          Default = 0.0 (standby)
@@ -1276,7 +1276,7 @@ class PowerManager:
         )
 
         if enabled:
-            # Apply nominal power with constraint enforcement
+            # Apply setpoint with constraint enforcement
             await self.update_power_setpoint(target_power)
         else:
             # Reset to standby when disabling
@@ -1289,7 +1289,7 @@ class PowerManager:
 
     @property
     def current_power(self) -> float:
-        """Get current nominal power."""
+        """Get current setpoint."""
         return self._state.target_power
 
     @property

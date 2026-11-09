@@ -26,7 +26,7 @@ class BaseItem(ABC):
     name: str
     mtype: TypeConstants
     device: DeviceConstants
-    translation_key: str = ""
+    translation_key: str = ""  # noqa: DC06
     entitydescription: (
         SensorEntityDescription
         | NumberEntityDescription
@@ -231,7 +231,7 @@ class ModbusItem(BaseItem):
     def get_switch_state_name(self, value: int) -> str:
         """Get human-readable name for switch state value."""
         if not isinstance(value, int):
-            return "unknown"  # type:ignore[unreachable]
+            return "unknown"  # type:ignore[unreachable] # noqa:DC12
 
         if self.state_map:
             state_name = self.state_map.get(value)

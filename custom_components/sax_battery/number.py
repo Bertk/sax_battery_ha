@@ -333,7 +333,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
 
         # Set entity description from modbus item if available
         if self._modbus_item.entitydescription is not None:
-            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = self._modbus_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         # Set entity name
         if (
@@ -947,7 +947,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
             )
             return
 
-        # Check if this is a nominal power entity (early return for performance)
+        # Check if this is a setpoint entity (early return for performance)
         if self._modbus_item.name != SAX_POWER_SETPOINT:
             return
 
@@ -1183,7 +1183,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
 
         # Set entity description
         if self._sax_item.entitydescription is not None:
-            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment]
+            self.entity_description = self._sax_item.entitydescription  # type: ignore[assignment] # noqa: DC12
 
         # Set entity registry enabled state from SAXItem or configuration
         # All other config numbers use SAXItem's enabled_by_default
@@ -1454,11 +1454,11 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         default_pf = 9500  # 0.95 * 10000
 
         # Could calculate from apparent power if available:
-        # pf = active_power / apparent_power
+        # pf = active_power / apparent_power # noqa: DC12
         # For now, use default value
 
         if not isinstance(power_value, (int, float)):
-            _LOGGER.warning("Invalid power value type, using default PF")  # type: ignore[unreachable]
+            _LOGGER.warning("Invalid power value type, using default PF")  # type: ignore[unreachable] # noqa: DC12
             return default_pf
 
         # For zero power, return unity power factor
@@ -1469,11 +1469,11 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         return default_pf
 
     def _update_power_entity(self, name: str, item: ModbusItem, value: int) -> None:
-        """Update the nominal power entity if it exists.
+        """Update the setpoint entity if it exists.
 
         Args:
             name: name of Modbus item
-            item: ModbusItem for diagnostic nominal power
+            item: ModbusItem for diagnostic setpoint
             value: New value for number local cache
         """
         if not item:
@@ -1489,6 +1489,6 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
                     str(value),
                     {
                         **entity.attributes,
-                        "note": "Updated via nominal power change",
+                        "note": "Updated via setpoint change",
                     },
                 )

@@ -626,7 +626,7 @@ class ModbusAPI:
 
                 # Convert value to registers using pymodbus built-in method
                 converted_registers: list[int] = (
-                    self._modbus_client.convert_to_registers(  # pyright: ignore [union-attr]
+                    self._modbus_client.convert_to_registers(  # pyright: ignore [union-attr] # noqa: DC12
                         value, modbus_item.data_type
                     )
                 )
@@ -638,7 +638,7 @@ class ModbusAPI:
                     converted_registers,
                 )
                 # SAX does not support single register writes, so always use write_registers
-                result = await self._modbus_client.write_registers(  # pyright: ignore [union-attr]
+                result = await self._modbus_client.write_registers(  # pyright: ignore [union-attr] # noqa: DC12
                     address=modbus_item.address,
                     values=converted_registers,
                     device_id=modbus_item.battery_device_id,
@@ -746,7 +746,7 @@ class ModbusAPI:
     async def write_power_setpoint(
         self, value: int, power_factor: int, modbus_item: ModbusItem | None = None
     ) -> bool:
-        """Write nominal power value to SAX Battery.
+        """Write setpoint value to SAX Battery.
 
         Handles SAX battery quirks:
         - Transaction ID bug: Battery returns wrong transaction ID
@@ -754,7 +754,7 @@ class ModbusAPI:
         - Atomic write: Power and power factor must be written together
 
         Args:
-            value: The nominal power value to write (can be negative for charging)
+            value: The setpoint value to write (can be negative for charging)
             power_factor: Power factor as scaled integer (e.g., 9500 for 0.95)
             modbus_item: Optional modbus item for context (address and device_id)
 
@@ -770,7 +770,7 @@ class ModbusAPI:
             Operation lock prevents concurrent writes
         """
         if not modbus_item:
-            _LOGGER.warning("No Modbus item provided for nominal power write")
+            _LOGGER.warning("No Modbus item provided for setpoint write")
             return False
 
         # Validate connection state
@@ -860,7 +860,7 @@ class ModbusAPI:
 
             except (ConnectionException, ModbusIOException) as exc:
                 _LOGGER.error(
-                    "Connection error writing nominal power to %s: %s",
+                    "Connection error writing setpoint to %s: %s",
                     self.battery_id,
                     exc,
                 )
@@ -872,7 +872,7 @@ class ModbusAPI:
 
             except (OSError, TimeoutError) as exc:
                 _LOGGER.error(
-                    "Network error writing nominal power to %s: %s",
+                    "Network error writing setpoint to %s: %s",
                     self.battery_id,
                     exc,
                 )
@@ -884,7 +884,7 @@ class ModbusAPI:
 
             except ModbusException as exc:
                 _LOGGER.error(
-                    "Modbus exception writing nominal power to %s: %s",
+                    "Modbus exception writing setpoint to %s: %s",
                     self.battery_id,
                     exc,
                 )
