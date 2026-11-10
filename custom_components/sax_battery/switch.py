@@ -30,6 +30,7 @@ from .coordinator import SAXBatteryCoordinator
 from .entity_utils import filter_items_by_type, filter_sax_items_by_type
 from .enums import TypeConstants
 from .items import ModbusItem, SAXItem
+from .protocol_mode import ProtocolMode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -738,10 +739,25 @@ class SAXBatteryControlSwitch(
                         CONF_ENABLE_PV_CHARGING: False,
                     },
                 )
+                if self.coordinator.protocol_mode == ProtocolMode.LEGACY:
+                    raise HomeAssistantError(
+                        "Cannot stop power: power manager unavailable"
+                    )
 
         elif self._sax_item.name == SAX_CHARGE_FROM_GRID_SWITCH:
             _LOGGER.info(
                 "Updating config entry for grid charging: CONF_ENABLE_GRID_CHARGING=False"
+            )
+
+            self.coordinator.data[SAX_CHARGE_FROM_GRID_SWITCH] = False
+            self.coordinator.data[SAX_CHARGE_FROM_PV_SWITCH] = False
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.config_entry,
+                data={
+                    **self.coordinator.config_entry.data,
+                    CONF_ENABLE_GRID_CHARGING: False,
+                    CONF_ENABLE_PV_CHARGING: False,
+                },
             )
 
             # Trigger power manager update if it exists
@@ -756,18 +772,6 @@ class SAXBatteryControlSwitch(
                     restore_pv=False,
                     fallback_to_balance=False,
                 )
-                pv_enabled = False
-            else:
-                pv_enabled = False
-            self.coordinator.data[SAX_CHARGE_FROM_GRID_SWITCH] = False
-            self.coordinator.data[SAX_CHARGE_FROM_PV_SWITCH] = False
-            self.hass.config_entries.async_update_entry(
-                self.coordinator.config_entry,
-                data={
-                    **self.coordinator.config_entry.data,
-                    CONF_ENABLE_GRID_CHARGING: False,
-                    CONF_ENABLE_PV_CHARGING: pv_enabled,
-                },
-            )
-
+            elif self.coordinator.protocol_mode == ProtocolMode.LEGACY:
+                raise HomeAssistantError("Cannot stop power: power manager unavailable")
         await self.coordinator.async_request_refresh()

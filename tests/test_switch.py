@@ -33,6 +33,7 @@ from custom_components.sax_battery.const import (
 from custom_components.sax_battery.coordinator import SAXBatteryCoordinator
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem, SAXItem
+from custom_components.sax_battery.protocol_mode import ProtocolMode
 from custom_components.sax_battery.switch import (
     SAXBatteryControlSwitch,
     SAXBatterySwitch,
@@ -42,6 +43,7 @@ from custom_components.sax_battery.utils import should_include_entity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant, State
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
 
@@ -1127,6 +1129,7 @@ class TestSAXBatteryControlSwitch:
             OWASP A05: Validates coordinator data updates instead of config entry
         """
         mock_sax_item_control.name = SAX_CHARGE_FROM_PV_SWITCH
+        mock_control_coordinator.protocol_mode = ProtocolMode.SUNSPEC
         coordinators = {"bess_a": mock_control_coordinator}
 
         switch = SAXBatteryControlSwitch(
@@ -1182,6 +1185,26 @@ class TestSAXBatteryControlSwitch:
             restore_pv=False,
             fallback_to_balance=False,
         )
+
+    @pytest.mark.parametrize(
+        "switch_name", [SAX_CHARGE_FROM_PV_SWITCH, SAX_CHARGE_FROM_GRID_SWITCH]
+    )
+    async def test_legacy_stop_requires_power_manager(
+        self, mock_control_coordinator, mock_sax_item_control, switch_name
+    ) -> None:
+        """Legacy stop reports that zero could not be sent without a manager."""
+        mock_sax_item_control.name = switch_name
+        mock_control_coordinator.protocol_mode = ProtocolMode.LEGACY
+        mock_control_coordinator.power_manager = None
+        switch = SAXBatteryControlSwitch(
+            coordinator=mock_control_coordinator,
+            sax_item=mock_sax_item_control,
+            coordinators={"bess_a": mock_control_coordinator},
+        )
+        switch.hass = MagicMock()
+
+        with pytest.raises(HomeAssistantError, match="power manager unavailable"):
+            await switch.async_turn_off()
 
 
 class TestAsyncSetupEntry:
@@ -1634,6 +1657,7 @@ class TestSAXBatterySwitchComprehensiveCoverage:
         )
 
         coordinators = {"bess_a": mock_coordinator_comprehensive}
+        mock_coordinator_comprehensive.protocol_mode = ProtocolMode.SUNSPEC
 
         switch = SAXBatteryControlSwitch(
             coordinator=mock_coordinator_comprehensive,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,6 +42,7 @@ from custom_components.sax_battery.power_manager import PowerManager, PowerManag
 from custom_components.sax_battery.protocol_mode import ProtocolMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
@@ -1089,7 +1091,19 @@ class TestPowerManagerProperties:
         await power_manager.set_pv_charging_mode(True)
         assert entry.data[CONF_ENABLE_PV_CHARGING] is True
 
-        await power_manager.set_pv_charging_mode(False)
+        with (
+            patch.object(
+                power_manager,
+                "_async_write_power",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "custom_components.sax_battery.power_manager.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await power_manager.set_pv_charging_mode(False)
         assert entry.data[CONF_ENABLE_PV_CHARGING] is False
 
     def test_get_pv_charging_enabled_property(
@@ -1352,9 +1366,15 @@ class TestGridPowerMode:
         manager._state.grid_charging_enabled = True
         manager._state.previous_pv_state = True
 
-        with patch.object(
-            manager, "_async_write_power", new_callable=AsyncMock
-        ) as write:
+        with (
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+            patch(
+                "custom_components.sax_battery.power_manager.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
             await manager.set_grid_control_mode(
                 False, restore_pv=False, fallback_to_balance=False
             )
@@ -1372,13 +1392,146 @@ class TestGridPowerMode:
         manager = self._manager(hass, mock_coordinator_master)
         manager._state.pv_charging_enabled = True
 
-        with patch.object(
-            manager, "_async_write_power", new_callable=AsyncMock
-        ) as write:
+        with (
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+            patch(
+                "custom_components.sax_battery.power_manager.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
             await manager.set_pv_charging_mode(False)
 
         write.assert_awaited_once_with(0.0, force=True)
         assert manager._state.pv_charging_enabled is False
+
+    @pytest.mark.parametrize("mode", ["pv", "grid"])
+    async def test_manual_stop_waits_for_coordinator_interval(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mode: str,
+    ) -> None:
+        """Legacy manual stops allow one coordinator interval after zero."""
+        manager = self._manager(hass, mock_coordinator_master)
+        with (
+            patch.object(
+                manager, "_async_write_power", new_callable=AsyncMock
+            ) as write,
+            patch(
+                "custom_components.sax_battery.power_manager.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as sleep,
+        ):
+            if mode == "pv":
+                await manager.set_pv_charging_mode(False)
+            else:
+                await manager.set_grid_control_mode(
+                    False, restore_pv=False, fallback_to_balance=False
+                )
+
+        write.assert_awaited_once_with(0.0, force=True)
+        assert mock_coordinator_master.update_interval is not None
+        sleep.assert_awaited_once_with(
+            mock_coordinator_master.update_interval.total_seconds()
+        )
+
+    @pytest.mark.parametrize("mode", ["pv", "grid"])
+    async def test_manual_stop_reports_write_failure(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+        mode: str,
+    ) -> None:
+        """A failed zero write is not reported as a successful stop."""
+        manager = self._manager(hass, mock_coordinator_master)
+        operation = (
+            manager.set_pv_charging_mode(False)
+            if mode == "pv"
+            else manager.set_grid_control_mode(
+                False, restore_pv=False, fallback_to_balance=False
+            )
+        )
+        with (
+            patch.object(
+                manager,
+                "_async_write_power",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            pytest.raises(HomeAssistantError, match="zero power"),
+        ):
+            await operation
+        assert manager._stop_complete.is_set()
+
+    async def test_manual_stop_discards_inflight_update_and_delays_reenable(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_master: SAXBatteryCoordinator,
+    ) -> None:
+        """A stale balancing result cannot overwrite zero during a stop."""
+        manager = self._manager(hass, mock_coordinator_master)
+        manager._state.pv_charging_enabled = True
+        mock_coordinator_master.data = {SAX_COMBINED_SOC: 50.0}
+        setpoint_item = next(
+            item
+            for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
+            if item.name == SAX_POWER_SETPOINT
+        )
+        calculation_started = asyncio.Event()
+        finish_calculation = asyncio.Event()
+        settling_started = asyncio.Event()
+        finish_settling = asyncio.Event()
+        yield_control = asyncio.sleep
+        calculation_results: list[bool] = []
+
+        async def calculate_power() -> None:
+            calculation_started.set()
+            await finish_calculation.wait()
+            calculation_results.append(await manager.update_power_setpoint(-500))
+
+        async def settle(seconds: float) -> None:
+            settling_started.set()
+            await finish_settling.wait()
+
+        with (
+            patch.object(
+                manager, "_update_sm_balanced_power", side_effect=calculate_power
+            ),
+            patch.object(
+                mock_coordinator_master.sax_data,
+                "get_item_by_name",
+                return_value=setpoint_item,
+            ),
+            patch.object(
+                mock_coordinator_master,
+                "async_write_power_control_value",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as write,
+            patch(
+                "custom_components.sax_battery.power_manager.asyncio.sleep",
+                side_effect=settle,
+            ),
+        ):
+            update_task = asyncio.create_task(manager._async_update_power())
+            await asyncio.wait_for(calculation_started.wait(), 1)
+            stop_task = asyncio.create_task(manager.set_pv_charging_mode(False))
+            await asyncio.wait_for(settling_started.wait(), 1)
+            enable_task = asyncio.create_task(manager.set_pv_charging_mode(True))
+            finish_calculation.set()
+            await yield_control(0)
+            assert not enable_task.done()
+            assert not update_task.done()
+            assert write.await_count == 1
+            assert write.await_args is not None
+            assert write.await_args.kwargs["power"] == 0
+            finish_settling.set()
+            await asyncio.gather(update_task, stop_task, enable_task)
+
+        assert calculation_results == [False, True]
+        assert [call.kwargs["power"] for call in write.await_args_list] == [0, -500]
 
     async def test_sunspec_writes_total_power_via_model_123(
         self,

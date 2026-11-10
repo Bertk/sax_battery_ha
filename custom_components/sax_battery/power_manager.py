@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -28,6 +29,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -59,7 +61,7 @@ from .const import (
     SAX_POWER_SETPOINT,
     SAX_POWER_SM,
 )
-from .coordinator import SAXBatteryCoordinator
+from .coordinator import BATTERY_POLL_INTERVAL, SAXBatteryCoordinator
 from .items import ModbusItem
 from .power_control_strategy import SunSpecPowerControlStrategy
 from .protocol_mode import ProtocolMode
@@ -144,6 +146,13 @@ class PowerManager:
         self._remove_config_update: Callable[[], None] | None = None
         self._running = False
         self._last_power_write_monotonic: float | None = None
+        self._power_write_lock = asyncio.Lock()
+        self._stop_complete = asyncio.Event()
+        self._stop_complete.set()
+        self._power_generation = 0
+        self._update_generation: ContextVar[int | None] = ContextVar(
+            "power_update_generation", default=None
+        )
 
         # Configuration values
         self._update_config_values()
@@ -318,6 +327,16 @@ class PowerManager:
         _LOGGER.info("Power manager configuration updated")
 
     async def _async_update_power(self, now: Any = None) -> None:
+        """Run a power update associated with the current control generation."""
+        if not self._stop_complete.is_set():
+            return
+        token = self._update_generation.set(self._power_generation)
+        try:
+            await self._async_update_power_for_mode(now)
+        finally:
+            self._update_generation.reset(token)
+
+    async def _async_update_power_for_mode(self, now: Any = None) -> None:
         """Update power via coordinator based on current mode.
 
         Power source selection:
@@ -429,11 +448,10 @@ class PowerManager:
 
     async def _async_write_power(
         self, per_battery_power: float, *, force: bool = False
-    ) -> None:
+    ) -> bool:
         """Write a per-battery power target using the active protocol."""
         if not self._is_sunspec:
-            await self.update_power_setpoint(per_battery_power, force=force)
-            return
+            return await self.update_power_setpoint(per_battery_power, force=force)
 
         # Model 123 setpoint is relative to the cluster reference power
         await SunSpecPowerControlStrategy(self.coordinator).async_set_power(
@@ -441,6 +459,7 @@ class PowerManager:
         )
         self._state.target_power = per_battery_power
         self._state.last_update = datetime.now()
+        return True
 
     async def _async_stop_grid_mode(self, reason: str) -> None:
         """Leave grid mode because a limit was reached and fall back to balancing."""
@@ -971,19 +990,31 @@ class PowerManager:
 
         return battery_power  # noqa: RET504
 
-    async def update_power_setpoint(self, power: float, *, force: bool = False) -> None:
+    async def update_power_setpoint(self, power: float, *, force: bool = False) -> bool:
+        """Serialize regular writes and discard stale mode calculations."""
+        if force:
+            return await self._async_update_power_setpoint(power, force=True)
+
+        generation = self._update_generation.get()
+        async with self._power_write_lock:
+            if generation is not None and generation != self._power_generation:
+                return False
+            return await self._async_update_power_setpoint(power)
+
+    async def _async_update_power_setpoint(
+        self, power: float, *, force: bool = False
+    ) -> bool:
         """Update setpoint via coordinator atomic write.
 
         Uses coordinator.async_write_power_control_value() to write both
         SAX_POWER_SETPOINT (register 41) and SAX_POWER_SETPOINT_FACTOR (register 42)
-        atomically via the coordinator's write queue.
+        atomically via a direct coordinator write.
 
         Write sequence:
             1. Get SAX_POWER_SETPOINT ModbusItem via coordinator.sax_data
             2. Apply SOC and hardware constraints
             3. Call coordinator.async_write_power_control_value(item, power, factor)
-            4. Coordinator queues atomic write for next update cycle
-            5. modbus_api.write_power_setpoint() writes both registers
+            4. modbus_api.write_power_setpoint() writes both registers
 
         Args:
             power: Per-battery power value in watts (positive = discharge, negative = charge)
@@ -999,13 +1030,13 @@ class PowerManager:
         # Security: Validate power value type
         if not isinstance(power, (int, float)):
             _LOGGER.error("Invalid power value type: %s", type(power))  # type:ignore[unreachable] # noqa: DC12
-            return
+            return False
 
         # Get current combined SOC for constraint enforcement
         combined_soc = self.coordinator.data.get(SAX_COMBINED_SOC)
         if combined_soc is None and power != 0:
             _LOGGER.warning("Combined SOC not available, cannot apply constraints")
-            return
+            return False
 
         # Apply all power constraints (SOC protection, hardware limits)
         # Returns per-battery value already clamped to hardware limits
@@ -1069,13 +1100,13 @@ class PowerManager:
                     and time.monotonic() - self._last_power_write_monotonic
                     < POWER_SETPOINT_REFRESH_SECONDS
                 ):
-                    return
+                    return True
 
         # Get SAX_POWER_SETPOINT ModbusItem from coordinator's sax_data
         power_item = self.coordinator.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
         if not isinstance(power_item, ModbusItem):
             _LOGGER.error("SAX_POWER_SETPOINT not found or not a ModbusItem")
-            return
+            return False
 
         # Power factor: 1000 = 1.0 (full power capacity)
         power_factor = 1000
@@ -1099,6 +1130,7 @@ class PowerManager:
                 )
             else:
                 _LOGGER.error("Failed to write setpoint via coordinator")
+            return success  # noqa: TRY300
 
         except TimeoutError:
             _LOGGER.error(
@@ -1107,6 +1139,7 @@ class PowerManager:
             )
         except (OSError, ValueError) as err:
             _LOGGER.error("Failed to update setpoint: %s", err)
+        return False
 
     async def set_pv_charging_mode(self, enabled: bool) -> None:
         """Enable or disable PV charging mode.
@@ -1117,6 +1150,8 @@ class PowerManager:
         Security:
             OWASP A01: Power manager state synchronized with switch state
         """
+        if enabled:
+            await self._stop_complete.wait()
         self._state.pv_charging_enabled = enabled
         self._state.mode = PV_CHARGING_MODE if enabled else GRID_CHARGING_MODE
 
@@ -1149,7 +1184,25 @@ class PowerManager:
                 ).async_set_mode_zero_balance()
             await self._async_update_power(None)
         else:
+            await self._async_stop_power()
+
+    async def _async_stop_power(self) -> None:
+        """Send zero and allow a Legacy coordinator interval for settling."""
+        if self._is_sunspec:
             await self._async_write_power(0.0, force=True)
+            return
+        self._stop_complete.clear()
+        self._power_generation += 1
+        try:
+            async with self._power_write_lock:
+                if not await self._async_write_power(0.0, force=True):
+                    raise HomeAssistantError("Failed to send zero power setpoint")
+                interval = self.coordinator.update_interval
+                await asyncio.sleep(
+                    interval.total_seconds() if interval else BATTERY_POLL_INTERVAL
+                )
+        finally:
+            self._stop_complete.set()
 
     async def set_grid_control_mode(
         self,
@@ -1169,6 +1222,9 @@ class PowerManager:
             OWASP A01: Power manager state synchronized with switch state
 
         """
+        if enabled:
+            await self._stop_complete.wait()
+
         # Store previous PV state before enabling grid charging
         if enabled:
             if not self._state.grid_charging_enabled:
@@ -1206,7 +1262,7 @@ class PowerManager:
         elif fallback_to_balance:
             await self._async_apply_balanced_fallback()
         else:
-            await self._async_write_power(0.0, force=True)
+            await self._async_stop_power()
 
     async def set_grid_charging_mode(
         self,
