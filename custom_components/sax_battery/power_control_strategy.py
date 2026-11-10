@@ -29,7 +29,6 @@ from .const_sunspec import (
     SAX_SUNSPEC_REFERENCE_POWER,
     SAX_SUNSPEC_SETPOINT_TIMEOUT,
 )
-from .entity_keys import SAX_POWER_SETPOINT, SAX_POWER_SETPOINT_FACTOR
 from .items import ModbusItem
 
 if TYPE_CHECKING:
@@ -62,51 +61,6 @@ class PowerControlStrategy(ABC):
     @abstractmethod
     def get_max_power_rating(self) -> float:
         """Get the total maximum power rating in Watts."""
-
-
-class LegacyPowerControlStrategy(PowerControlStrategy):
-    """Legacy strategy for the write-only setpoint registers 41 and 42.
-
-    The local factor is paired with each power request because the device cannot
-    read either register back. Legacy ``PowerManager`` owns periodic balancing.
-    """
-
-    def __init__(self, coordinator: SAXBatteryCoordinator) -> None:
-        """Initialize legacy strategy."""
-        self.coordinator = coordinator
-
-    def get_max_power_rating(self) -> float:
-        """Return maximum power rating based on battery count."""
-        battery_count = len(self.coordinator.sax_data.coordinators) or 1
-        return float(battery_count * 4600)
-
-    async def async_set_power(self, target_watts: float, timeout_s: int = 60) -> bool:
-        """Write setpoint and factor atomically."""
-        power_item = self.coordinator.sax_data.get_item_by_name(SAX_POWER_SETPOINT)
-        if not power_item or not isinstance(power_item, ModbusItem):
-            _LOGGER.error("SAX_POWER_SETPOINT item not found")
-            return False
-
-        factor_item = self.coordinator.sax_data.get_item_by_name(
-            SAX_POWER_SETPOINT_FACTOR
-        )
-        factor = 100
-        if factor_item and self.coordinator.data:
-            factor_val = self.coordinator.data.get(factor_item.name)
-            if factor_val is not None:
-                factor = int(factor_val)
-
-        return await self.coordinator.async_write_power_control_value(
-            power_item, int(target_watts), factor
-        )
-
-    async def async_set_mode_zero_balance(self) -> bool:
-        """Legacy mode achieves zero balance via software PID loop in power manager."""
-        return True
-
-    async def async_set_mode_manual(self) -> bool:
-        """Legacy mode is ready for setpoint writes."""
-        return True
 
 
 class SunSpecPowerControlStrategy(PowerControlStrategy):
@@ -177,7 +131,7 @@ class SunSpecPowerControlStrategy(PowerControlStrategy):
         await self.coordinator.async_write_number_value(mode_item, 0)
         return True
 
-    async def async_set_mode_manual(self) -> bool:
+    async def async_set_mode_manual(self) -> bool:  # noqa: DC04
         """Enable Model 123 manual setpoint control (Mode 1)."""
         mode_item = self.coordinator.sax_data.get_item_by_name(SAX_SUNSPEC_CONTROL_MODE)
         if not mode_item or not isinstance(mode_item, ModbusItem):

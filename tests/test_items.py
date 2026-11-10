@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from pymodbus.client.mixin import ModbusClientMixin
 from pymodbus.exceptions import ModbusException
@@ -11,7 +11,7 @@ import pytest
 
 from custom_components.sax_battery.entity_keys import SAX_COMBINED_SOC, SAX_MIN_SOC
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
-from custom_components.sax_battery.items import ModbusItem, SAXItem, WebAPIItem
+from custom_components.sax_battery.items import ModbusItem, SAXItem
 
 
 @pytest.fixture
@@ -380,70 +380,3 @@ class TestSAXItemWrite:
         )
         result = await item.async_write_value(100)
         assert result is False
-
-
-class TestWebAPIItem:
-    """Test WebAPIItem operations."""
-
-    async def test_read_invalid(self):
-        """Test read when invalid."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.BESS,
-        )
-        item.is_invalid = True
-        result = await item.async_read_value()
-        assert result is None
-
-    async def test_read_not_implemented(self):
-        """Test read returns None (not implemented)."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.BESS,
-        )
-        result = await item.async_read_value()
-        assert result is None
-
-    async def test_write_read_only(self):
-        """Test write fails for read-only types."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.BESS,
-        )
-        result = await item.async_write_value(100)
-        assert result is False
-
-    async def test_write_invalid(self):
-        """Test write fails when invalid."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.BESS,
-        )
-        item.is_invalid = True
-        result = await item.async_write_value(100)
-        assert result is False
-
-    async def test_write_not_implemented(self):
-        """Test write returns False (not implemented)."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.NUMBER,
-            device=DeviceConstants.BESS,
-        )
-        result = await item.async_write_value(100)
-        assert result is False
-
-    def test_set_api_client(self):
-        """Test set_api_client method."""
-        item = WebAPIItem(
-            name="web_api_test",
-            mtype=TypeConstants.SENSOR,
-            device=DeviceConstants.BESS,
-        )
-        mock_client = Mock()
-        item.set_api_client(mock_client)
-        assert item._web_api_client is mock_client

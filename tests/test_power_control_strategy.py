@@ -19,7 +19,6 @@ from custom_components.sax_battery.entity_keys import (
 from custom_components.sax_battery.enums import DeviceConstants, TypeConstants
 from custom_components.sax_battery.items import ModbusItem
 from custom_components.sax_battery.power_control_strategy import (
-    LegacyPowerControlStrategy,
     SunSpecPowerControlStrategy,
 )
 
@@ -38,33 +37,6 @@ def mock_coordinator() -> MagicMock:
     coord.async_write_power_control_value = AsyncMock(return_value=True)
     coord.async_write_number_value = AsyncMock(return_value=True)
     return coord
-
-
-async def test_legacy_power_control_strategy(mock_coordinator: MagicMock) -> None:
-    """Test Legacy strategy sets power via atomic write."""
-    power_item = ModbusItem(
-        name=SAX_POWER_SETPOINT,
-        mtype=TypeConstants.NUMBER_WO,
-        device=DeviceConstants.SYS,
-    )
-    factor_item = ModbusItem(
-        name=SAX_POWER_SETPOINT_FACTOR,
-        mtype=TypeConstants.NUMBER_WO,
-        device=DeviceConstants.SYS,
-    )
-    mock_coordinator.sax_data.get_item_by_name = lambda name: {
-        SAX_POWER_SETPOINT: power_item,
-        SAX_POWER_SETPOINT_FACTOR: factor_item,
-    }.get(name)
-
-    strategy = LegacyPowerControlStrategy(mock_coordinator)
-    assert strategy.get_max_power_rating() == 9200.0
-
-    res = await strategy.async_set_power(3000.0)
-    assert res is True
-    mock_coordinator.async_write_power_control_value.assert_called_once_with(
-        power_item, 3000, 100
-    )
 
 
 async def test_sunspec_power_control_strategy(mock_coordinator: MagicMock) -> None:

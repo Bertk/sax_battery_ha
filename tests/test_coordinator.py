@@ -700,59 +700,6 @@ class TestSAXBatteryCoordinator:
             items
         )
 
-    async def test_poll_single_item_success(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test _poll_single_item with successful read."""
-        # Create mock item
-        item = MagicMock(spec=ModbusItem)
-        item.name = "test_item"
-        item.mtype = TypeConstants.SENSOR
-        item.is_read_only.return_value = True
-        item.async_read_value = AsyncMock(return_value=75.5)
-
-        # Test polling
-        result = await sax_battery_coordinator_instance._poll_single_item(item)
-
-        # Verify result
-        assert result == 75.5
-        item.async_read_value.assert_called_once()
-
-    async def test_poll_single_item_write_only_number(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test _poll_single_item behavior for NUMBER_WO items.
-
-        The current coordinator implementation does not skip NUMBER_WO in
-        _poll_single_item; it delegates to item.async_read_value().
-        """
-        item = MagicMock(spec=ModbusItem)
-        item.name = "test_item"
-        item.mtype = TypeConstants.NUMBER_WO
-        item.is_read_only.return_value = True
-        item.async_read_value = AsyncMock(return_value=12.0)
-
-        result = await sax_battery_coordinator_instance._poll_single_item(item)
-
-        assert result == 12.0
-        item.async_read_value.assert_called_once()
-
-    async def test_poll_single_item_timeout_returns_none(
-        self,
-        sax_battery_coordinator_instance,
-    ) -> None:
-        """Test _poll_single_item returns None on timeout."""
-        item = MagicMock(spec=ModbusItem)
-        item.name = "timeout_item"
-        item.address = 99
-        item.async_read_value = AsyncMock(side_effect=TimeoutError)
-
-        result = await sax_battery_coordinator_instance._poll_single_item(item)
-
-        assert result is None
-
     async def test_async_update_data_modbus_exception_raises_update_failed(
         self,
         sax_battery_coordinator_instance,

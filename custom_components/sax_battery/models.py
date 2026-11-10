@@ -57,14 +57,6 @@ class BaseModel(ABC):
         """Get the current data."""
         return self._data
 
-    def get_value(self, key: str) -> Any:
-        """Get value for a specific key."""
-        return self._data.get(key)
-
-    def set_value(self, key: str, value: Any) -> None:
-        """Set value for a specific key."""
-        self._data[key] = value
-
     @abstractmethod
     def get_modbus_items(self) -> list[ModbusItem]:
         """Get modbus items for this model."""

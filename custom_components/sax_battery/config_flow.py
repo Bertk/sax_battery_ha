@@ -1037,17 +1037,6 @@ class SAXBatteryOptionsFlowHandler(config_entries.OptionsFlow):
         await self._async_set_sm_entities_disabled_by(disabled_by=None)
         _LOGGER.info("Enabled SM entities because sm_connected was set to True")
 
-    async def _async_disable_sm_entities(self) -> None:
-        """Disable SM device entities when smart meter is not connected.
-
-        Security:
-            OWASP A01: Prevents access to unavailable hardware entities
-        """
-        await self._async_set_sm_entities_disabled_by(
-            disabled_by=er.RegistryEntryDisabler.INTEGRATION
-        )
-        _LOGGER.info("Disabled SM entities because sm_connected was set to False")
-
     async def _async_set_sm_entities_disabled_by(
         self, disabled_by: er.RegistryEntryDisabler | None
     ) -> None:

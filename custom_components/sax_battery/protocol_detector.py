@@ -39,64 +39,6 @@ class ProtocolDetectionResult:
     reason: str
 
 
-async def detect_protocol_mode(
-    modbus_api: object,
-    battery_id: str,
-) -> ProtocolDetectionResult:
-    """Detect protocol mode by probing documented SunSpec entry points.
-
-    Detection sequence:
-    1. Probe SunSpec map at Unit-ID 100, address 40000
-    2. Probe compatibility map at Unit-ID 40, address 40071
-    3. Fall back to legacy Unit-ID 64
-
-    Args:
-        modbus_api: Modbus API instance with read_register_block method
-        battery_id: Battery identifier for logging context
-
-    Returns:
-        ProtocolDetectionResult with selected mode and slave ID
-    """
-    # Probe 1: New SunSpec map (Unit-ID 100)
-    probe_100 = await _probe_sunspec_unit_100(modbus_api)
-    if probe_100:
-        _LOGGER.info(
-            "%s: Detected SunSpec mode on Unit-ID 100",
-            battery_id,
-        )
-        return ProtocolDetectionResult(
-            mode=ProtocolMode.SUNSPEC,
-            detected_device_id=UNIT_ID_SUNSPEC_NEW,
-            detection_path="probe_unit_100",
-            reason="valid_sunspec_common_header",
-        )
-
-    # Probe 2: Compatibility map (Unit-ID 40)
-    probe_40 = await _probe_sunspec_unit_40(modbus_api)
-    if probe_40:
-        _LOGGER.info(
-            "%s: Detected SunSpec compatibility mode on Unit-ID 40",
-            battery_id,
-        )
-        return ProtocolDetectionResult(
-            mode=ProtocolMode.SUNSPEC,
-            detected_device_id=UNIT_ID_SUNSPEC_COMPAT,
-            detection_path="probe_unit_40",
-            reason="valid_sunspec_compat_header",
-        )
-
-    _LOGGER.warning(
-        "%s: SunSpec detection failed, falling back to legacy Unit-ID 64",
-        battery_id,
-    )
-    return ProtocolDetectionResult(
-        mode=ProtocolMode.LEGACY,
-        detected_device_id=UNIT_ID_LEGACY,
-        detection_path="fallback_legacy",
-        reason="sunspec_probe_failed",
-    )
-
-
 async def validate_sunspec_availability(
     modbus_api: object,
     battery_id: str,
@@ -160,7 +102,7 @@ async def _probe_sunspec_unit_100(
     return is_valid_id and is_common_model and has_length
 
 
-async def _probe_sunspec_unit_40(modbus_api: object) -> bool:
+async def _probe_sunspec_unit_40(modbus_api: object) -> bool:  # noqa: DC02
     """Probe compatibility header at 40071 on Unit-ID 40."""
     # 40071 maps to internal address 70
     registers = await _probe_read_with_retry(

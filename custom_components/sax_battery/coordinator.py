@@ -53,10 +53,9 @@ _LOGGER = logging.getLogger(__name__)
 # Polling intervals (in seconds)
 BATTERY_POLL_INTERVAL = 15  # master battery data polling (SOC, Power, Status)
 BATTERY_POLL_SLAVE_INTERVAL = 30  # slave battery data polling (SOC, Power, Status)
-SINGLE_ITEM_POLL_TIMEOUT = 10  # Per-item timeout to prevent cascade failures
+SINGLE_ITEM_POLL_TIMEOUT = 10  # noqa: DC01 # Per-item timeout to prevent cascade failures
 
 # Performance monitoring constants
-CYCLE_TIME_HISTORY_SIZE = 100  # Number of cycle times to keep for statistics
 ERROR_HISTORY_SIZE = 1000  # Number of error events to keep for diagnostics
 CYCLE_STATS_LOG_INTERVAL = 240  # Log cycle statistics every N updates (~1 hour)
 
@@ -505,7 +504,7 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if refreshed_values:
             data.update(refreshed_values)
 
-    async def _refresh_sunspec_control_values_on_cadence(
+    async def _refresh_sunspec_control_values_on_cadence(  # noqa: DC04
         self,
         data: dict[str, Any],
     ) -> None:
@@ -707,39 +706,6 @@ class SAXBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _mark_sunspec_block_polled(self, block_name: str) -> None:
         """Record a successful poll timestamp for a SunSpec block."""
         self._sunspec_block_last_poll[block_name] = time.monotonic()
-
-    async def _poll_single_item(self, item: ModbusItem) -> Any:
-        """Poll a single ModbusItem.
-
-        Args:
-            item: ModbusItem to poll
-
-        Returns:
-            Any: Polled value or None on error
-
-        Performance: Direct item polling with per-item timeout
-        Security: Prevents single unresponsive register from blocking all polling
-        """
-        try:
-            return await asyncio.wait_for(
-                item.async_read_value(),
-                timeout=SINGLE_ITEM_POLL_TIMEOUT,
-            )
-        except TimeoutError:
-            _LOGGER.warning(
-                "Timeout polling %s at address %s after %ss",
-                item.name,
-                item.address,
-                SINGLE_ITEM_POLL_TIMEOUT,
-            )
-            return None
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug(
-                "Error polling %s: %s",
-                item.name,
-                exc,
-            )
-            return None
 
     async def _update_enabled_calculated_values(
         self, data: dict[str, Any], entity_registry: Any

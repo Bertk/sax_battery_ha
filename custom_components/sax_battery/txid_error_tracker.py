@@ -53,7 +53,7 @@ class TxidErrorHandler(logging.Handler):
         super().__init__()
         self._timestamps: deque[datetime] = deque(maxlen=maxlen)
 
-    def emit(self, record: logging.LogRecord) -> None:
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: DC04
         """Record the current time when a transaction-ID mismatch is logged."""
         if _TXID_ERROR_PATTERN in record.getMessage():
             self._timestamps.append(datetime.now())

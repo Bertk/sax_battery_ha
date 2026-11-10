@@ -84,7 +84,7 @@ class PowerManagerState:
     grid_power_mode: str = DEFAULT_GRID_POWER_MODE
     # State persistence for mode transitions
     previous_pv_state: bool = False  # Store PV state before grid charging
-    previous_grid_state: bool = False  # Store grid state before PV charging
+    previous_grid_state: bool = False  # noqa: DC06 # Store grid state before PV charging
 
 
 class PowerManager:
@@ -1263,90 +1263,6 @@ class PowerManager:
             await self._async_apply_balanced_fallback()
         else:
             await self._async_stop_power()
-
-    async def set_grid_charging_mode(
-        self,
-        enabled: bool,
-        target_power: float = 0.0,
-    ) -> None:
-        """Enable or disable grid charging power control mode.
-
-        Args:
-            enabled: True to enable grid charging mode
-            target_power: Fixed setpoint (W)
-                         Positive = discharge to grid
-                         Negative = charge from grid/PV
-                         Default = 0.0 (standby)
-
-        Security:
-            OWASP A01: Power manager state synchronized with mode switches
-            OWASP A05: Validates power constraints before hardware write
-
-        Example:
-            # Charge at 3000W from grid
-            await manager.set_grid_charging_mode(True, -3000.0)
-
-            # Discharge at 2000W to grid
-            await manager.set_grid_charging_mode(True, 2000.0)
-
-            # Disable grid charging mode
-            await manager.set_grid_charging_mode(False)
-        """
-        # Store previous states before enabling grid charging mode
-        if enabled:
-            self._state.previous_pv_state = self._state.pv_charging_enabled
-            self._state.previous_grid_state = self._state.grid_charging_enabled
-            self._state.pv_charging_enabled = False  # Mutual exclusion
-            self._state.grid_charging_enabled = False  # Mutual exclusion
-        elif self._state.previous_pv_state or self._state.previous_grid_state:
-            # Restore previous state when disabling grid charging mode
-            if self._state.previous_grid_state:
-                _LOGGER.info(
-                    "Restoring grid charging mode after grid charging mode disabled"
-                )
-                self._state.grid_charging_enabled = True
-            elif self._state.previous_pv_state:
-                _LOGGER.info(
-                    "Restoring PV charging mode after grid charging mode disabled"
-                )
-                self._state.pv_charging_enabled = True
-            self._state.previous_pv_state = False
-            self._state.previous_grid_state = False
-        # charge from grid uses actual value of number.sax_bms_max_charge
-        self._state.mode = (
-            "grid_charging"
-            if enabled
-            else (
-                GRID_CHARGING_MODE
-                if self._state.grid_charging_enabled
-                else (
-                    PV_CHARGING_MODE if self._state.pv_charging_enabled else "standby"
-                )
-            )
-        )
-
-        _LOGGER.info(
-            "Manual power mode %s%s",
-            "enabled" if enabled else "disabled",
-            f" (target: {target_power:.0f}W)" if enabled else "",
-        )
-
-        if enabled:
-            # Apply setpoint with constraint enforcement
-            await self.update_power_setpoint(target_power)
-        else:
-            # Reset to standby when disabling
-            await self.update_power_setpoint(0.0)
-
-    @property
-    def current_mode(self) -> str:
-        """Get current power management mode."""
-        return self._state.mode
-
-    @property
-    def current_power(self) -> float:
-        """Get current setpoint."""
-        return self._state.target_power
 
     @property
     def get_pv_charging_enabled(self) -> bool:

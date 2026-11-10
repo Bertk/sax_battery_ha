@@ -43,21 +43,6 @@ class TestBatteryModel:
         assert battery.port == 502
         assert battery.is_master is True
 
-    def test_battery_model_data_operations(self, battery_model_data_basic) -> None:
-        """Test BatteryModel data operations."""
-        battery = BatteryModel(
-            device_id=battery_model_data_basic["device_id"],
-            name=battery_model_data_basic["name"],
-        )
-
-        # Test setting and getting values
-        battery.set_value("soc", 85.5)
-        battery.set_value("power", 1500)
-
-        assert battery.get_value("soc") == 85.5
-        assert battery.get_value("power") == 1500
-        assert battery.get_value("nonexistent") is None
-
     def test_battery_model_modbus_items_master(
         self, mock_config_entry_pilot_enabled
     ) -> None:

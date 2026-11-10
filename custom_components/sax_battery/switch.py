@@ -511,7 +511,7 @@ class SAXBatteryControlSwitch(
         self.async_write_ha_state()
 
     @property
-    def entity_registry_enabled_default(self) -> bool:
+    def entity_registry_enabled_default(self) -> bool:  # noqa: DC08
         """Return if entity should be enabled by default.
 
         This property is evaluated dynamically and overrides the static

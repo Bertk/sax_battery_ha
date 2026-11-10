@@ -113,7 +113,7 @@ class ModbusItem(BaseItem):
             _LOGGER.exception("Failed to read value for %s", self.name)
             return None
 
-    async def async_write_value(self, value: float | bool) -> bool:
+    async def async_write_value(self, value: float | bool) -> bool:  # noqa: DC04
         """Write value to physical modbus register."""
         _LOGGER.debug(
             "Writing value %s to item %s (address: %s, data_type: %s)",
@@ -277,7 +277,7 @@ class SAXItem(BaseItem):
         # Return None - calculation logic moved to sensor entity
         return None
 
-    async def async_write_value(self, value: float) -> bool:
+    async def async_write_value(self, value: float) -> bool:  # noqa: DC04
         """Write system configuration value.
 
         SAX_POWER_CONTROL_SETPOINT removed - power control now uses direct
@@ -288,41 +288,4 @@ class SAXItem(BaseItem):
             return False
 
         _LOGGER.debug("SAX item write not yet implemented for %s", self.name)
-        return False
-
-
-@dataclass
-class WebAPIItem(BaseItem):
-    """Web API-based item for SAX Power web application data."""
-
-    api_endpoint: str = ""
-    api_key: str = ""
-    refresh_interval: int = 300
-    _web_api_client: Any = field(default=None, init=False)
-
-    def set_api_client(self, web_api_client: Any) -> None:
-        """Set the Web API client for this item."""
-        self._web_api_client = web_api_client
-
-    async def async_read_value(self) -> int | float | bool | None:
-        """Read value from SAX Power Web API."""
-        if self.is_invalid:
-            return None
-
-        _LOGGER.debug("Web API read not yet implemented for %s", self.name)
-        return None
-
-    async def async_write_value(self, value: float) -> bool:
-        """Write value via SAX Power Web API."""
-        if self.mtype not in (
-            TypeConstants.NUMBER,
-            TypeConstants.NUMBER_WO,
-            TypeConstants.SWITCH,
-        ):
-            return False
-
-        if self.is_invalid:
-            return False
-
-        _LOGGER.debug("Web API write not yet implemented for %s", self.name)
         return False

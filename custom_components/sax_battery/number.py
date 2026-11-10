@@ -20,11 +20,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     BATTERY_IDS,
-    CONF_BATTERY_COUNT,
     CONF_BATTERY_IS_MASTER,
     CONF_BATTERY_PHASE,
     CONF_CONTROL_POWER,
-    CONF_ENABLE_GRID_CHARGING,
     CONF_LIMIT_POWER,
     CONF_MAX_SOC_CHARGING,
     CONF_MIN_SOC,
@@ -432,7 +430,7 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 self._local_value = 0
 
     @property
-    def entity_registry_enabled_default(self) -> bool:
+    def entity_registry_enabled_default(self) -> bool:  # noqa: DC08
         """Return if entity should be enabled when first added to the registry.
 
         Security:
@@ -483,35 +481,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 return control_power_enabled
 
         return True
-
-    def _get_battery_count(self) -> int:
-        """Get the number of configured batteries.
-
-        Returns:
-            Number of batteries configured in the config entry.
-            Defaults to 1 if not configured.
-
-        Security:
-            OWASP A05: Validates config entry exists before access
-        """
-        config_entry = self.coordinator.config_entry
-        if config_entry is not None:
-            return int(config_entry.data.get(CONF_BATTERY_COUNT, 1))
-        return 1
-
-    def _is_grid_charging_enabled(self) -> bool:
-        """Check if grid charging is enabled in config.
-
-        Returns:
-            True if grid charging is enabled, False otherwise.
-
-        Security:
-            OWASP A05: Validates config entry exists before access
-        """
-        config_entry = self.coordinator.config_entry
-        if config_entry is not None:
-            return bool(config_entry.data.get(CONF_ENABLE_GRID_CHARGING, False))
-        return False
 
     @property
     def native_value(self) -> float | None:
@@ -1055,23 +1024,6 @@ class SAXBatteryModbusNumber(CoordinatorEntity[SAXBatteryCoordinator], RestoreNu
                 self._modbus_item.name,
             )
 
-    def _handle_entity_disabled(self) -> None:
-        """Handle entity being disabled via entity registry.
-
-        Called when entity is disabled to clean up periodic refresh.
-
-        Security:
-            OWASP A05: Proper resource cleanup when access is revoked
-        """
-        # Check if entity is disabled and stop periodic refresh
-        if self.entity_registry_enabled_default is False:
-            # Schedule async cleanup on next event loop iteration
-            self.hass.async_create_task(self._stop_periodic_refresh())
-            _LOGGER.info(
-                "Entity %s disabled, stopping periodic refresh",
-                self.entity_id,
-            )
-
     async def _periodic_write(self, now: datetime | None = None) -> None:
         """Periodically write cached value to hardware.
 
@@ -1365,80 +1317,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
             )
             raise HomeAssistantError(f"Failed to update: {err}") from err
 
-    async def _handle_control_power_update(self, power_value: int) -> None:
-        """Handle CONF_CONTROL_POWER update by writing to control registers atomically.
-
-        Derives SAX_POWER_SETPOINT and SAX_POWER_SETPOINT_FACTOR from control power value
-        and writes both to registers 41 and 42 in a single atomic transaction.
-
-        Args:
-            power_value: Power value in watts (positive=discharge, negative=charge)
-
-        Security:
-            OWASP A03: Validates input ranges
-
-        Performance:
-            Single atomic Modbus transaction for both registers
-        """
-        # Validate coordinator and SOC manager availability
-        if not self.coordinator.soc_manager:
-            raise HomeAssistantError("SOC manager not available")
-
-        # Derive power_setpoint (same as  xxx power)
-        power_setpoint: int = power_value
-
-        # Derive nominal_factor (power factor)
-        # Default to 0.95 (9500 in scaled format for 10000 scaling)
-        # Or calculate from actual power and apparent power if available
-        nominal_factor = await self._calculate_nominal_factor(power_value)
-
-        # Get the ModbusItems for atomic write
-        factor_item = next(
-            (
-                item
-                for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                if item.name == SAX_POWER_SETPOINT_FACTOR
-            ),
-            None,
-        )
-        power_item = next(
-            (
-                item
-                for item in MODBUS_BATTERY_POWER_CONTROL_ITEMS
-                if item.name == SAX_POWER_SETPOINT
-            ),
-            None,
-        )
-
-        if not power_item or not factor_item:
-            raise HomeAssistantError("Control register items not found")
-
-        # Update corresponding entities if they exist
-        self._update_power_entity(
-            SAX_POWER_SETPOINT_FACTOR, factor_item, nominal_factor
-        )
-        self._update_power_entity(SAX_POWER_SETPOINT, power_item, power_setpoint)
-
-        # Write to control registers atomically via coordinator
-        success = await self.coordinator.async_write_power_control_value(
-            power_item=power_item,
-            power=power_setpoint,
-            power_factor=nominal_factor,
-        )
-
-        if not success:
-            raise HomeAssistantError("Failed to write power control values")
-
-        # Update local state
-        self._attr_native_value = float(power_value)
-
-        _LOGGER.info(
-            "Setpoint power updated: power=%sW, power_factor=%s",
-            power_setpoint,
-            nominal_factor,
-        )
-
-    async def _calculate_nominal_factor(self, power_value: float) -> int:
+    async def _calculate_nominal_factor(self, power_value: float) -> int:  # noqa: DC04
         """Calculate nominal factor (power factor) from power value.
 
         Args:
@@ -1468,7 +1347,7 @@ class SAXBatteryConfigNumber(CoordinatorEntity[SAXBatteryCoordinator], NumberEnt
         # Return default conservative power factor
         return default_pf
 
-    def _update_power_entity(self, name: str, item: ModbusItem, value: int) -> None:
+    def _update_power_entity(self, name: str, item: ModbusItem, value: int) -> None:  # noqa: DC04
         """Update the setpoint entity if it exists.
 
         Args:

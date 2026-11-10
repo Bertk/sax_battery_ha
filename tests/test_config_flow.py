@@ -881,17 +881,10 @@ class TestSAXBatteryOptionsFlowExtended:
         assert any(CONF_POWER_SENSOR in key for key in schema_keys)
         assert any(CONF_BALANCED_LOADING in key for key in schema_keys)
 
-        with (
-            patch.object(
-                SAXBatteryOptionsFlowHandler,
-                "_async_disable_sm_entities",
-                new_callable=AsyncMock,
-            ) as disable_sm,
-            patch.object(
-                SAXBatteryOptionsFlowHandler,
-                "_async_enable_sm_entities",
-                new_callable=AsyncMock,
-            ),
+        with patch.object(
+            SAXBatteryOptionsFlowHandler,
+            "_async_enable_sm_entities",
+            new_callable=AsyncMock,
         ):
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
@@ -908,7 +901,6 @@ class TestSAXBatteryOptionsFlowExtended:
         assert entry.data[CONF_SM_TYPE] == SM_TYPE_OTHER
         assert entry.data[CONF_POWER_SENSOR] == "sensor.tibber_power"
         assert entry.data[CONF_BALANCED_LOADING] is True
-        disable_sm.assert_not_awaited()
 
     @pytest.mark.usefixtures("_mock_setup_integration")
     async def test_options_flow_init(

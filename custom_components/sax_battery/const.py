@@ -295,7 +295,7 @@ DESCRIPTION_SAX_POWER_SETPOINT_FACTOR = NumberEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
-DESCRIPTION_SAX_SUNSPEC_POWER_SETPOINT = NumberEntityDescription(
+DESCRIPTION_SAX_SUNSPEC_POWER_SETPOINT = NumberEntityDescription(  # noqa: DC01
     key=SAX_SUNSPEC_POWER_SETPOINT,
     name="Sax SunSpec Power Setpoint",
     mode=NumberMode.BOX,
@@ -306,7 +306,7 @@ DESCRIPTION_SAX_SUNSPEC_POWER_SETPOINT = NumberEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
-DESCRIPTION_SAX_SUNSPEC_SETPOINT_TIMEOUT = NumberEntityDescription(
+DESCRIPTION_SAX_SUNSPEC_SETPOINT_TIMEOUT = NumberEntityDescription(  # noqa: DC01
     key=SAX_SUNSPEC_SETPOINT_TIMEOUT,
     name="SunSpec Setpoint Timeout",
     mode=NumberMode.BOX,

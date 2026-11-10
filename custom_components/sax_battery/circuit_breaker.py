@@ -98,7 +98,7 @@ class CircuitBreaker:
         return self._state == CircuitBreakerState.OPEN
 
     @property
-    def is_closed(self) -> bool:
+    def is_closed(self) -> bool:  # noqa: DC08
         """Return True if circuit breaker is closed (allowing requests)."""
         return self._state == CircuitBreakerState.CLOSED
 
@@ -108,12 +108,12 @@ class CircuitBreaker:
         return self._consecutive_failures
 
     @property
-    def total_failures(self) -> int:
+    def total_failures(self) -> int:  # noqa: DC08
         """Return total number of failures recorded."""
         return self._total_failures
 
     @property
-    def total_blocked(self) -> int:
+    def total_blocked(self) -> int:  # noqa: DC08
         """Return total number of blocked requests."""
         return self._total_blocked
 
